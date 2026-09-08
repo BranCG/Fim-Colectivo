@@ -2,9 +2,9 @@ name: CI - Integración Continua
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [ main, dev, DevOpS ]
   pull_request:
-    branches: [ main, dev ]
+    branches: [ main, dev, DevOpS ]
 
 jobs:
   build-and-test:
@@ -25,6 +25,13 @@ jobs:
 
       - name: Generar cliente de Prisma
         run: npm run db:generate
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
 
       - name: Compilación del Monorepo
         run: npm run build
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+          NEXT_PUBLIC_API_URL: "https://colectivo.fimchile.cl"
+          JWT_SECRET: "ci-secret-key"
+          JWT_REFRESH_SECRET: "ci-refresh-secret"
