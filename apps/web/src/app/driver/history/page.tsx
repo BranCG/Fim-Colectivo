@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api, { formatCLP, getSession } from '@/lib/api';
+import api, { getSession } from '@/lib/api';
 import { IconoRuta, IconoEfectivo, IconoTarjeta } from '@/components/icons/Iconos';
 
 interface Trip {
@@ -71,7 +71,7 @@ export default function DriverHistoryPage() {
                   <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{trip.passenger.name}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--gold)' }}>{formatCLP(trip.estimatedPrice)}</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--accent)' }}>Viaje Colectivo</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
                     {trip.paymentMethod === 'cash' ? <IconoEfectivo size={13} color="var(--gold)" /> : <IconoTarjeta size={13} color="var(--gold)" />}
                     <span>{trip.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}</span>
