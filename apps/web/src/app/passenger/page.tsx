@@ -296,7 +296,7 @@ export default function PaginaPasajeroColectivo() {
 
   // Enviar solicitud de reserva de asiento
   const solicitarReservaAsiento = async () => {
-    if (!conductorElegido || !lineaSeleccionada) return;
+    if (!conductorElegido || !lineaSeleccionada || reservaActiva) return;
 
     setCargandoReserva(true);
     setMensajeError('');
@@ -311,6 +311,7 @@ export default function PaginaPasajeroColectivo() {
       });
 
       setReservaActiva(res.data.reserva);
+      setConductorElegido(null);
       setMensajeAlerta('Asiento reservado con éxito. Espera al colectivo en tu recorrido.');
     } catch (error: any) {
       console.error('Error al reservar:', error);
@@ -353,7 +354,8 @@ export default function PaginaPasajeroColectivo() {
 
   // Solicitar asignación dirigida al primer móvil en tránsito (Regla Federación)
   const solicitarProximoColectivo = async () => {
-    if (!lineaSeleccionada) return;
+    if (!lineaSeleccionada || reservaActiva || buscandoMovil) return;
+    setConductorElegido(null);
     setBuscandoMovil(true);
     setMensajeError('');
     setMovilAsignadoPreview(null);

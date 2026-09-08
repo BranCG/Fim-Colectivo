@@ -122,6 +122,20 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       return respuesta.status(400).json({ error: 'Debe especificar el conductor y la línea' });
     }
 
+    // Verificar si el pasajero ya tiene una reserva activa
+    const reservaExistente = await prisma.reservaAsiento.findFirst({
+      where: {
+        pasajeroId,
+        estado: { in: ['pendiente_chofer', 'reservado', 'abordado', 'pagando'] },
+      },
+    });
+    if (reservaExistente) {
+      return respuesta.status(400).json({
+        error: 'Ya tienes una solicitud de asiento activa en curso.',
+        reserva: reservaExistente,
+      });
+    }
+
     // Verificar conductor y disponibilidad de asientos
     const chofer = await prisma.driver.findUnique({
       where: { id: conductorId },
@@ -758,6 +772,20 @@ router.post('/solicitar-dirigido', requireAuth, async (peticion: Request, respue
       return respuesta.status(400).json({ error: 'Debe indicar la línea y su ubicación de recogida' });
     }
 
+    // Verificar si el pasajero ya tiene una reserva activa
+    const reservaActiva = await prisma.reservaAsiento.findFirst({
+      where: {
+        pasajeroId,
+        estado: { in: ['pendiente_chofer', 'reservado', 'abordado', 'pagando'] },
+      },
+    });
+    if (reservaActiva) {
+      return respuesta.status(400).json({
+        error: 'Ya tienes una solicitud de asiento activa en curso.',
+        reserva: reservaActiva,
+      });
+    }
+
     const pasajero = await prisma.user.findUnique({
       where: { id: pasajeroId },
       select: { id: true, name: true, phone: true },
@@ -933,6 +961,16 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
           data: { asientosOcupados: nuevosOcupados },
         }),
       ]);
+
+      // Limpiar cualquier otra reserva previa que haya quedado pendiente del mismo pasajero
+      await prisma.reservaAsiento.updateMany({
+        where: {
+          pasajeroId: reserva.pasajeroId,
+          id: { not: id },
+          estado: 'pendiente_chofer',
+        },
+        data: { estado: 'cancelado' },
+      });
 
       // Emitir cambio de asientos a la flota de la línea y al conductor
       if (choferActualizado.lineaId) {

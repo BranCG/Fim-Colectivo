@@ -481,17 +481,20 @@ export default function PaginaConductorColectivo() {
           );
         }
 
-        // Actualizar la reserva en el listado local a estado 'reservado'
+        // Actualizar la reserva en el listado local a estado 'reservado' y limpiar duplicados
         const reservaConfirmada = res.data?.reserva;
         if (reservaConfirmada) {
           setReservasPendientes((prev) => {
-            const index = prev.findIndex((r) => r.id === reservaId);
+            const filtradas = prev.filter(
+              (r) => r.id === reservaId || r.pasajero?.id !== reservaConfirmada.pasajero?.id
+            );
+            const index = filtradas.findIndex((r) => r.id === reservaId);
             if (index >= 0) {
-              const copia = [...prev];
+              const copia = [...filtradas];
               copia[index] = { ...copia[index], ...reservaConfirmada, estado: 'reservado' };
               return copia;
             }
-            return [reservaConfirmada, ...prev];
+            return [reservaConfirmada, ...filtradas];
           });
         }
       } else {
