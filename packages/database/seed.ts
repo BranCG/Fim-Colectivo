@@ -85,7 +85,7 @@ async function main() {
   });
   console.log('✅ Admin creado:', admin.email);
 
-  // 3. Pasajero de prueba
+  // 3. Pasajeros de prueba
   const hashClavePasajero = await bcrypt.hash('test123', 12);
   const pasajero = await prisma.user.upsert({
     where: { email: 'pasajero@fimchile.cl' },
@@ -104,7 +104,41 @@ async function main() {
   });
   console.log('✅ Pasajero de prueba:', pasajero.email);
 
-  // 4. Choferes Colectivo de prueba (Línea 10, 4 asientos, RutPay y MercadoPago)
+  const pasajero2 = await prisma.user.upsert({
+    where: { email: 'pasajero2@fimchile.cl' },
+    update: {},
+    create: {
+      email: 'pasajero2@fimchile.cl',
+      phone: '+56966666666',
+      name: 'María Pasajera',
+      passwordHash: hashClavePasajero,
+      role: 'passenger',
+      rut: '17.890.123-4',
+      birthDate: new Date('1994-08-22'),
+      address: 'Av. Matta 500, Santiago',
+      isVerified: true,
+    },
+  });
+  console.log('✅ Pasajero 2 de prueba:', pasajero2.email);
+
+  const pasajero3 = await prisma.user.upsert({
+    where: { email: 'pasajero3@fimchile.cl' },
+    update: {},
+    create: {
+      email: 'pasajero3@fimchile.cl',
+      phone: '+56977777777',
+      name: 'Andrés Pasajero',
+      passwordHash: hashClavePasajero,
+      role: 'passenger',
+      rut: '18.901.234-5',
+      birthDate: new Date('1992-11-10'),
+      address: 'Av. Vicuña Mackenna 1500, Santiago',
+      isVerified: true,
+    },
+  });
+  console.log('✅ Pasajero 3 de prueba:', pasajero3.email);
+
+  // 4. Choferes Colectivo de prueba (4 asientos, RutPay y MercadoPago)
   const hashClaveChofer = await bcrypt.hash('test123', 12);
   const chofer = await prisma.driver.upsert({
     where: { email: 'chofer@fimchile.cl' },
@@ -184,13 +218,95 @@ async function main() {
   });
   console.log('✅ Conductor colectivo activo:', conductor.email, `(${linea10.nombre})`);
 
-  console.log('\n🎉 Seed completado exitosamente!\n');
+  const conductor2 = await prisma.driver.upsert({
+    where: { email: 'conductor2@fimchile.cl' },
+    update: {},
+    create: {
+      email: 'conductor2@fimchile.cl',
+      phone: '+56944444444',
+      name: 'Mario Chofer Colectivo',
+      passwordHash: hashClaveChofer,
+      rut: '17.123.456-7',
+      birthDate: new Date('1987-04-18'),
+      address: 'Av. Recoleta 800, Santiago',
+      idFrontUrl: 'https://via.placeholder.com/400x250?text=Cedula+Frente',
+      idBackUrl: 'https://via.placeholder.com/400x250?text=Cedula+Dorso',
+      licenseNumber: 'C1122334',
+      licenseUrl: 'https://via.placeholder.com/400x250?text=Licencia',
+      vehicleBrand: 'Hyundai',
+      vehicleModel: 'Accent Colectivo',
+      vehicleYear: 2021,
+      vehiclePlate: 'COL103',
+      vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Hyundai',
+      tagNumber: 'COL-10-03',
+      status: 'active',
+      membershipPaid: true,
+      membershipDate: new Date(),
+      totalRating: 4.8,
+      totalTrips: 64,
+      lineaId: linea10.id,
+      asientosTotales: 4,
+      asientosOcupados: 2, // 2 disponibles
+      sentidoRuta: 'ida',
+      isOnline: true,
+      lastLat: -33.4410,
+      lastLng: -70.6470,
+      telefonoRutPay: '+56944444444',
+      mercadoPagoLink: 'https://mpago.li/test-mario',
+    },
+  });
+  console.log('✅ Conductor 2 colectivo activo:', conductor2.email, `(${linea10.nombre})`);
+
+  const conductor3 = await prisma.driver.upsert({
+    where: { email: 'conductor3@fimchile.cl' },
+    update: {},
+    create: {
+      email: 'conductor3@fimchile.cl',
+      phone: '+56955555555',
+      name: 'Roberto Chofer Colectivo',
+      passwordHash: hashClaveChofer,
+      rut: '18.234.567-8',
+      birthDate: new Date('1983-09-25'),
+      address: 'Av. Vitacura 3000, Santiago',
+      idFrontUrl: 'https://via.placeholder.com/400x250?text=Cedula+Frente',
+      idBackUrl: 'https://via.placeholder.com/400x250?text=Cedula+Dorso',
+      licenseNumber: 'D4455667',
+      licenseUrl: 'https://via.placeholder.com/400x250?text=Licencia',
+      vehicleBrand: 'Chevrolet',
+      vehicleModel: 'Sail Colectivo',
+      vehicleYear: 2022,
+      vehiclePlate: 'COL201',
+      vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Chevrolet',
+      tagNumber: 'COL-21-01',
+      status: 'active',
+      membershipPaid: true,
+      membershipDate: new Date(),
+      totalRating: 4.95,
+      totalTrips: 110,
+      lineaId: linea21.id,
+      asientosTotales: 4,
+      asientosOcupados: 0, // 4 disponibles
+      sentidoRuta: 'ida',
+      isOnline: true,
+      lastLat: -33.4250,
+      lastLng: -70.6150,
+      telefonoRutPay: '+56955555555',
+      mercadoPagoLink: 'https://mpago.li/test-roberto',
+    },
+  });
+  console.log('✅ Conductor 3 colectivo activo:', conductor3.email, `(${linea21.nombre})`);
+
+  console.log('\nSeed completado exitosamente!\n');
   console.log('═══════════════════════════════════════════════════');
   console.log('  Credenciales de prueba Fim Colectivo:');
-  console.log('  Admin:      admin@fimchile.cl / admin123');
-  console.log('  Pasajero:   pasajero@fimchile.cl / test123');
-  console.log('  Conductor:  conductor@fimchile.cl / test123');
-  console.log('  Chofer:     chofer@fimchile.cl / test123');
+  console.log('  Admin:       admin@fimchile.cl / admin123');
+  console.log('  Pasajeros:   pasajero@fimchile.cl / test123');
+  console.log('               pasajero2@fimchile.cl / test123 (María Pasajera)');
+  console.log('               pasajero3@fimchile.cl / test123 (Andrés Pasajero)');
+  console.log('  Conductores: conductor@fimchile.cl / test123 (Línea 10)');
+  console.log('               chofer@fimchile.cl / test123 (Línea 10)');
+  console.log('               conductor2@fimchile.cl / test123 (Línea 10 - Mario)');
+  console.log('               conductor3@fimchile.cl / test123 (Línea 21 - Roberto)');
   console.log('═══════════════════════════════════════════════════\n');
 }
 

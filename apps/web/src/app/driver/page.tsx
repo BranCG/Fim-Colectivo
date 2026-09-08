@@ -6,6 +6,24 @@ import dynamic from 'next/dynamic';
 import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo, PasajeroEnEspera } from '@/components/map/ColectivoMap';
+import {
+  IconoColectivo,
+  IconoAsiento,
+  IconoPasajero,
+  IconoGps,
+  IconoSentido,
+  IconoTarjeta,
+  IconoTelefono,
+  IconoCheck,
+  IconoCruz,
+  IconoMas,
+  IconoMenos,
+  IconoPuntoEstado,
+  IconoUbicacion,
+  IconoParada,
+  IconoSalir,
+  IconoGuardar,
+} from '@/components/icons/Iconos';
 
 // Cargar mapa dinámico sin SSR para Leaflet
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
@@ -153,13 +171,13 @@ export default function PaginaConductorColectivo() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarNuevaReserva = (datos: { reserva: any }) => {
       setReservasPendientes((prev) => [datos.reserva, ...prev]);
-      setMensajeExito(`🔔 ¡Nueva reserva de asiento! Pasajero: ${datos.reserva.pasajero.name}`);
+      setMensajeExito(`Nueva reserva de asiento: Pasajero ${datos.reserva.pasajero.name}`);
     };
 
     // Evento si el pasajero cancela
     const manejarReservaCancelada = (datos: { reservaId: string }) => {
       setReservasPendientes((prev) => prev.filter((r) => r.id !== datos.reservaId));
-      setMensajeExito('ℹ️ Una reserva fue cancelada por el pasajero.');
+      setMensajeExito('Una reserva fue cancelada por el pasajero.');
     };
 
     // Evento de ubicación de otros colectivos de la misma línea
@@ -248,7 +266,7 @@ export default function PaginaConductorColectivo() {
       });
     }
 
-    setMensajeExito(nuevoEstado ? '🟢 Turno iniciado: En servicio transmitiendo GPS' : '🔴 Turno finalizado: Fuera de servicio');
+    setMensajeExito(nuevoEstado ? 'Turno iniciado: En servicio transmitiendo GPS' : 'Turno finalizado: Fuera de servicio');
   };
 
   // Asignar línea de colectivo
@@ -308,7 +326,7 @@ export default function PaginaConductorColectivo() {
       if (res.data.chofer) {
         setAsientosOcupados(res.data.chofer.asientosOcupados);
       }
-      setMensajeExito('✅ Abordaje confirmado. Pasajero registrado en colectivo.');
+      setMensajeExito('Abordaje confirmado. Pasajero registrado en colectivo.');
     } catch (error) {
       console.error('Error al confirmar abordaje:', error);
       setMensajeError('No se pudo confirmar el abordaje.');
@@ -336,7 +354,7 @@ export default function PaginaConductorColectivo() {
         telefonoRutPay,
         linkMercadoPago,
       });
-      setMensajeExito('✅ Métodos de cobro actualizados correctamente.');
+      setMensajeExito('Métodos de cobro actualizados correctamente.');
     } catch (error) {
       console.error('Error al guardar datos de pago:', error);
       setMensajeError('No se pudieron actualizar los métodos de cobro.');
@@ -404,10 +422,9 @@ export default function PaginaConductorColectivo() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '22px',
             boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
           }}>
-            🚐
+            <IconoColectivo size={22} color="#0B1329" />
           </div>
           <div>
             <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800', letterSpacing: '-0.3px' }}>
@@ -431,9 +448,13 @@ export default function PaginaConductorColectivo() {
               fontSize: '12px',
               fontWeight: '600',
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
           >
-            💳 Pagos
+            <IconoTarjeta size={14} />
+            <span>Pagos</span>
           </button>
           <button
             onClick={cerrarSesionChofer}
@@ -456,14 +477,20 @@ export default function PaginaConductorColectivo() {
       {/* ── Alertas ── */}
       {mensajeExito && (
         <div style={{ background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10B981', padding: '10px 14px', borderRadius: '10px', color: '#6EE7B7', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{mensajeExito}</span>
-          <button onClick={() => setMensajeExito('')} style={{ background: 'transparent', border: 'none', color: '#6EE7B7', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IconoCheck size={16} color="#10B981" />
+            <span>{mensajeExito}</span>
+          </div>
+          <button onClick={() => setMensajeExito('')} style={{ background: 'transparent', border: 'none', color: '#6EE7B7', cursor: 'pointer' }}><IconoCruz size={14} color="#6EE7B7" /></button>
         </div>
       )}
       {mensajeError && (
         <div style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #EF4444', padding: '10px 14px', borderRadius: '10px', color: '#FCA5A5', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{mensajeError}</span>
-          <button onClick={() => setMensajeError('')} style={{ background: 'transparent', border: 'none', color: '#FCA5A5', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IconoCruz size={16} color="#EF4444" />
+            <span>{mensajeError}</span>
+          </div>
+          <button onClick={() => setMensajeError('')} style={{ background: 'transparent', border: 'none', color: '#FCA5A5', cursor: 'pointer' }}><IconoCruz size={14} color="#FCA5A5" /></button>
         </div>
       )}
 
@@ -514,8 +541,12 @@ export default function PaginaConductorColectivo() {
             fontWeight: '700',
             color: '#FFFFFF',
             boxShadow: enServicio ? '0 0 10px rgba(16, 185, 129, 0.6)' : 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
           }}>
-            {enServicio ? '🟢 EN SERVICIO' : '⚪ FUERA DE SERVICIO'}
+            <IconoPuntoEstado activo={enServicio} size={8} />
+            <span>{enServicio ? 'EN SERVICIO' : 'FUERA DE SERVICIO'}</span>
           </div>
 
           <div style={{
@@ -527,8 +558,12 @@ export default function PaginaConductorColectivo() {
             fontWeight: '700',
             color: asientosLibres === 0 ? '#F87171' : '#34D399',
             border: '1px solid rgba(255, 255, 255, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
           }}>
-            {asientosLibres === 0 ? '🚫 Lleno' : `💺 ${asientosLibres} libre${asientosLibres > 1 ? 's' : ''}`}
+            <IconoAsiento size={13} color={asientosLibres === 0 ? '#F87171' : '#34D399'} />
+            <span>{asientosLibres === 0 ? 'Lleno' : `${asientosLibres} libre${asientosLibres > 1 ? 's' : ''}`}</span>
           </div>
         </div>
 
@@ -557,7 +592,8 @@ export default function PaginaConductorColectivo() {
           onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.94)')}
           onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
         >
-          <span>🎯</span> Centrar mi auto
+          <IconoGps size={16} color="#FFFFFF" />
+          <span>Centrar mi auto</span>
         </button>
 
         {/* Componente Leaflet del Mapa */}
@@ -581,15 +617,15 @@ export default function PaginaConductorColectivo() {
           onClick={alternarServicio}
           style={{
             width: '100%',
-            padding: '16px',
+            padding: '16px 20px',
             borderRadius: '14px',
-            fontSize: '15px',
-            fontWeight: '800',
             border: 'none',
-            cursor: 'pointer',
             background: enServicio
               ? 'linear-gradient(135deg, #10B981, #059669)'
-              : 'linear-gradient(135deg, #334155, #1E293B)',
+              : 'linear-gradient(135deg, #475569, #334155)',
+            fontWeight: '800',
+            fontSize: '14px',
+            cursor: 'pointer',
             color: '#FFFFFF',
             boxShadow: enServicio
               ? '0 6px 22px rgba(16, 185, 129, 0.45)'
@@ -602,8 +638,8 @@ export default function PaginaConductorColectivo() {
             transition: 'all 0.2s',
           }}
         >
-          <span style={{ fontSize: '20px' }}>{enServicio ? '🟢' : '⚪'}</span>
-          {enServicio ? 'EN SERVICIO (TRANSMITIENDO GPS A PASAJEROS)' : 'FUERA DE SERVICIO (TOCA PARA INICIAR TURNO)'}
+          <IconoPuntoEstado activo={enServicio} size={14} />
+          <span>{enServicio ? 'EN SERVICIO (TRANSMITIENDO GPS A PASAJEROS)' : 'FUERA DE SERVICIO (TOCA PARA INICIAR TURNO)'}</span>
         </button>
       </div>
 
@@ -664,7 +700,9 @@ export default function PaginaConductorColectivo() {
                 onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                 title={`Toca para ${estaOcupado ? 'liberar' : 'ocupar'} asiento`}
               >
-                <span style={{ fontSize: '22px' }}>{estaOcupado ? '👤' : '💺'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {estaOcupado ? <IconoPasajero size={22} color="#F87171" /> : <IconoAsiento size={22} color="#34D399" />}
+                </div>
                 <span style={{ fontSize: '11px', fontWeight: '800', color: estaOcupado ? '#F87171' : '#34D399' }}>
                   Asiento {numeroAsiento}
                 </span>
@@ -784,7 +822,8 @@ export default function PaginaConductorColectivo() {
                 gap: '8px',
               }}
             >
-              <span>🔄</span> Sentido {sentidoRuta === 'ida' ? 'IDA ➔' : 'VUELTA ➔'}
+              <IconoSentido size={16} color="#38BDF8" />
+              <span>Sentido {sentidoRuta === 'ida' ? 'IDA ->' : 'VUELTA ->'}</span>
             </button>
           </div>
         </div>
@@ -807,7 +846,8 @@ export default function PaginaConductorColectivo() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
           <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>🙋</span> Reservas de Pasajeros en Espera
+            <IconoPasajero size={18} color="#A78BFA" />
+            <span>Reservas de Pasajeros en Espera</span>
           </h2>
           <span style={{
             fontSize: '11px',
@@ -822,8 +862,10 @@ export default function PaginaConductorColectivo() {
         </div>
 
         {reservasPendientes.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '24px 12px', color: '#64748B', background: '#0B1329', borderRadius: '12px' }}>
-            <span style={{ fontSize: '28px', display: 'block', marginBottom: '6px' }}>🚏</span>
+          <div style={{ textAlign: 'center', padding: '24px 12px', color: '#64748B', background: '#0B1329', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ marginBottom: '8px' }}>
+              <IconoParada size={32} color="#64748B" />
+            </div>
             <p style={{ margin: 0, fontSize: '13px' }}>
               No hay solicitudes de reserva pendientes en tu ruta.
             </p>
@@ -852,8 +894,9 @@ export default function PaginaConductorColectivo() {
                     <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#F8FAFC' }}>
                       {reserva.pasajero.name}
                     </h4>
-                    <span style={{ fontSize: '12px', color: '#A78BFA', fontWeight: '600' }}>
-                      💺 {reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} • Tarifa: ${reserva.tarifa} CLP
+                    <span style={{ fontSize: '12px', color: '#A78BFA', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
+                      <IconoAsiento size={14} color="#A78BFA" />
+                      <span>{reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} • Tarifa: ${reserva.tarifa} CLP</span>
                     </span>
                   </div>
                   <span style={{
@@ -872,7 +915,7 @@ export default function PaginaConductorColectivo() {
 
                 {reserva.direccionSubida && (
                   <div style={{ fontSize: '12px', color: '#CBD5E1', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.03)', padding: '6px 10px', borderRadius: '8px' }}>
-                    <span>📍</span>
+                    <IconoUbicacion size={14} color="#38BDF8" />
                     <span>Subida solicitada: <b>{reserva.direccionSubida}</b></span>
                   </div>
                 )}
@@ -887,10 +930,11 @@ export default function PaginaConductorColectivo() {
                       fontWeight: '600',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px',
+                      gap: '6px',
                     }}
                   >
-                    📞 Llamar ({reserva.pasajero.phone})
+                    <IconoTelefono size={13} color="#38BDF8" />
+                    <span>Llamar ({reserva.pasajero.phone})</span>
                   </a>
 
                   <div style={{ display: 'flex', gap: '8px' }}>
@@ -906,9 +950,13 @@ export default function PaginaConductorColectivo() {
                         fontSize: '12px',
                         cursor: 'pointer',
                         boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
                       }}
                     >
-                      ✓ Marcar Abordó
+                      <IconoCheck size={14} color="#FFF" />
+                      <span>Marcar Abordó</span>
                     </button>
                     <button
                       onClick={() => cancelarReservaPasajero(reserva.id)}
@@ -921,9 +969,13 @@ export default function PaginaConductorColectivo() {
                         fontWeight: '700',
                         fontSize: '12px',
                         cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
                       }}
                     >
-                      ✕ Cancelar
+                      <IconoCruz size={12} color="#F87171" />
+                      <span>Cancelar</span>
                     </button>
                   </div>
                 </div>
@@ -943,14 +995,15 @@ export default function PaginaConductorColectivo() {
           marginBottom: '18px',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700' }}>
-              💳 Métodos de Cobro Electrónico
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <IconoTarjeta size={16} color="#38BDF8" />
+              <span>Métodos de Cobro Electrónico</span>
             </h3>
             <button
               onClick={() => setMostrarConfigCobro(false)}
-              style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', fontSize: '14px' }}
+              style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
             >
-              ✕
+              <IconoCruz size={16} color="#94A3B8" />
             </button>
           </div>
           <p style={{ fontSize: '12px', color: '#94A3B8', margin: '0 0 14px 0' }}>
@@ -1013,9 +1066,14 @@ export default function PaginaConductorColectivo() {
                 fontSize: '13px',
                 cursor: guardandoCobro ? 'not-allowed' : 'pointer',
                 boxShadow: '0 4px 12px rgba(37, 99, 235, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
               }}
             >
-              {guardandoCobro ? 'Guardando...' : '💾 Guardar Datos de Cobro'}
+              <IconoGuardar size={16} color="#FFFFFF" />
+              <span>{guardandoCobro ? 'Guardando...' : 'Guardar Datos de Cobro'}</span>
             </button>
           </form>
         </section>

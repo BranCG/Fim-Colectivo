@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api, { saveSession } from '@/lib/api';
 import Logo from '@/components/Logo';
+import { IconoAlerta, IconoLlave, IconoColectivo, IconoPasajero, IconoRayo } from '@/components/icons/Iconos';
 
 type Role = 'passenger' | 'driver' | 'admin';
 
@@ -108,7 +109,12 @@ export default function LoginPage() {
           ))}
         </div>
 
-        {error && <div className="alert alert-error" style={{ marginBottom: '24px' }}>⚠️ {error}</div>}
+        {error && (
+          <div className="alert alert-error" style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IconoAlerta size={18} color="#EF4444" />
+            <span>{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div className="form-group">
@@ -156,11 +162,23 @@ export default function LoginPage() {
           <Link href="/register" style={{ color: 'var(--accent)', fontWeight: 600 }}>Regístrate gratis</Link>
         </p>
 
-        <div style={{ marginTop: '24px', padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.6' }}>
-          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>🔑 Cuentas activas:</div>
-          <div>🚖 <b>Conductor:</b> <code style={{ color: 'var(--accent)' }}>conductor@fimchile.cl</code> o <code style={{ color: 'var(--accent)' }}>chofer@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>test123</code></div>
-          <div>👤 <b>Pasajero:</b> <code style={{ color: 'var(--accent)' }}>pasajero@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>test123</code></div>
-          <div>⚡ <b>Admin:</b> <code style={{ color: 'var(--accent)' }}>admin@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>admin123</code></div>
+        <div style={{ marginTop: '24px', padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.8' }}>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <IconoLlave size={16} color="var(--accent)" />
+            <span>Cuentas activas de prueba:</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <IconoColectivo size={15} color="var(--accent)" />
+            <span><b>Conductor:</b> <code style={{ color: 'var(--accent)' }}>conductor@fimchile.cl</code> o <code style={{ color: 'var(--accent)' }}>conductor2@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>test123</code></span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <IconoPasajero size={15} color="var(--accent)" />
+            <span><b>Pasajero:</b> <code style={{ color: 'var(--accent)' }}>pasajero@fimchile.cl</code> o <code style={{ color: 'var(--accent)' }}>pasajero2@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>test123</code></span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <IconoRayo size={15} color="var(--accent)" />
+            <span><b>Admin:</b> <code style={{ color: 'var(--accent)' }}>admin@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>admin123</code></span>
+          </div>
         </div>
       </div>
     </div>

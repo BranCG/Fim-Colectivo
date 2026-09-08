@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api, { formatCLP, getSession } from '@/lib/api';
+import { IconoRuta, IconoEfectivo, IconoTarjeta } from '@/components/icons/Iconos';
 
 interface Trip {
   id: string;
@@ -51,8 +52,10 @@ export default function DriverHistoryPage() {
           <div className="spinner" />
         </div>
       ) : trips.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '16px', opacity: 0.3 }}>🛣️</div>
+        <div className="card" style={{ textAlign: 'center', padding: '48px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <IconoRuta size={48} color="var(--gold)" style={{ opacity: 0.4 }} />
+          </div>
           <p style={{ color: 'var(--text-muted)' }}>Aún no has completado ningún viaje.</p>
           <Link href="/driver" className="btn btn-primary" style={{ marginTop: '24px' }}>Empezar a conducir</Link>
         </div>
@@ -69,8 +72,9 @@ export default function DriverHistoryPage() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--gold)' }}>{formatCLP(trip.estimatedPrice)}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    {trip.paymentMethod === 'cash' ? '💵 Efectivo' : '💳 Tarjeta'}
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                    {trip.paymentMethod === 'cash' ? <IconoEfectivo size={13} color="var(--gold)" /> : <IconoTarjeta size={13} color="var(--gold)" />}
+                    <span>{trip.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}</span>
                   </div>
                 </div>
               </div>

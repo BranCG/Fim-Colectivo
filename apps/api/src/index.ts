@@ -77,7 +77,7 @@ const PORT = process.env.PORT || 3011;
 httpServer.listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════╗
-║     🚐  FIM COLECTIVO API         ║
+║       FIM COLECTIVO API           ║
 ║     Running on port ${PORT}         ║
 ║     http://localhost:${PORT}        ║
 ╚═══════════════════════════════════╝

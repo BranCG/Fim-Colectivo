@@ -95,7 +95,7 @@ export default function PassengerMap({ origin, dest, driverPos, centerTrigger = 
           iconAnchor: [12, 12],
         });
         const originMarker = L.marker([origin.lat, origin.lng], { icon: originIcon }).addTo(map);
-        originMarker.bindTooltip('📍 Tu ubicación', { permanent: false, direction: 'top', className: 'fim-tooltip' });
+        originMarker.bindTooltip('Tu ubicación', { permanent: false, direction: 'top', className: 'fim-tooltip' });
         markersRef.current.push(originMarker);
       }
 
@@ -113,7 +113,7 @@ export default function PassengerMap({ origin, dest, driverPos, centerTrigger = 
           iconAnchor: [10, 30],
         });
         const destMarker = L.marker([dest.lat, dest.lng], { icon: destIcon }).addTo(map);
-        destMarker.bindTooltip(`🏁 ${dest.address}`, { permanent: false, direction: 'top', className: 'fim-tooltip' });
+        destMarker.bindTooltip(dest.address, { permanent: false, direction: 'top', className: 'fim-tooltip' });
         markersRef.current.push(destMarker);
   
         // ── Línea de ruta (Real por calles con OSRM) ───────────────────────

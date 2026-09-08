@@ -486,10 +486,10 @@ export default function Home() {
               Acceso total e inmediato. La opción más premium para conductores de alto rendimiento.
             </p>
             <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.9rem' }}>
-              <li>✦ <strong>Un solo pago:</strong> Olvida las cuotas por 30 días completos.</li>
-              <li>✦ <strong>Ganancias 100% Líquidas:</strong> Recibe todo al instante.</li>
-              <li>✦ <strong>Sin Retenciones:</strong> Viajes con tarjeta van a tu cuenta.</li>
-              <li>✦ <strong>Prioridad VIP:</strong> Mayor visibilidad en el mapa.</li>
+              <li>• <strong>Un solo pago:</strong> Olvida las cuotas por 30 días completos.</li>
+              <li>• <strong>Ganancias 100% Líquidas:</strong> Recibe todo al instante.</li>
+              <li>• <strong>Sin Retenciones:</strong> Viajes con tarjeta van a tu cuenta.</li>
+              <li>• <strong>Prioridad VIP:</strong> Mayor visibilidad en el mapa.</li>
             </ul>
             <Link href="/register?role=driver" className="btn btn-block" style={{ marginTop: 'auto', background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#000', fontWeight: 800 }}>Pagar Plan Black →</Link>
           </div>
@@ -513,10 +513,10 @@ export default function Home() {
               Activa tu cuenta cada mañana con un pago flexible. Ideal para quienes trabajan a su ritmo.
             </p>
             <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.9rem' }}>
-              <li>✦ <strong>Compromiso 6 días:</strong> Pagas $20k por 6 días ($120k total).</li>
-              <li>✦ <strong>Activación Diaria:</strong> Pagas al despertar y quedas libre.</li>
-              <li>✦ <strong>Ganancia 100%:</strong> Todo lo que hagas en el día es para ti.</li>
-              <li>✦ <strong>Sin Deudas:</strong> Si un día no trabajas, no pagas la cuota.</li>
+              <li>• <strong>Compromiso 6 días:</strong> Pagas $20k por 6 días ($120k total).</li>
+              <li>• <strong>Activación Diaria:</strong> Pagas al despertar y quedas libre.</li>
+              <li>• <strong>Ganancia 100%:</strong> Todo lo que hagas en el día es para ti.</li>
+              <li>• <strong>Sin Deudas:</strong> Si un día no trabajas, no pagas la cuota.</li>
             </ul>
             <Link href="/register?role=driver" className="btn btn-block" style={{ marginTop: 'auto', background: 'linear-gradient(135deg, #4A90D9, #357ABD)', color: '#fff', fontWeight: 800 }}>Empezar Comfort →</Link>
           </div>
@@ -540,10 +540,10 @@ export default function Home() {
               El plan más accesible para empezar. Sin compromisos, paga solo cuando quieras conducir.
             </p>
             <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.9rem' }}>
-              <li>✦ <strong>Día a Día:</strong> Activa solo los días que quieras.</li>
-              <li>✦ <strong>Sin Contrato:</strong> Total libertad, sin compromisos mensuales.</li>
-              <li>✦ <strong>100% Tuyo:</strong> Cada viaje que hagas va directo a tu bolsillo.</li>
-              <li>✦ <strong>Ideal para Iniciar:</strong> Perfecto si recién comienzas en Fim.</li>
+              <li>• <strong>Día a Día:</strong> Activa solo los días que quieras.</li>
+              <li>• <strong>Sin Contrato:</strong> Total libertad, sin compromisos mensuales.</li>
+              <li>• <strong>100% Tuyo:</strong> Cada viaje que hagas va directo a tu bolsillo.</li>
+              <li>• <strong>Ideal para Iniciar:</strong> Perfecto si recién comienzas en Fim.</li>
             </ul>
             <Link href="/register?role=driver" className="btn btn-block" style={{ marginTop: 'auto', background: 'linear-gradient(135deg, #00E5A0, #00B37E)', color: '#000', fontWeight: 800 }}>Empezar Flex →</Link>
           </div>
