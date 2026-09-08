@@ -27,6 +27,7 @@ import {
 
 // Cargar mapa dinámico sin SSR para Leaflet
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
+import AlertaVozReserva, { DatosSolicitudDirigida } from '@/components/driver/AlertaVozReserva';
 
 interface ReservaPasajero {
   id: string;
@@ -72,6 +73,9 @@ export default function PaginaConductorColectivo() {
   const [linkMercadoPago, setLinkMercadoPago] = useState<string>('');
   const [guardandoCobro, setGuardandoCobro] = useState<boolean>(false);
   const [mostrarConfigCobro, setMostrarConfigCobro] = useState<boolean>(false);
+
+  // Solicitud dirigida en tránsito (Manos libres TTS y botones gigantes)
+  const [solicitudActiva, setSolicitudActiva] = useState<DatosSolicitudDirigida | null>(null);
 
   // Mensajes de alerta y feedback
   const [mensajeExito, setMensajeExito] = useState<string>('');
@@ -180,6 +184,21 @@ export default function PaginaConductorColectivo() {
       setMensajeExito('Una reserva fue cancelada por el pasajero.');
     };
 
+    // Evento de solicitud dirigida al móvil en tránsito (Dispara lectura TTS y modal gigante)
+    const manejarSolicitudAsignada = (datos: DatosSolicitudDirigida) => {
+      setSolicitudActiva(datos);
+    };
+
+    // Evento si la solicitud expiró o fue pasada a otro móvil
+    const manejarSolicitudExpirada = (datos: { reservaId: string }) => {
+      setSolicitudActiva((prev) => (prev?.reservaId === datos.reservaId ? null : prev));
+    };
+
+    // Evento si el pasajero canceló mientras sonaba la alerta
+    const manejarSolicitudCancelada = (datos: { reservaId: string }) => {
+      setSolicitudActiva((prev) => (prev?.reservaId === datos.reservaId ? null : prev));
+    };
+
     // Evento de ubicación de otros colectivos de la misma línea
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarUbicacionFlota = (payload: any) => {
@@ -237,6 +256,10 @@ export default function PaginaConductorColectivo() {
       socket.off('colectivo:nueva-reserva', manejarNuevaReserva);
       socket.off('colectivo:reserva-cancelada', manejarReservaCancelada);
       socket.off('colectivo:actualizacion-ubicacion', manejarUbicacionFlota);
+      socket.off('colectivo:location-update', manejarUbicacionFlota);
+      socket.off('colectivo:solicitud-asignada', manejarSolicitudAsignada);
+      socket.off('colectivo:solicitud-expirada', manejarSolicitudExpirada);
+      socket.off('colectivo:solicitud-cancelada', manejarSolicitudCancelada);
       if (lineaActual?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaActual.id });
       }
@@ -342,6 +365,22 @@ export default function PaginaConductorColectivo() {
     } catch (error) {
       console.error('Error al cancelar reserva:', error);
       setMensajeError('No se pudo cancelar la reserva.');
+    }
+  };
+
+  // Responder a solicitud dirigida (SÍ o NO vía voz o botón gigante)
+  const responderSolicitudDirigida = async (reservaId: string, accion: 'aceptar' | 'rechazar') => {
+    setSolicitudActiva(null);
+    try {
+      const res = await api.post(`/colectivos/reservas/${reservaId}/responder`, { accion });
+      if (accion === 'aceptar' && res.data?.reserva) {
+        setReservasPendientes((prev) => [res.data.reserva, ...prev]);
+        setMensajeExito(`Reserva aceptada: ${res.data.reserva.pasajero.name}`);
+      } else if (accion === 'rechazar') {
+        setMensajeExito('Solicitud pasada al siguiente móvil en ruta.');
+      }
+    } catch (error) {
+      console.error('Error al responder solicitud dirigida:', error);
     }
   };
 
@@ -1077,6 +1116,16 @@ export default function PaginaConductorColectivo() {
             </button>
           </form>
         </section>
+      )}
+
+      {/* ── MODAL MANOS LIBRES: ALERTA DE VOZ Y BOTONES GIGANTES (LEY NO CHAT 21.377) ── */}
+      {solicitudActiva && (
+        <AlertaVozReserva
+          solicitud={solicitudActiva}
+          alAceptar={(id) => responderSolicitudDirigida(id, 'aceptar')}
+          alRechazar={(id) => responderSolicitudDirigida(id, 'rechazar')}
+          alExpirar={() => setSolicitudActiva(null)}
+        />
       )}
     </div>
   );

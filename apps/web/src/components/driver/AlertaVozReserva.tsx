@@ -1,0 +1,362 @@
+'use client';
+
+import React, { useEffect, useState, useRef } from 'react';
+import { hablarTexto, iniciarEscuchaVoz, reproducirSonido, detenerVoz } from '@/lib/voice';
+import { IconoCheck, IconoCruz, IconoAsiento } from '@/components/icons/Iconos';
+
+export interface DatosSolicitudDirigida {
+  reservaId: string;
+  nombrePasajero: string;
+  cantidadAsientos: number;
+  distanciaMetros: number;
+  tiempoLimiteSegundos?: number;
+  direccionSubida?: string;
+}
+
+interface Props {
+  solicitud: DatosSolicitudDirigida;
+  alAceptar: (reservaId: string) => void;
+  alRechazar: (reservaId: string) => void;
+  alExpirar: (reservaId: string) => void;
+}
+
+export default function AlertaVozReserva({
+  solicitud,
+  alAceptar,
+  alRechazar,
+  alExpirar,
+}: Props) {
+  const tiempoTotal = solicitud.tiempoLimiteSegundos || 15;
+  const [segundosRestantes, setSegundosRestantes] = useState(tiempoTotal);
+  const [escuchandoVoz, setEscuchandoVoz] = useState(false);
+  const [respondido, setRespondido] = useState(false);
+
+  const escuchaRef = useRef<{ detener: () => void } | null>(null);
+
+  // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS)
+  useEffect(() => {
+    // Sonido de alerta
+    reproducirSonido('alerta');
+
+    // Construir texto en lenguaje natural claro y conciso
+    const nombre = solicitud.nombrePasajero.split(' ')[0];
+    const distancia = solicitud.distanciaMetros;
+    const asientos = solicitud.cantidadAsientos;
+    const textoVoz = `${nombre} a ${distancia} metros, ${asientos} ${asientos > 1 ? 'asientos' : 'asiento'}. ¿Lo tomamos?`;
+
+    // Hablar inmediatamente y al terminar activar reconocimiento de voz
+    hablarTexto(textoVoz, () => {
+      // Iniciar reconocimiento de comandos por voz ("SÍ" o "NO")
+      escuchaRef.current = iniciarEscuchaVoz({
+        onSi: () => {
+          manejarAceptar();
+        },
+        onNo: () => {
+          manejarRechazar();
+        },
+        onEscuchando: (activo) => {
+          setEscuchandoVoz(activo);
+        },
+      });
+    });
+
+    return () => {
+      detenerVoz();
+      if (escuchaRef.current) {
+        escuchaRef.current.detener();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solicitud]);
+
+  // 2. Temporizador regresivo de 15 segundos
+  useEffect(() => {
+    if (respondido) return;
+
+    const intervalo = setInterval(() => {
+      setSegundosRestantes((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalo);
+          manejarExpiracion();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [respondido]);
+
+  // Acciones de respuesta
+  const manejarAceptar = () => {
+    if (respondido) return;
+    setRespondido(true);
+    detenerVoz();
+    if (escuchaRef.current) escuchaRef.current.detener();
+
+    reproducirSonido('exito');
+    hablarTexto('Reserva aceptada. Te espera.');
+    alAceptar(solicitud.reservaId);
+  };
+
+  const manejarRechazar = () => {
+    if (respondido) return;
+    setRespondido(true);
+    detenerVoz();
+    if (escuchaRef.current) escuchaRef.current.detener();
+
+    reproducirSonido('rechazo');
+    hablarTexto('Pasado al siguiente móvil.');
+    alRechazar(solicitud.reservaId);
+  };
+
+  const manejarExpiracion = () => {
+    if (respondido) return;
+    setRespondido(true);
+    detenerVoz();
+    if (escuchaRef.current) escuchaRef.current.detener();
+
+    reproducirSonido('rechazo');
+    hablarTexto('Tiempo expirado. Pasando al siguiente móvil.');
+    alExpirar(solicitud.reservaId);
+  };
+
+  const porcentajeTiempo = (segundosRestantes / tiempoTotal) * 100;
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999,
+        background: '#090D16',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        userSelect: 'none',
+      }}
+    >
+      {/* ── BARRA SUPERIOR DE CONTEXTO Y TEMPORIZADOR ── */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
+          padding: '12px 16px',
+          background: 'rgba(15, 23, 42, 0.92)',
+          backdropFilter: 'blur(10px)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div
+            style={{
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              background: '#38BDF8',
+              boxShadow: '0 0 12px #38BDF8',
+              animation: 'fimPulse 1.2s infinite ease-out',
+            }}
+          />
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: '800', color: '#F8FAFC', letterSpacing: '-0.2px' }}>
+              NUEVO PASAJERO EN RUTA
+            </div>
+            <div style={{ fontSize: '11px', color: '#94A3B8' }}>
+              {solicitud.direccionSubida || 'En tu trayectoria'}
+            </div>
+          </div>
+        </div>
+
+        {/* Indicador de Escucha por Voz */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: escuchandoVoz ? 'rgba(16, 185, 129, 0.25)' : 'rgba(148, 163, 184, 0.15)',
+            border: escuchandoVoz ? '1px solid #10B981' : '1px solid rgba(255, 255, 255, 0.1)',
+            padding: '4px 10px',
+            borderRadius: '20px',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={escuchandoVoz ? '#34D399' : '#94A3B8'} strokeWidth="2.5">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="22" />
+          </svg>
+          <span style={{ fontSize: '11px', fontWeight: '700', color: escuchandoVoz ? '#34D399' : '#94A3B8' }}>
+            {escuchandoVoz ? 'DI "SÍ" O "NO"' : 'AUDIO ACTIVO'}
+          </span>
+        </div>
+      </div>
+
+      {/* ── BOTÓN GIGANTE SUPERIOR: SÍ (ACEPTAR / TOMAR) ── */}
+      <button
+        type="button"
+        onClick={manejarAceptar}
+        style={{
+          flex: 1.2,
+          width: '100%',
+          background: 'linear-gradient(180deg, #059669 0%, #047857 100%)',
+          border: 'none',
+          borderBottom: '4px solid #064E3B',
+          color: '#FFFFFF',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '60px 20px 20px 20px',
+          cursor: 'pointer',
+          touchAction: 'manipulation',
+          transition: 'all 0.1s ease',
+          boxShadow: 'inset 0 4px 20px rgba(255,255,255,0.2)',
+        }}
+      >
+        <div
+          style={{
+            background: 'rgba(255, 255, 255, 0.2)',
+            borderRadius: '50%',
+            width: '80px',
+            height: '80px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '12px',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          <IconoCheck size={48} color="#FFFFFF" />
+        </div>
+
+        <div style={{ fontSize: '38px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase' }}>
+          SÍ — TOMAR
+        </div>
+
+        <div
+          style={{
+            marginTop: '8px',
+            fontSize: '18px',
+            fontWeight: '700',
+            background: 'rgba(0, 0, 0, 0.25)',
+            padding: '6px 18px',
+            borderRadius: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span>{solicitud.nombrePasajero.split(' ')[0]}</span>
+          <span>•</span>
+          <span style={{ color: '#FDE047' }}>A {solicitud.distanciaMetros} METROS</span>
+          <span>•</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <IconoAsiento size={18} color="#FFFFFF" />
+            {solicitud.cantidadAsientos} as.
+          </span>
+        </div>
+
+        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', marginTop: '8px', fontWeight: '600' }}>
+          Toca cualquier parte superior o di en voz alta: "SÍ"
+        </div>
+      </button>
+
+      {/* ── FRANJA CENTRAL DE CUENTA REGRESIVA ── */}
+      <div
+        style={{
+          background: '#0B132B',
+          padding: '8px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderTop: '2px solid rgba(255, 255, 255, 0.1)',
+          borderBottom: '2px solid rgba(255, 255, 255, 0.1)',
+        }}
+      >
+        <div style={{ flex: 1, marginRight: '16px' }}>
+          <div
+            style={{
+              height: '8px',
+              borderRadius: '4px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${porcentajeTiempo}%`,
+                background: segundosRestantes <= 5 ? '#EF4444' : '#F59E0B',
+                transition: 'width 1s linear',
+              }}
+            />
+          </div>
+        </div>
+        <div
+          style={{
+            fontSize: '16px',
+            fontWeight: '900',
+            color: segundosRestantes <= 5 ? '#EF4444' : '#F59E0B',
+            minWidth: '45px',
+            textAlign: 'right',
+          }}
+        >
+          {segundosRestantes}s
+        </div>
+      </div>
+
+      {/* ── BOTÓN GIGANTE INFERIOR: NO (PASAR AL SIGUIENTE MÓVIL) ── */}
+      <button
+        type="button"
+        onClick={manejarRechazar}
+        style={{
+          flex: 0.9,
+          width: '100%',
+          background: 'linear-gradient(180deg, #DC2626 0%, #B91C1C 100%)',
+          border: 'none',
+          color: '#FFFFFF',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          cursor: 'pointer',
+          touchAction: 'manipulation',
+          transition: 'all 0.1s ease',
+          boxShadow: 'inset 0 -4px 20px rgba(0,0,0,0.3)',
+        }}
+      >
+        <div
+          style={{
+            background: 'rgba(255, 255, 255, 0.2)',
+            borderRadius: '50%',
+            width: '64px',
+            height: '64px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '10px',
+            boxShadow: '0 6px 18px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          <IconoCruz size={36} color="#FFFFFF" />
+        </div>
+
+        <div style={{ fontSize: '30px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase' }}>
+          NO — PASAR AL SIGUIENTE
+        </div>
+
+        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', marginTop: '6px', fontWeight: '600' }}>
+          Toca cualquier parte inferior o di en voz alta: "NO"
+        </div>
+      </button>
+    </div>
+  );
+}

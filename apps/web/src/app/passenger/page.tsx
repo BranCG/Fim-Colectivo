@@ -57,6 +57,14 @@ export default function PaginaPasajeroColectivo() {
   const [reservaActiva, setReservaActiva] = useState<ReservaActiva | null>(null);
   const [cargandoReserva, setCargandoReserva] = useState(false);
 
+  // Estado de asignación dirigida al primer móvil en tránsito
+  const [buscandoMovil, setBuscandoMovil] = useState(false);
+  const [movilAsignadoPreview, setMovilAsignadoPreview] = useState<{
+    nombre: string;
+    patente: string;
+    distanciaMetros: number;
+  } | null>(null);
+
   // Ubicación del pasajero
   const [ubicacionPasajero, setUbicacionPasajero] = useState<{
     latitud: number;
@@ -223,6 +231,31 @@ export default function PaginaPasajeroColectivo() {
     socket.on('colectivo:reserva-abordada', manejarReservaAbordada);
     socket.on('colectivo:reserva-cancelada', manejarReservaCancelada);
 
+    // Eventos de asignación dirigida al primer móvil en camino
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const manejarAsignandoAChofer = (datos: any) => {
+      setMovilAsignadoPreview(datos.conductor);
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const manejarReservaAceptada = (datos: any) => {
+      setReservaActiva(datos.reserva);
+      setBuscandoMovil(false);
+      setMovilAsignadoPreview(null);
+      setMensajeAlerta('¡Móvil confirmado! El chofer aceptó tu solicitud y viene en camino.');
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const manejarSinConductores = (datos: any) => {
+      setBuscandoMovil(false);
+      setMovilAsignadoPreview(null);
+      setMensajeError(datos.mensaje || 'Todos los colectivos en tránsito vienen completos.');
+    };
+
+    socket.on('colectivo:asignando-a-chofer', manejarAsignandoAChofer);
+    socket.on('colectivo:reserva-aceptada', manejarReservaAceptada);
+    socket.on('colectivo:sin-conductores-disponibles', manejarSinConductores);
+
     return () => {
       if (lineaSeleccionada?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaSeleccionada.id });
@@ -231,6 +264,9 @@ export default function PaginaPasajeroColectivo() {
       socket.off('colectivo:cambio-asientos', manejarCambioAsientos);
       socket.off('colectivo:reserva-abordada', manejarReservaAbordada);
       socket.off('colectivo:reserva-cancelada', manejarReservaCancelada);
+      socket.off('colectivo:asignando-a-chofer', manejarAsignandoAChofer);
+      socket.off('colectivo:reserva-aceptada', manejarReservaAceptada);
+      socket.off('colectivo:sin-conductores-disponibles', manejarSinConductores);
     };
   }, [lineaSeleccionada, usuarioSesion, conductorElegido]);
 
@@ -278,6 +314,31 @@ export default function PaginaPasajeroColectivo() {
     } catch (error) {
       console.error('Error al cancelar reserva:', error);
       setMensajeError('No se pudo cancelar la reserva.');
+    }
+  };
+
+  // Solicitar asignación dirigida al primer móvil en tránsito (Regla Federación)
+  const solicitarProximoColectivo = async () => {
+    if (!lineaSeleccionada) return;
+    setBuscandoMovil(true);
+    setMensajeError('');
+    setMovilAsignadoPreview(null);
+    try {
+      const res = await api.post('/colectivos/solicitar-dirigido', {
+        lineaId: lineaSeleccionada.id,
+        latitudSubida: ubicacionPasajero?.latitud || -33.4372,
+        longitudSubida: ubicacionPasajero?.longitud || -70.6506,
+        cantidadAsientos,
+        metodoPago,
+        sentido: 'ida',
+      });
+      if (res.data?.conductorAsignado) {
+        setMovilAsignadoPreview(res.data.conductorAsignado);
+      }
+    } catch (error: any) {
+      console.error('Error al solicitar próximo colectivo:', error);
+      setBuscandoMovil(false);
+      setMensajeError(error.response?.data?.error || 'No hay colectivos con cupos disponibles en este momento.');
     }
   };
 
@@ -646,68 +707,195 @@ export default function PaginaPasajeroColectivo() {
             </button>
           </div>
         ) : (
-          /* Caso 3: Estado general de la línea */
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <span style={{ fontSize: '11px', color: '#94A3B8' }}>Recorrido seleccionado</span>
-              <h3 style={{ margin: '2px 0 0 0', fontSize: '15px', fontWeight: '700' }}>
-                {lineaSeleccionada?.nombre || 'Seleccione una línea'}
-              </h3>
-              <p style={{ margin: 0, fontSize: '12px', color: '#64748B' }}>
-                {conductoresEnVivo.length === 0
-                  ? 'No hay colectivos en ruta actualmente'
-                  : `${conductoresEnVivo.length} colectivo(s) en servicio`}
-              </p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              {conductoresEnVivo.length === 0 ? (
-                <span style={{
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  color: '#94A3B8',
-                  background: 'rgba(148, 163, 184, 0.15)',
-                  padding: '4px 10px',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(148, 163, 184, 0.3)',
-                }}>
-                  Sin colectivos
-                </span>
-              ) : totalAsientosLibres > 0 ? (
-                <div>
-                  <span style={{
-                    fontSize: '13px',
-                    fontWeight: '800',
-                    color: '#34D399',
-                    background: 'rgba(16, 185, 129, 0.15)',
-                    padding: '4px 10px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                  }}>
-                    <IconoAsiento size={13} color="#34D399" />
-                    {totalAsientosLibres} libre{totalAsientosLibres > 1 ? 's' : ''}
-                  </span>
-                  <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '3px' }}>En la línea</div>
-                </div>
-              ) : (
-                <div>
+          /* Caso 3: Estado general de la línea y Despacho Dirigido */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '11px', color: '#94A3B8' }}>Recorrido seleccionado</span>
+                <h3 style={{ margin: '2px 0 0 0', fontSize: '15px', fontWeight: '700' }}>
+                  {lineaSeleccionada?.nombre || 'Seleccione una línea'}
+                </h3>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748B' }}>
+                  {conductoresEnVivo.length === 0
+                    ? 'No hay colectivos en ruta actualmente'
+                    : `${conductoresEnVivo.length} colectivo(s) en servicio`}
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {conductoresEnVivo.length === 0 ? (
                   <span style={{
                     fontSize: '12px',
-                    fontWeight: '800',
-                    color: '#F87171',
-                    background: 'rgba(239, 68, 68, 0.15)',
+                    fontWeight: '700',
+                    color: '#94A3B8',
+                    background: 'rgba(148, 163, 184, 0.15)',
                     padding: '4px 10px',
                     borderRadius: '12px',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    border: '1px solid rgba(148, 163, 184, 0.3)',
                   }}>
-                    Llenos
+                    Sin colectivos
                   </span>
-                  <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '3px' }}>Sin asientos</div>
-                </div>
-              )}
+                ) : totalAsientosLibres > 0 ? (
+                  <div>
+                    <span style={{
+                      fontSize: '13px',
+                      fontWeight: '800',
+                      color: '#34D399',
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      padding: '4px 10px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}>
+                      <IconoAsiento size={13} color="#34D399" />
+                      {totalAsientosLibres} libre{totalAsientosLibres > 1 ? 's' : ''}
+                    </span>
+                    <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '3px' }}>En la línea</div>
+                  </div>
+                ) : (
+                  <div>
+                    <span style={{
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      color: '#F87171',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      padding: '4px 10px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                    }}>
+                      Llenos
+                    </span>
+                    <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '3px' }}>Sin asientos</div>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Panel de Solicitud Dirigida al Primer Móvil en Tránsito */}
+            {buscandoMovil ? (
+              <div style={{
+                background: 'rgba(15, 23, 42, 0.9)',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '50%',
+                      background: '#38BDF8',
+                      boxShadow: '0 0 10px #38BDF8',
+                      animation: 'fimPulse 1s infinite ease-out',
+                    }} />
+                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#38BDF8', textTransform: 'uppercase' }}>
+                      Buscando primer móvil en camino...
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => { setBuscandoMovil(false); setMovilAsignadoPreview(null); }}
+                    style={{ background: 'none', border: 'none', color: '#F87171', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+                {movilAsignadoPreview ? (
+                  <div style={{ fontSize: '12px', color: '#F8FAFC' }}>
+                    Ofreciendo solicitud al móvil <b>{movilAsignadoPreview.patente} ({movilAsignadoPreview.nombre})</b> a <b>{movilAsignadoPreview.distanciaMetros}m</b>. Esperando confirmación del chofer...
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12px', color: '#94A3B8' }}>
+                    Calculando el colectivo más próximo en aproximación hacia tu punto de recogida...
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Selectores de asientos y método de pago para el próximo colectivo */}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between' }}>
+                  {/* Cantidad de asientos */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#0F172A', padding: '6px 10px', borderRadius: '8px' }}>
+                    <span style={{ fontSize: '12px', color: '#94A3B8' }}>Asientos:</span>
+                    <button
+                      onClick={() => setCantidadAsientos((prev) => Math.max(1, prev - 1))}
+                      style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#334155', color: '#FFF', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+                    >
+                      -
+                    </button>
+                    <span style={{ fontSize: '13px', fontWeight: 'bold', minWidth: '16px', textAlign: 'center' }}>
+                      {cantidadAsientos}
+                    </span>
+                    <button
+                      onClick={() => setCantidadAsientos((prev) => Math.min(4, prev + 1))}
+                      style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#334155', color: '#FFF', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  {/* Método de pago */}
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {(['efectivo', 'rutpay', 'mercadopago'] as const).map((metodo) => (
+                      <button
+                        key={metodo}
+                        onClick={() => setMetodoPago(metodo)}
+                        style={{
+                          padding: '6px 8px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: metodoPago === metodo ? '700' : '500',
+                          background: metodoPago === metodo ? '#2563EB' : '#0F172A',
+                          color: metodoPago === metodo ? '#FFF' : '#94A3B8',
+                          border: metodoPago === metodo ? '1px solid #3B82F6' : '1px solid rgba(255, 255, 255, 0.1)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {metodo === 'rutpay' ? 'RutPay' : metodo === 'mercadopago' ? 'MercadoPago' : 'Efectivo'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Botón principal de solicitud dirigida */}
+                <button
+                  onClick={solicitarProximoColectivo}
+                  disabled={totalAsientosLibres <= 0 || conductoresEnVivo.length === 0}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '10px',
+                    background: totalAsientosLibres <= 0 || conductoresEnVivo.length === 0 ? '#475569' : '#10B981',
+                    color: '#FFFFFF',
+                    fontWeight: '800',
+                    fontSize: '14px',
+                    border: 'none',
+                    cursor: totalAsientosLibres <= 0 || conductoresEnVivo.length === 0 ? 'not-allowed' : 'pointer',
+                    boxShadow: totalAsientosLibres <= 0 ? 'none' : '0 4px 14px rgba(16, 185, 129, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <IconoColectivo size={18} color="#FFFFFF" />
+                  <span>
+                    {conductoresEnVivo.length === 0
+                      ? 'Sin colectivos en ruta'
+                      : totalAsientosLibres <= 0
+                      ? 'Todos los móviles completos'
+                      : `Solicitar Próximo Colectivo (${cantidadAsientos} as.)`}
+                  </span>
+                </button>
+                <div style={{ textAlign: 'center', fontSize: '10px', color: '#64748B' }}>
+                  Regla de asignación por turno al primer móvil en aproximación con cupo disponible
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
