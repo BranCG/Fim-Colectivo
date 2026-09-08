@@ -250,6 +250,23 @@ export default function PaginaConductorColectivo() {
       );
     };
 
+    // Evento: Reserva confirmada al chofer
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const manejarReservaConfirmadaChofer = (datos: { reserva: any }) => {
+      setSolicitudActiva((prev) => (prev?.reservaId === datos.reserva?.id ? null : prev));
+      if (datos.reserva) {
+        setReservasPendientes((prev) => {
+          const index = prev.findIndex((r) => r.id === datos.reserva.id);
+          if (index >= 0) {
+            const copia = [...prev];
+            copia[index] = { ...copia[index], ...datos.reserva, estado: 'reservado' };
+            return copia;
+          }
+          return [datos.reserva, ...prev];
+        });
+      }
+    };
+
     // Evento de ubicación de otros colectivos de la misma línea
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarUbicacionFlota = (payload: any) => {
@@ -284,6 +301,7 @@ export default function PaginaConductorColectivo() {
     socket.on('colectivo:solicitud-cancelada', manejarSolicitudCancelada);
     socket.on('colectivo:pasajero-quiere-pagar', manejarPasajeroQuierePagar);
     socket.on('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
+    socket.on('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
 
     // Si está en servicio, transmitir ubicación GPS continua
     if (enServicio && typeof window !== 'undefined' && 'geolocation' in navigator) {
@@ -318,6 +336,7 @@ export default function PaginaConductorColectivo() {
       socket.off('colectivo:solicitud-cancelada', manejarSolicitudCancelada);
       socket.off('colectivo:pasajero-quiere-pagar', manejarPasajeroQuierePagar);
       socket.off('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
+      socket.off('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
       if (lineaActual?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaActual.id });
       }
@@ -406,6 +425,40 @@ export default function PaginaConductorColectivo() {
     }
   };
 
+  // Responder a la solicitud dirigida de asiento (Aceptar / Rechazar)
+  const responderSolicitudDirigida = async (reservaId: string, accion: 'aceptar' | 'rechazar') => {
+    try {
+      setSolicitudActiva(null);
+      const res = await api.post(`/colectivos/reservas/${reservaId}/responder`, { accion });
+      if (accion === 'aceptar') {
+        setMensajeExito('Reserva aceptada. Pasajero confirmado en tu ruta.');
+        reproducirSonido('exito');
+
+        // Actualizar la reserva en el listado local a estado 'reservado'
+        const reservaConfirmada = res.data?.reserva;
+        if (reservaConfirmada) {
+          setReservasPendientes((prev) => {
+            const index = prev.findIndex((r) => r.id === reservaId);
+            if (index >= 0) {
+              const copia = [...prev];
+              copia[index] = { ...copia[index], ...reservaConfirmada, estado: 'reservado' };
+              return copia;
+            }
+            return [reservaConfirmada, ...prev];
+          });
+        }
+      } else {
+        setMensajeExito('Solicitud rechazada. Reasignada al siguiente colectivo.');
+        reproducirSonido('rechazo');
+        setReservasPendientes((prev) => prev.filter((r) => r.id !== reservaId));
+      }
+    } catch (error) {
+      console.error('Error al responder solicitud dirigida:', error);
+      setSolicitudActiva(null);
+      setMensajeError('No se pudo procesar la respuesta a la reserva.');
+    }
+  };
+
   // Marcar pasajero como abordado
   const confirmarAbordaje = async (reservaId: string) => {
     try {
@@ -463,21 +516,7 @@ export default function PaginaConductorColectivo() {
     }
   };
 
-  // Responder a solicitud dirigida (SÍ o NO vía voz o botón gigante)
-  const responderSolicitudDirigida = async (reservaId: string, accion: 'aceptar' | 'rechazar') => {
-    setSolicitudActiva(null);
-    try {
-      const res = await api.post(`/colectivos/reservas/${reservaId}/responder`, { accion });
-      if (accion === 'aceptar' && res.data?.reserva) {
-        setReservasPendientes((prev) => [res.data.reserva, ...prev]);
-        setMensajeExito(`Reserva aceptada: ${res.data.reserva.pasajero.name}`);
-      } else if (accion === 'rechazar') {
-        setMensajeExito('Solicitud pasada al siguiente móvil en ruta.');
-      }
-    } catch (error) {
-      console.error('Error al responder solicitud dirigida:', error);
-    }
-  };
+
 
   // Guardar datos de cobro (RutPay y MercadoPago)
   const guardarDatosCobro = async (e: React.FormEvent) => {
@@ -1144,6 +1183,43 @@ export default function PaginaConductorColectivo() {
                         <IconoCheck size={14} color="#FFF" />
                         <span>{cargandoAccion === reserva.id ? 'Liberando...' : 'Cobrar y Liberar'}</span>
                       </button>
+                    ) : reserva.estado === 'pendiente_chofer' ? (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          onClick={() => responderSolicitudDirigida(reserva.id, 'aceptar')}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            background: '#10B981',
+                            color: '#FFF',
+                            border: 'none',
+                            fontWeight: '800',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <IconoCheck size={12} color="#FFF" />
+                          <span>Aceptar</span>
+                        </button>
+                        <button
+                          onClick={() => responderSolicitudDirigida(reserva.id, 'rechazar')}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            background: 'rgba(239, 68, 68, 0.2)',
+                            color: '#F87171',
+                            border: '1px solid rgba(239, 68, 68, 0.4)',
+                            fontWeight: '700',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Paso
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={() => confirmarAbordaje(reserva.id)}

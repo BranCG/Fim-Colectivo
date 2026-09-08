@@ -61,9 +61,13 @@ export default function AlertaVozReserva({
     });
 
     return () => {
-      detenerVoz();
+      if (!respondido) {
+        detenerVoz();
+      }
       if (escuchaRef.current) {
-        escuchaRef.current.detener();
+        try {
+          escuchaRef.current.detener();
+        } catch {}
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,34 +96,64 @@ export default function AlertaVozReserva({
   const manejarAceptar = () => {
     if (respondido) return;
     setRespondido(true);
-    detenerVoz();
-    if (escuchaRef.current) escuchaRef.current.detener();
+    if (escuchaRef.current) {
+      try {
+        escuchaRef.current.detener();
+      } catch {}
+    }
 
-    reproducirSonido('exito');
-    hablarTexto('Reserva aceptada. Te espera.');
-    alAceptar(solicitud.reservaId);
+    try {
+      reproducirSonido('exito');
+      hablarTexto('Reserva aceptada. Te espera.');
+    } catch {}
+
+    try {
+      alAceptar(solicitud.reservaId);
+    } catch (err) {
+      console.error('Error en alAceptar:', err);
+    }
   };
 
   const manejarRechazar = () => {
     if (respondido) return;
     setRespondido(true);
-    detenerVoz();
-    if (escuchaRef.current) escuchaRef.current.detener();
+    if (escuchaRef.current) {
+      try {
+        escuchaRef.current.detener();
+      } catch {}
+    }
 
-    reproducirSonido('rechazo');
-    hablarTexto('Pasado al siguiente móvil.');
-    alRechazar(solicitud.reservaId);
+    try {
+      reproducirSonido('rechazo');
+      hablarTexto('Pasado al siguiente móvil.');
+    } catch {}
+
+    try {
+      alRechazar(solicitud.reservaId);
+    } catch (err) {
+      console.error('Error en alRechazar:', err);
+    }
   };
 
   const manejarExpiracion = () => {
     if (respondido) return;
     setRespondido(true);
-    detenerVoz();
-    if (escuchaRef.current) escuchaRef.current.detener();
+    if (escuchaRef.current) {
+      try {
+        escuchaRef.current.detener();
+      } catch {}
+    }
 
-    reproducirSonido('rechazo');
-    hablarTexto('Tiempo expirado. Pasando al siguiente móvil.');
-    alExpirar(solicitud.reservaId);
+    try {
+      reproducirSonido('rechazo');
+      hablarTexto('Tiempo expirado. Pasando al siguiente móvil.');
+    } catch {}
+
+    try {
+      alExpirar(solicitud.reservaId);
+    } catch (err) {
+      console.error('Error en alExpirar:', err);
+    }
   };
 
   const porcentajeTiempo = (segundosRestantes / tiempoTotal) * 100;

@@ -305,25 +305,49 @@ export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => v
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     reconocimiento.onerror = (err: any) => {
-      console.warn('[Voz Chofer] Reconocimiento error:', err.error);
-      if (opciones.onError) opciones.onError(err.error);
+      console.warn('[Voz Chofer] Reconocimiento error:', err?.error);
+      // Si no hay permisos de micrófono o fue cancelado, detener de inmediato
+      if (
+        err?.error === 'not-allowed' ||
+        err?.error === 'service-not-allowed' ||
+        err?.error === 'audio-capture' ||
+        err?.error === 'security'
+      ) {
+        finalizado = true;
+      }
+      if (opciones.onError) opciones.onError(err?.error || 'error');
     };
 
+    let reintentos = 0;
     reconocimiento.onend = () => {
       if (opciones.onEscuchando) opciones.onEscuchando(false);
-      // Reiniciar si aún no se ha recibido respuesta y no se ha detenido manualmente
-      if (!finalizado) {
-        try {
-          reconocimiento.start();
-        } catch {
-          // Ignorar error al reiniciar
-        }
+      // Reiniciar de forma controlada hasta máximo 3 veces con pausa de 600ms
+      if (!finalizado && reintentos < 3) {
+        reintentos++;
+        setTimeout(() => {
+          if (!finalizado && reconocimiento) {
+            try {
+              reconocimiento.start();
+            } catch (e) {
+              console.warn('[Voz Chofer] No se pudo reanudar escucha:', e);
+              finalizado = true;
+            }
+          }
+        }, 600);
       }
     };
 
-    reconocimiento.start();
+    try {
+      reconocimiento.start();
+    } catch (e) {
+      console.warn('[Voz Chofer] Error al ejecutar reconocimiento.start():', e);
+      finalizado = true;
+      if (opciones.onEscuchando) opciones.onEscuchando(false);
+    }
   } catch (err) {
     console.warn('Error al iniciar SpeechRecognition:', err);
+    finalizado = true;
+    if (opciones.onEscuchando) opciones.onEscuchando(false);
   }
 
   const detener = () => {
