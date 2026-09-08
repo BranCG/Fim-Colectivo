@@ -6,6 +6,18 @@ import dynamic from 'next/dynamic';
 import api, { formatCLP, clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo } from '@/components/map/ColectivoMap';
+import {
+  IconoColectivo,
+  IconoCheck,
+  IconoCruz,
+  IconoAlerta,
+  IconoGps,
+  IconoPuntoEstado,
+  IconoBanco,
+  IconoTarjeta,
+  IconoEfectivo,
+  IconoAsiento,
+} from '@/components/icons/Iconos';
 
 // Cargar mapa de colectivos de forma dinámica para evitar problemas con SSR en Next.js
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
@@ -187,13 +199,13 @@ export default function PaginaPasajeroColectivo() {
 
     // Evento: Pasajero abordó el colectivo
     const manejarReservaAbordada = () => {
-      setMensajeAlerta('✅ ¡Has abordado el colectivo! El chofer confirmó tu asiento.');
+      setMensajeAlerta('¡Has abordado el colectivo! El chofer confirmó tu asiento.');
       setReservaActiva((prev) => (prev ? { ...prev, estado: 'abordado' } : null));
     };
 
     // Evento: Reserva cancelada
     const manejarReservaCancelada = () => {
-      setMensajeAlerta('ℹ️ La reserva de asiento fue cancelada.');
+      setMensajeAlerta('La reserva de asiento fue cancelada.');
       setReservaActiva(null);
       setConductorElegido(null);
     };
@@ -238,7 +250,7 @@ export default function PaginaPasajeroColectivo() {
       });
 
       setReservaActiva(res.data.reserva);
-      setMensajeAlerta('🎉 Asiento reservado con éxito. Espera al colectivo en tu recorrido.');
+      setMensajeAlerta('Asiento reservado con éxito. Espera al colectivo en tu recorrido.');
     } catch (error: any) {
       console.error('Error al reservar:', error);
       setMensajeError(error.response?.data?.error || 'No se pudo reservar el asiento.');
@@ -281,7 +293,7 @@ export default function PaginaPasajeroColectivo() {
         zIndex: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '24px' }}>🚐</span>
+          <IconoColectivo size={22} color="#38BDF8" />
           <div>
             <h1 style={{ fontSize: '18px', fontWeight: '800', margin: 0, letterSpacing: '-0.5px' }}>
               Fim <span style={{ color: '#38BDF8' }}>Colectivo</span>
@@ -373,10 +385,14 @@ export default function PaginaPasajeroColectivo() {
           fontSize: '12px',
           fontWeight: '600',
           display: 'flex',
+          alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <span>{mensajeAlerta}</span>
-          <button onClick={() => setMensajeAlerta('')} style={{ background: 'none', border: 'none', color: '#6EE7B7', cursor: 'pointer' }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IconoCheck size={16} color="#10B981" />
+            <span>{mensajeAlerta}</span>
+          </div>
+          <button onClick={() => setMensajeAlerta('')} style={{ background: 'none', border: 'none', color: '#6EE7B7', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><IconoCruz size={14} color="#6EE7B7" /></button>
         </div>
       )}
       {mensajeError && (
@@ -388,10 +404,14 @@ export default function PaginaPasajeroColectivo() {
           fontSize: '12px',
           fontWeight: '600',
           display: 'flex',
+          alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <span>{mensajeError}</span>
-          <button onClick={() => setMensajeError('')} style={{ background: 'none', border: 'none', color: '#FCA5A5', cursor: 'pointer' }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IconoAlerta size={16} color="#EF4444" />
+            <span>{mensajeError}</span>
+          </div>
+          <button onClick={() => setMensajeError('')} style={{ background: 'none', border: 'none', color: '#FCA5A5', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><IconoCruz size={14} color="#FCA5A5" /></button>
         </div>
       )}
 
@@ -429,7 +449,7 @@ export default function PaginaPasajeroColectivo() {
           }}
           title="Centrar en mi posición"
         >
-          🎯
+          <IconoGps size={20} color="#38BDF8" />
         </button>
       </div>
 
@@ -452,8 +472,12 @@ export default function PaginaPasajeroColectivo() {
                   color: reservaActiva.estado === 'abordado' ? '#10B981' : '#F59E0B',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
                 }}>
-                  {reservaActiva.estado === 'abordado' ? '🟢 A Bordo' : '🟡 Asiento Reservado'}
+                  <IconoPuntoEstado activo={reservaActiva.estado === 'abordado'} size={8} />
+                  <span>{reservaActiva.estado === 'abordado' ? 'A Bordo' : 'Asiento Reservado'}</span>
                 </span>
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: '800' }}>
                   {reservaActiva.conductor.name} ({reservaActiva.conductor.vehiclePlate})
@@ -475,17 +499,19 @@ export default function PaginaPasajeroColectivo() {
               fontSize: '12px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '4px',
+              gap: '6px',
             }}>
               <div style={{ color: '#94A3B8' }}>Método de pago: <b>{reservaActiva.metodoPago.toUpperCase()}</b></div>
               {reservaActiva.conductor.telefonoRutPay && (
-                <div style={{ color: '#E2E8F0' }}>
-                  🏦 <b>RutPay BancoEstado:</b> Transferir al teléfono: <code>{reservaActiva.conductor.telefonoRutPay}</code>
+                <div style={{ color: '#E2E8F0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <IconoBanco size={14} color="#FBBF24" />
+                  <span><b>RutPay BancoEstado:</b> Transferir al teléfono: <code>{reservaActiva.conductor.telefonoRutPay}</code></span>
                 </div>
               )}
               {reservaActiva.conductor.mercadoPagoLink && (
-                <div>
-                  💳 <a href={reservaActiva.conductor.mercadoPagoLink} target="_blank" rel="noreferrer" style={{ color: '#38BDF8', textDecoration: 'underline' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <IconoTarjeta size={14} color="#38BDF8" />
+                  <a href={reservaActiva.conductor.mercadoPagoLink} target="_blank" rel="noreferrer" style={{ color: '#38BDF8', textDecoration: 'underline' }}>
                     Pagar con MercadoPago aquí
                   </a>
                 </div>
@@ -529,9 +555,9 @@ export default function PaginaPasajeroColectivo() {
               </div>
               <button
                 onClick={() => setConductorElegido(null)}
-                style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '18px', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               >
-                ✕
+                <IconoCruz size={16} color="#94A3B8" />
               </button>
             </div>
 
@@ -573,10 +599,14 @@ export default function PaginaPasajeroColectivo() {
                     color: metodoPago === metodo ? '#FFF' : '#94A3B8',
                     border: metodoPago === metodo ? '1px solid #3B82F6' : '1px solid rgba(255, 255, 255, 0.1)',
                     cursor: 'pointer',
-                    textTransform: 'capitalize',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
                   }}
                 >
-                  {metodo === 'rutpay' ? '🏦 RutPay' : metodo === 'mercadopago' ? '💳 MercadoPago' : '💵 Efectivo'}
+                  {metodo === 'rutpay' ? <IconoBanco size={13} /> : metodo === 'mercadopago' ? <IconoTarjeta size={13} /> : <IconoEfectivo size={13} />}
+                  <span>{metodo === 'rutpay' ? 'RutPay' : metodo === 'mercadopago' ? 'MercadoPago' : 'Efectivo'}</span>
                 </button>
               ))}
             </div>

@@ -131,9 +131,9 @@ export default function DriverMap({ driverPos, passengerPos, destPos }: Props) {
               <div style="position:absolute;inset:-4px;background:rgba(255,184,0,0.15);border-radius:50%;animation:ping 2s ease-out infinite"></div>
               <div style="width:40px;height:40px;background:#1A1A28;border-radius:50%;
                           border:3px solid #FFB800;display:flex;align-items:center;
-                          justify-content:center;font-size:18px;
+                          justify-content:center;
                           box-shadow:0 4px 16px rgba(255,184,0,0.4)">
-                🧑
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFB800" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               </div>
             </div>`,
           iconSize: [40, 40],
@@ -190,7 +190,7 @@ export default function DriverMap({ driverPos, passengerPos, destPos }: Props) {
           iconAnchor: [10, 33],
         });
         const dm = L.marker([destPos.lat, destPos.lng], { icon: destIcon }).addTo(map);
-        dm.bindTooltip('🏁 Destino', { permanent: false, direction: 'top', className: 'fim-tooltip' });
+        dm.bindTooltip('Destino', { permanent: false, direction: 'top', className: 'fim-tooltip' });
         markersRef.current.push(dm);
 
         // Ruta: conductor → destino (Real con OSRM, rojo)
