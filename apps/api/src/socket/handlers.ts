@@ -106,6 +106,25 @@ export function setupSocketHandlers(io: Server) {
       }
     });
 
+    // ─── CONDUCTOR: Suscripción a canal individual de chofer ──────────────
+    socket.on('conductor:unirse', ({ conductorId, driverId }: { conductorId?: string; driverId?: string }) => {
+      const id = conductorId || driverId;
+      if (id) {
+        socket.join(`driver:${id}`);
+        socket.data.driverId = id;
+        console.log(`[Socket] Conductor unido a canal driver:${id}`);
+      }
+    });
+
+    socket.on('driver:join', ({ driverId, conductorId }: { driverId?: string; conductorId?: string }) => {
+      const id = driverId || conductorId;
+      if (id) {
+        socket.join(`driver:${id}`);
+        socket.data.driverId = id;
+        console.log(`[Socket] Driver joined channel driver:${id}`);
+      }
+    });
+
     // ─── PASAJERO: se une a su sala de viaje ──────────────────────────────
     socket.on('passenger:join-trip', ({ tripId }: { tripId: string }) => {
       socket.join(`trip:${tripId}`);

@@ -67,8 +67,79 @@ export function reproducirSonido(tipo: 'alerta' | 'exito' | 'rechazo') {
   }
 }
 
+// Cache de voces disponibles
+let vocesPrecargadas: SpeechSynthesisVoice[] = [];
+
+function precargarVoces() {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  vocesPrecargadas = window.speechSynthesis.getVoices();
+  if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      vocesPrecargadas = window.speechSynthesis.getVoices();
+    };
+  }
+}
+
+if (typeof window !== 'undefined') {
+  precargarVoces();
+}
+
+function buscarVozEspanol(): SpeechSynthesisVoice | undefined {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return undefined;
+  const voces = vocesPrecargadas.length > 0 ? vocesPrecargadas : window.speechSynthesis.getVoices();
+  return (
+    voces.find((v) => v.lang === 'es-CL') ||
+    voces.find((v) => v.lang === 'es-419') ||
+    voces.find((v) => v.lang === 'es-MX') ||
+    voces.find((v) => v.lang === 'es-ES') ||
+    voces.find((v) => v.lang.startsWith('es'))
+  );
+}
+
 /**
- * Lee texto en voz alta en español utilizando la API nativa SpeechSynthesis
+ * Desbloquea de forma explícita el AudioContext y SpeechSynthesis tras un toque o click del usuario
+ */
+export function desbloquearAudioYVoz(mensajeTest = 'Audio y voz activados', alCompletar?: () => void) {
+  try {
+    const ctx = obtenerAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
+    reproducirSonido('exito');
+
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.resume();
+      precargarVoces();
+
+      const locucionTest = new SpeechSynthesisUtterance(mensajeTest);
+      locucionTest.lang = 'es-CL';
+      locucionTest.rate = 1.0;
+      locucionTest.pitch = 1.0;
+      locucionTest.volume = 1.0;
+
+      const voz = buscarVozEspanol();
+      if (voz) locucionTest.voice = voz;
+
+      locucionTest.onend = () => {
+        if (alCompletar) alCompletar();
+      };
+      locucionTest.onerror = () => {
+        if (alCompletar) alCompletar();
+      };
+
+      window.speechSynthesis.speak(locucionTest);
+    } else {
+      if (alCompletar) alCompletar();
+    }
+  } catch (e) {
+    console.warn('Error al desbloquear audio y voz:', e);
+    if (alCompletar) alCompletar();
+  }
+}
+
+/**
+ * Lee texto en voz alta en español utilizando la API nativa SpeechSynthesis de forma robusta
  */
 export function hablarTexto(texto: string, alFinalizar?: () => void) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -77,36 +148,59 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
   }
 
   try {
-    // Cancelar lecturas previas pendientes
-    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+
+    // En Chromium, llamar a speak() sincrónicamente tras cancel() anula la locución nueva.
+    // Si está hablando, cancelamos y damos 40ms para que la cola se desaloje limpiamente.
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel();
+      setTimeout(() => {
+        ejecutarLectura(texto, alFinalizar);
+      }, 40);
+    } else {
+      ejecutarLectura(texto, alFinalizar);
+    }
+  } catch (err) {
+    console.warn('Error al preparar hablarTexto:', err);
+    if (alFinalizar) alFinalizar();
+  }
+}
+
+function ejecutarLectura(texto: string, alFinalizar?: () => void) {
+  try {
+    window.speechSynthesis.resume();
 
     const locucion = new SpeechSynthesisUtterance(texto);
     locucion.lang = 'es-CL';
-    locucion.rate = 1.05; // Velocidad natural ligeramente ágil
+    locucion.rate = 1.02; // Ritmo ágil y comprensible
     locucion.pitch = 1.0;
     locucion.volume = 1.0;
 
-    // Buscar voz en español chileno o latinoamericano
-    const vocesDisponibles = window.speechSynthesis.getVoices();
-    const vozEspanol = vocesDisponibles.find(
-      (v) => v.lang === 'es-CL' || v.lang === 'es-ES' || v.lang === 'es-MX' || v.lang.startsWith('es')
-    );
+    const vozEspanol = buscarVozEspanol();
     if (vozEspanol) {
       locucion.voice = vozEspanol;
     }
 
-    locucion.onend = () => {
-      if (alFinalizar) alFinalizar();
+    let completado = false;
+    const invocarFinal = () => {
+      if (!completado) {
+        completado = true;
+        if (alFinalizar) alFinalizar();
+      }
     };
 
+    locucion.onend = invocarFinal;
     locucion.onerror = (err) => {
-      console.warn('SpeechSynthesis error:', err);
-      if (alFinalizar) alFinalizar();
+      console.warn('SpeechSynthesis error en ejecución:', err);
+      invocarFinal();
     };
+
+    // Timeout de seguridad en caso de que el navegador no dispare onend
+    setTimeout(invocarFinal, 12000);
 
     window.speechSynthesis.speak(locucion);
   } catch (err) {
-    console.warn('Error al ejecutar hablarTexto:', err);
+    console.warn('Error al ejecutar speak:', err);
     if (alFinalizar) alFinalizar();
   }
 }

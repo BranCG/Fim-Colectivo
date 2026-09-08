@@ -57,6 +57,11 @@ export default function PaginaPasajeroColectivo() {
   const [reservaActiva, setReservaActiva] = useState<ReservaActiva | null>(null);
   const [cargandoReserva, setCargandoReserva] = useState(false);
 
+  // Estados de pago y bajada
+  const [mostrarModalPago, setMostrarModalPago] = useState<boolean>(false);
+  const [solicitandoPago, setSolicitandoPago] = useState<boolean>(false);
+  const [telefonoCopiado, setTelefonoCopiado] = useState<boolean>(false);
+
   // Estado de asignación dirigida al primer móvil en tránsito
   const [buscandoMovil, setBuscandoMovil] = useState(false);
   const [movilAsignadoPreview, setMovilAsignadoPreview] = useState<{
@@ -224,12 +229,23 @@ export default function PaginaPasajeroColectivo() {
       setMensajeAlerta('La reserva de asiento fue cancelada.');
       setReservaActiva(null);
       setConductorElegido(null);
+      setMostrarModalPago(false);
+    };
+
+    // Evento: Conductor confirmó el pago y liberó el asiento
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const manejarPagoConfirmado = (datos: any) => {
+      setMensajeAlerta(datos.mensaje || '¡Pago confirmado por el conductor! Asiento liberado. Gracias por viajar.');
+      setReservaActiva(null);
+      setConductorElegido(null);
+      setMostrarModalPago(false);
     };
 
     socket.on('colectivo:actualizacion-ubicacion', manejarActualizacionUbicacion);
     socket.on('colectivo:cambio-asientos', manejarCambioAsientos);
     socket.on('colectivo:reserva-abordada', manejarReservaAbordada);
     socket.on('colectivo:reserva-cancelada', manejarReservaCancelada);
+    socket.on('colectivo:pago-confirmado', manejarPagoConfirmado);
 
     // Eventos de asignación dirigida al primer móvil en camino
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -264,6 +280,7 @@ export default function PaginaPasajeroColectivo() {
       socket.off('colectivo:cambio-asientos', manejarCambioAsientos);
       socket.off('colectivo:reserva-abordada', manejarReservaAbordada);
       socket.off('colectivo:reserva-cancelada', manejarReservaCancelada);
+      socket.off('colectivo:pago-confirmado', manejarPagoConfirmado);
       socket.off('colectivo:asignando-a-chofer', manejarAsignandoAChofer);
       socket.off('colectivo:reserva-aceptada', manejarReservaAceptada);
       socket.off('colectivo:sin-conductores-disponibles', manejarSinConductores);
@@ -310,10 +327,27 @@ export default function PaginaPasajeroColectivo() {
       await api.post(`/colectivos/reservas/${reservaActiva.id}/cancelar`);
       setReservaActiva(null);
       setConductorElegido(null);
+      setMostrarModalPago(false);
       setMensajeAlerta('Reserva cancelada correctamente.');
     } catch (error) {
       console.error('Error al cancelar reserva:', error);
       setMensajeError('No se pudo cancelar la reserva.');
+    }
+  };
+
+  // Solicitar pagar y descender
+  const notificarPagoChofer = async () => {
+    if (!reservaActiva) return;
+    try {
+      setSolicitandoPago(true);
+      await api.post(`/colectivos/reservas/${reservaActiva.id}/solicitar-pago`);
+      setReservaActiva((prev) => (prev ? { ...prev, estado: 'pagando' } : null));
+      setMensajeAlerta('Solicitud de pago enviada al conductor con aviso de voz.');
+    } catch (error) {
+      console.error('Error al solicitar pago:', error);
+      setMensajeError('No se pudo enviar la solicitud de pago.');
+    } finally {
+      setSolicitandoPago(false);
     }
   };
 
@@ -573,11 +607,11 @@ export default function PaginaPasajeroColectivo() {
               flexDirection: 'column',
               gap: '6px',
             }}>
-              <div style={{ color: '#94A3B8' }}>Método de pago: <b>{reservaActiva.metodoPago.toUpperCase()}</b></div>
+              <div style={{ color: '#94A3B8' }}>Método de pago: <b style={{ color: '#F8FAFC' }}>{reservaActiva.metodoPago.toUpperCase()}</b></div>
               {reservaActiva.conductor.telefonoRutPay && (
                 <div style={{ color: '#E2E8F0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <IconoBanco size={14} color="#FBBF24" />
-                  <span><b>RutPay BancoEstado:</b> Transferir al teléfono: <code>{reservaActiva.conductor.telefonoRutPay}</code></span>
+                  <span><b>RutPay BancoEstado:</b> <code>{reservaActiva.conductor.telefonoRutPay}</code></span>
                 </div>
               )}
               {reservaActiva.conductor.mercadoPagoLink && (
@@ -590,23 +624,55 @@ export default function PaginaPasajeroColectivo() {
               )}
             </div>
 
-            {reservaActiva.estado !== 'abordado' && (
+            {/* BOTONES PRINCIPALES DE ACCIÓN: PAGAR / BAJARME */}
+            <div style={{ display: 'flex', gap: '8px' }}>
               <button
-                onClick={cancelarReserva}
+                onClick={() => setMostrarModalPago(true)}
                 style={{
-                  padding: '10px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  color: '#F87171',
-                  fontWeight: '700',
-                  fontSize: '13px',
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: '10px',
+                  background: reservaActiva.estado === 'pagando'
+                    ? 'rgba(56, 189, 248, 0.2)'
+                    : 'linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%)',
+                  color: '#FFFFFF',
+                  border: reservaActiva.estado === 'pagando' ? '1px solid #38BDF8' : 'none',
+                  fontWeight: '800',
+                  fontSize: '14px',
                   cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
                 }}
               >
-                Cancelar Reserva
+                <IconoTarjeta size={16} color="#FFFFFF" />
+                <span>
+                  {reservaActiva.estado === 'pagando'
+                    ? 'Esperando Confirmación del Chofer...'
+                    : 'PAGAR Y BAJARME'}
+                </span>
               </button>
-            )}
+
+              {reservaActiva.estado !== 'abordado' && reservaActiva.estado !== 'pagando' && (
+                <button
+                  onClick={cancelarReserva}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: '#F87171',
+                    fontWeight: '700',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
           </div>
         ) : conductorElegido ? (
           /* Caso 2: Colectivo Seleccionado para reservar */
@@ -899,6 +965,226 @@ export default function PaginaPasajeroColectivo() {
           </div>
         )}
       </div>
+
+      {/* ── MODAL: PAGAR PASAJE Y SOLICITAR BAJADA AL CONDUCTOR ── */}
+      {mostrarModalPago && reservaActiva && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              background: '#1E293B',
+              borderRadius: '20px',
+              padding: '24px',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: '700', color: '#38BDF8', letterSpacing: '0.5px' }}>
+                  PAGO DE PASAJE
+                </span>
+                <h3 style={{ margin: '2px 0 0 0', fontSize: '20px', fontWeight: '800' }}>
+                  Pagar y Bajarme
+                </h3>
+              </div>
+              <button
+                onClick={() => setMostrarModalPago(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#94A3B8',
+                  cursor: 'pointer',
+                }}
+              >
+                <IconoCruz size={16} color="#94A3B8" />
+              </button>
+            </div>
+
+            <div style={{ background: '#0F172A', padding: '12px 16px', borderRadius: '12px', fontSize: '13px' }}>
+              <div style={{ color: '#94A3B8', marginBottom: '4px' }}>Conductor:</div>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: '#F8FAFC' }}>
+                {reservaActiva.conductor.name} ({reservaActiva.conductor.vehiclePlate})
+              </div>
+              <div style={{ color: '#64748B', fontSize: '12px', marginTop: '2px' }}>
+                {reservaActiva.cantidadAsientos} asiento{reservaActiva.cantidadAsientos > 1 ? 's' : ''}
+              </div>
+            </div>
+
+            {/* Medio de Pago seleccionado en la reserva */}
+            <div style={{ background: '#0F172A', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+              {reservaActiva.metodoPago === 'rutpay' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#FBBF24', fontWeight: '700', fontSize: '14px' }}>
+                    <IconoBanco size={18} color="#FBBF24" />
+                    <span>RutPay BancoEstado</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#94A3B8' }}>
+                    Transfiere directamente con RutPay al número de teléfono del chofer:
+                  </p>
+                  <div
+                    style={{
+                      background: 'rgba(251, 191, 36, 0.1)',
+                      border: '1px dashed #FBBF24',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: '16px', fontWeight: '800', color: '#FDE047' }}>
+                      {reservaActiva.conductor.telefonoRutPay || reservaActiva.conductor.phone || '+56 9 8765 4321'}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const num = reservaActiva.conductor.telefonoRutPay || reservaActiva.conductor.phone || '';
+                        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                          navigator.clipboard.writeText(num);
+                          setTelefonoCopiado(true);
+                          setTimeout(() => setTelefonoCopiado(false), 2000);
+                        }
+                      }}
+                      style={{
+                        background: telefonoCopiado ? '#10B981' : '#FBBF24',
+                        color: '#0F172A',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '5px 10px',
+                        fontSize: '11px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {telefonoCopiado ? '¡Copiado!' : 'Copiar'}
+                    </button>
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#64748B' }}>
+                    Abre tu App BancoEstado, selecciona RutPay y pega este número.
+                  </span>
+                </div>
+              ) : reservaActiva.metodoPago === 'mercadopago' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#38BDF8', fontWeight: '700', fontSize: '14px' }}>
+                    <IconoTarjeta size={18} color="#38BDF8" />
+                    <span>MercadoPago</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#94A3B8' }}>
+                    Paga de forma digital a través del link de MercadoPago del conductor:
+                  </p>
+                  {reservaActiva.conductor.mercadoPagoLink ? (
+                    <a
+                      href={reservaActiva.conductor.mercadoPagoLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        background: '#0284C7',
+                        color: '#FFFFFF',
+                        textDecoration: 'none',
+                        textAlign: 'center',
+                        padding: '10px',
+                        borderRadius: '10px',
+                        fontWeight: '700',
+                        fontSize: '13px',
+                        display: 'block',
+                      }}
+                    >
+                      Abrir Enlace de MercadoPago
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: '12px', color: '#94A3B8' }}>
+                      Enlace no configurado por el chofer. Puedes pagar en efectivo.
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#34D399', fontWeight: '700', fontSize: '14px' }}>
+                    <IconoEfectivo size={18} color="#34D399" />
+                    <span>Pago en Efectivo</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#CBD5E1' }}>
+                    Entrega el efectivo directamente al conductor al descender del vehículo.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* BOTÓN CONFIRMAR Y ENVIAR AL CHOFER */}
+            <button
+              onClick={notificarPagoChofer}
+              disabled={solicitandoPago || reservaActiva.estado === 'pagando'}
+              style={{
+                width: '100%',
+                padding: '16px',
+                borderRadius: '12px',
+                background: reservaActiva.estado === 'pagando'
+                  ? '#334155'
+                  : 'linear-gradient(180deg, #10B981 0%, #059669 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                fontWeight: '900',
+                fontSize: '15px',
+                letterSpacing: '0.3px',
+                cursor: reservaActiva.estado === 'pagando' ? 'default' : 'pointer',
+                boxShadow: reservaActiva.estado === 'pagando' ? 'none' : '0 6px 20px rgba(16, 185, 129, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
+            >
+              <IconoCheck size={20} color="#FFFFFF" />
+              <span>
+                {solicitandoPago
+                  ? 'Avisando al conductor...'
+                  : reservaActiva.estado === 'pagando'
+                  ? 'Esperando que el conductor acepte...'
+                  : 'CONFIRMAR Y NOTIFICAR AL CHOFER'}
+              </span>
+            </button>
+
+            {reservaActiva.estado === 'pagando' && (
+              <div
+                style={{
+                  background: 'rgba(56, 189, 248, 0.1)',
+                  border: '1px solid #38BDF8',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  textAlign: 'center',
+                  fontSize: '12px',
+                  color: '#38BDF8',
+                }}
+              >
+                La voz en el móvil del chofer ha anunciado tu pago. En cuanto acepte, tu pantalla se liberará automáticamente.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
