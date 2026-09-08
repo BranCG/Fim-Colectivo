@@ -35,6 +35,16 @@ export interface ConductorColectivo {
   mercadoPagoLink?: string | null;
 }
 
+export interface PasajeroEnEspera {
+  id: string;
+  nombre: string;
+  latitud: number;
+  longitud: number;
+  asientos: number;
+  paradaNombre?: string;
+  metodoPago?: string;
+}
+
 interface Props {
   ubicacionUsuario: { latitud: number; longitud: number; direccion?: string } | null;
   lineaSeleccionada: Linea | null;
@@ -42,6 +52,10 @@ interface Props {
   conductorSeleccionadoId?: string | null;
   alSeleccionarConductor?: (conductor: ConductorColectivo) => void;
   disparadorCentrado?: number;
+  esModoConductor?: boolean;
+  miConductorId?: string;
+  pasajerosEnEspera?: PasajeroEnEspera[];
+  altura?: string;
 }
 
 export default function ColectivoMap({
@@ -51,6 +65,10 @@ export default function ColectivoMap({
   conductorSeleccionadoId,
   alSeleccionarConductor,
   disparadorCentrado = 0,
+  esModoConductor = false,
+  miConductorId,
+  pasajerosEnEspera = [],
+  altura = '100%',
 }: Props) {
   const contenedorRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,26 +148,49 @@ export default function ColectivoMap({
       if (capaRutaRef.current) {
         capaRutaRef.current.remove();
         capaRutaRef.current = null;
-      }
-
-      // 1. Ubicación del usuario (pasajero)
+      }      // 1. Ubicación del usuario o del propio conductor
       if (ubicacionUsuario) {
-        const iconoUsuario = L.divIcon({
-          className: 'transparent-icon',
-          html: `
-            <div style="position:relative;width:26px;height:26px;">
-              <div style="position:absolute;inset:0;background:#3B82F6;border-radius:50%;opacity:0.35;animation:pulse 1.8s ease-out infinite;"></div>
-              <div style="position:absolute;inset:4px;background:#2563EB;border-radius:50%;border:2px solid white;box-shadow:0 0 12px rgba(37,99,235,0.8);"></div>
-            </div>`,
-          iconSize: [26, 26],
-          iconAnchor: [13, 13],
-        });
+        if (esModoConductor) {
+          const iconoMiColectivo = L.divIcon({
+            className: 'transparent-icon',
+            html: `
+              <div style="display:flex;flex-direction:column;align-items:center;">
+                <div style="background:#F59E0B;color:#0F172A;font-size:10px;font-weight:900;padding:2px 8px;border-radius:12px;box-shadow:0 0 14px rgba(245,158,11,0.9);white-space:nowrap;margin-bottom:2px;letter-spacing:0.3px;">
+                  🚖 TÚ EN RUTA
+                </div>
+                <div style="position:relative;background:#0F172A;border:2.5px solid #F59E0B;border-radius:10px;padding:4px 8px;display:flex;align-items:center;gap:5px;box-shadow:0 4px 16px rgba(245,158,11,0.6);animation:pulse 2s infinite;">
+                  <span style="font-size:16px;">🚐</span>
+                  <span style="color:#FBBF24;font-size:11px;font-weight:bold;font-family:monospace;">MI AUTO</span>
+                </div>
+              </div>`,
+            iconSize: [90, 56],
+            iconAnchor: [45, 50],
+          });
 
-        const marcadorUsuario = L.marker([ubicacionUsuario.latitud, ubicacionUsuario.longitud], {
-          icon: iconoUsuario,
-        }).addTo(mapa);
-        marcadorUsuario.bindTooltip('📍 Tu ubicación', { direction: 'top', className: 'fim-tooltip' });
-        marcadoresRef.current.push(marcadorUsuario);
+          const marcadorMiAuto = L.marker([ubicacionUsuario.latitud, ubicacionUsuario.longitud], {
+            icon: iconoMiColectivo,
+            zIndexOffset: 1000,
+          }).addTo(mapa);
+          marcadorMiAuto.bindTooltip('<b>📍 Tu posición GPS en tiempo real</b>', { direction: 'top', className: 'fim-tooltip' });
+          marcadoresRef.current.push(marcadorMiAuto);
+        } else {
+          const iconoUsuario = L.divIcon({
+            className: 'transparent-icon',
+            html: `
+              <div style="position:relative;width:26px;height:26px;">
+                <div style="position:absolute;inset:0;background:#3B82F6;border-radius:50%;opacity:0.35;animation:pulse 1.8s ease-out infinite;"></div>
+                <div style="position:absolute;inset:4px;background:#2563EB;border-radius:50%;border:2px solid white;box-shadow:0 0 12px rgba(37,99,235,0.8);"></div>
+              </div>`,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13],
+          });
+
+          const marcadorUsuario = L.marker([ubicacionUsuario.latitud, ubicacionUsuario.longitud], {
+            icon: iconoUsuario,
+          }).addTo(mapa);
+          marcadorUsuario.bindTooltip('📍 Tu ubicación', { direction: 'top', className: 'fim-tooltip' });
+          marcadoresRef.current.push(marcadorUsuario);
+        }
       }
 
       // 2. Dibujar trazado y paradas de la Línea seleccionada
@@ -200,65 +241,101 @@ export default function ColectivoMap({
         }
       }
 
-      // 3. Marcadores de Colectivos en Vivo
-      conductoresEnVivo.forEach((chofer) => {
-        const asientosDisponibles = chofer.asientosTotales - chofer.asientosOcupados;
-        const estaLleno = asientosDisponibles <= 0;
-        const esSeleccionado = conductorSeleccionadoId === chofer.conductorId;
+      // 3. Marcadores de Colectivos en Vivo (otros choferes de la flota)
+      conductoresEnVivo
+        .filter((chofer) => !esModoConductor || chofer.conductorId !== miConductorId)
+        .forEach((chofer) => {
+          const asientosDisponibles = chofer.asientosTotales - chofer.asientosOcupados;
+          const estaLleno = asientosDisponibles <= 0;
+          const esSeleccionado = conductorSeleccionadoId === chofer.conductorId;
 
-        // Color del badge de asientos
-        let colorAsientos = '#10B981'; // Verde
-        let textoAsientos = `${asientosDisponibles} libres`;
-        if (estaLleno) {
-          colorAsientos = '#EF4444'; // Rojo
-          textoAsientos = 'Lleno';
-        } else if (asientosDisponibles === 1) {
-          colorAsientos = '#F59E0B'; // Ámbar
-          textoAsientos = '1 libre';
-        }
-
-        const colorBorde = esSeleccionado ? '#F59E0B' : '#1E293B';
-
-        const iconoColectivo = L.divIcon({
-          className: 'transparent-icon',
-          html: `
-            <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
-              <!-- Badge Asientos Disponibles -->
-              <div style="background:${colorAsientos};color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;box-shadow:0 2px 5px rgba(0,0,0,0.3);white-space:nowrap;margin-bottom:2px;letter-spacing:0.2px;">
-                ${textoAsientos}
-              </div>
-              <!-- Vehículo Colectivo -->
-              <div style="position:relative;background:#1E293B;border:2.5px solid ${colorBorde};border-radius:10px;padding:4px 6px;display:flex;align-items:center;gap:4px;box-shadow:0 4px 10px rgba(0,0,0,0.4);transform:${esSeleccionado ? 'scale(1.15)' : 'scale(1)'};transition:transform 0.2s;">
-                <span style="font-size:14px;">🚐</span>
-                <span style="color:#F1F5F9;font-size:10px;font-weight:bold;font-family:monospace;">${chofer.patente}</span>
-              </div>
-            </div>`,
-          iconSize: [60, 52],
-          iconAnchor: [30, 48],
-        });
-
-        const marcadorChofer = L.marker([chofer.latitud, chofer.longitud], {
-          icon: iconoColectivo,
-        }).addTo(mapa);
-
-        marcadorChofer.bindTooltip(
-          `<b>${chofer.nombre}</b><br/>Sentido: ${chofer.sentidoRuta.toUpperCase()}<br/>Disponibles: ${asientosDisponibles}/4`,
-          { direction: 'top', className: 'fim-tooltip' }
-        );
-
-        marcadorChofer.on('click', () => {
-          if (alSeleccionarConductor) {
-            alSeleccionarConductor(chofer);
+          // Color del badge de asientos
+          let colorAsientos = '#10B981'; // Verde
+          let textoAsientos = `${asientosDisponibles} libres`;
+          if (estaLleno) {
+            colorAsientos = '#EF4444'; // Rojo
+            textoAsientos = 'Lleno';
+          } else if (asientosDisponibles === 1) {
+            colorAsientos = '#F59E0B'; // Ámbar
+            textoAsientos = '1 libre';
           }
+
+          const colorBorde = esSeleccionado ? '#F59E0B' : '#1E293B';
+
+          const iconoColectivo = L.divIcon({
+            className: 'transparent-icon',
+            html: `
+              <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+                <!-- Badge Asientos Disponibles -->
+                <div style="background:${colorAsientos};color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;box-shadow:0 2px 5px rgba(0,0,0,0.3);white-space:nowrap;margin-bottom:2px;letter-spacing:0.2px;">
+                  ${textoAsientos}
+                </div>
+                <!-- Vehículo Colectivo -->
+                <div style="position:relative;background:#1E293B;border:2.5px solid ${colorBorde};border-radius:10px;padding:4px 6px;display:flex;align-items:center;gap:4px;box-shadow:0 4px 10px rgba(0,0,0,0.4);transform:${esSeleccionado ? 'scale(1.15)' : 'scale(1)'};transition:transform 0.2s;">
+                  <span style="font-size:14px;">🚐</span>
+                  <span style="color:#F1F5F9;font-size:10px;font-weight:bold;font-family:monospace;">${chofer.patente}</span>
+                </div>
+              </div>`,
+            iconSize: [60, 52],
+            iconAnchor: [30, 48],
+          });
+
+          const marcadorChofer = L.marker([chofer.latitud, chofer.longitud], {
+            icon: iconoColectivo,
+          }).addTo(mapa);
+
+          marcadorChofer.bindTooltip(
+            `<b>${chofer.nombre}</b><br/>Sentido: ${chofer.sentidoRuta.toUpperCase()}<br/>Disponibles: ${asientosDisponibles}/4`,
+            { direction: 'top', className: 'fim-tooltip' }
+          );
+
+          marcadorChofer.on('click', () => {
+            if (alSeleccionarConductor) {
+              alSeleccionarConductor(chofer);
+            }
+          });
+
+          marcadoresRef.current.push(marcadorChofer);
         });
 
-        marcadoresRef.current.push(marcadorChofer);
-      });
+      // 4. Marcadores de Pasajeros con Reserva (Modo Conductor)
+      if (esModoConductor && pasajerosEnEspera && pasajerosEnEspera.length > 0) {
+        pasajerosEnEspera.forEach((p) => {
+          if (!p.latitud || !p.longitud) return;
+
+          const iconoPasajero = L.divIcon({
+            className: 'transparent-icon',
+            html: `
+              <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+                <div style="background:#7C3AED;color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;box-shadow:0 2px 8px rgba(124,58,237,0.6);margin-bottom:2px;white-space:nowrap;">
+                  👤 ${p.nombre.split(' ')[0]} (${p.asientos} as.)
+                </div>
+                <div style="background:#6D28D9;border:2px solid #DDD6FE;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(109,40,217,0.6);">
+                  <span style="font-size:13px;">🙋</span>
+                </div>
+              </div>`,
+            iconSize: [70, 48],
+            iconAnchor: [35, 44],
+          });
+
+          const marcadorPasajero = L.marker([p.latitud, p.longitud], {
+            icon: iconoPasajero,
+            zIndexOffset: 500,
+          }).addTo(mapa);
+
+          marcadorPasajero.bindTooltip(
+            `<b>Reserva de Pasajero</b><br/>👤 ${p.nombre}<br/>💺 ${p.asientos} asiento(s)<br/>💳 Pago: ${p.metodoPago?.toUpperCase() || 'EFECTIVO'}${p.paradaNombre ? '<br/>🚏 En: ' + p.paradaNombre : ''}`,
+            { direction: 'top', className: 'fim-tooltip' }
+          );
+
+          marcadoresRef.current.push(marcadorPasajero);
+        });
+      }
     });
-  }, [mapaCargado, ubicacionUsuario, lineaSeleccionada, conductoresEnVivo, conductorSeleccionadoId, alSeleccionarConductor]);
+  }, [mapaCargado, ubicacionUsuario, lineaSeleccionada, conductoresEnVivo, conductorSeleccionadoId, alSeleccionarConductor, esModoConductor, miConductorId, pasajerosEnEspera]);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '350px' }}>
+    <div style={{ position: 'relative', width: '100%', height: altura, minHeight: '320px', borderRadius: '16px', overflow: 'hidden' }}>
       <div ref={contenedorRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
       <style jsx global>{`
         .fim-tooltip {

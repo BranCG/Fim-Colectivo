@@ -29,16 +29,19 @@ fi
 echo "🛑 Liberando puertos 3010 y 3011 en PM2..."
 pm2 delete fim-colectivo-api 2>/dev/null || true
 pm2 delete fim-colectivo-web 2>/dev/null || true
-pm2 save
+pm2 save --force 2>/dev/null || true
+
+# Asegurar permisos sobre el socket de Docker
+sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 
 # 3. Reconstruir y levantar contenedores en segundo plano
 echo "🔨 Construyendo imágenes y levantando contenedores Docker..."
-docker compose up -d --build
+sudo docker compose up -d --build
 
 # 4. Estado final
 echo ""
 echo "✅ Contenedores Fim Colectivo en ejecución:"
-docker compose ps
+sudo docker compose ps
 
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
