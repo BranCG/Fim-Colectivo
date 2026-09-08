@@ -22,7 +22,7 @@ jobs:
         run: npm ci || npm install
 
       - name: Generar cliente de Prisma
-        run: npx prisma generate --schema=./packages/database/schema.prisma
+        run: npm run db:generate
 
       - name: Compilar Monorepo
         run: npm run build
