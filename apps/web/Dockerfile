@@ -20,6 +20,7 @@ RUN mkdir -p /app/apps/web/public
 ARG NEXT_PUBLIC_API_URL=https://colectivo.fimchile.cl
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 
 # Compilar Next.js
 RUN npm run build --workspace=@fim-colectivo/web

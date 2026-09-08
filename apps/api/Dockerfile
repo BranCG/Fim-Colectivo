@@ -20,6 +20,7 @@ RUN npx prisma generate --schema=./packages/database/schema.prisma
 
 # Copiar código fuente de la API y compilar
 COPY apps/api ./apps/api
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 RUN npm run build --workspace=@fim-colectivo/api
 
 # ─── RUNNER DE PRODUCCIÓN ──────────────────────────────────────────────────
