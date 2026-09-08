@@ -104,7 +104,7 @@ async function main() {
   });
   console.log('✅ Pasajero de prueba:', pasajero.email);
 
-  // 4. Chofer Colectivo de prueba (Línea 10, 4 asientos, RutPay y MercadoPago)
+  // 4. Choferes Colectivo de prueba (Línea 10, 4 asientos, RutPay y MercadoPago)
   const hashClaveChofer = await bcrypt.hash('test123', 12);
   const chofer = await prisma.driver.upsert({
     where: { email: 'chofer@fimchile.cl' },
@@ -145,11 +145,51 @@ async function main() {
   });
   console.log('✅ Chofer colectivo activo:', chofer.email, `(${linea10.nombre})`);
 
+  const conductor = await prisma.driver.upsert({
+    where: { email: 'conductor@fimchile.cl' },
+    update: {},
+    create: {
+      email: 'conductor@fimchile.cl',
+      phone: '+56933333333',
+      name: 'Carlos Conductor Colectivo',
+      passwordHash: hashClaveChofer,
+      rut: '16.789.012-3',
+      birthDate: new Date('1988-03-12'),
+      address: 'Av. Libertador Bernardo O Higgins 1234, Santiago',
+      idFrontUrl: 'https://via.placeholder.com/400x250?text=Cedula+Frente',
+      idBackUrl: 'https://via.placeholder.com/400x250?text=Cedula+Dorso',
+      licenseNumber: 'B9876543',
+      licenseUrl: 'https://via.placeholder.com/400x250?text=Licencia',
+      vehicleBrand: 'Toyota',
+      vehicleModel: 'Yaris Colectivo',
+      vehicleYear: 2023,
+      vehiclePlate: 'COL202',
+      vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Toyota',
+      tagNumber: 'COL-10-02',
+      status: 'active',
+      membershipPaid: true,
+      membershipDate: new Date(),
+      totalRating: 5.0,
+      totalTrips: 85,
+      lineaId: linea10.id,
+      asientosTotales: 4,
+      asientosOcupados: 0,
+      sentidoRuta: 'ida',
+      isOnline: true,
+      lastLat: -33.4380,
+      lastLng: -70.6490,
+      telefonoRutPay: '+56933333333',
+      mercadoPagoLink: 'https://mpago.li/test-conductor',
+    },
+  });
+  console.log('✅ Conductor colectivo activo:', conductor.email, `(${linea10.nombre})`);
+
   console.log('\n🎉 Seed completado exitosamente!\n');
   console.log('═══════════════════════════════════════════════════');
   console.log('  Credenciales de prueba Fim Colectivo:');
   console.log('  Admin:      admin@fimchile.cl / admin123');
   console.log('  Pasajero:   pasajero@fimchile.cl / test123');
+  console.log('  Conductor:  conductor@fimchile.cl / test123');
   console.log('  Chofer:     chofer@fimchile.cl / test123');
   console.log('═══════════════════════════════════════════════════\n');
 }

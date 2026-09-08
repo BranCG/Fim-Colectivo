@@ -22,21 +22,45 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const endpoint = role === 'admin' ? '/auth/admin/login'
-        : role === 'driver' ? '/auth/driver/login'
+      let activeRole = role;
+      let endpoint = activeRole === 'admin' ? '/auth/admin/login'
+        : activeRole === 'driver' ? '/auth/driver/login'
           : '/auth/passenger/login';
 
-      const res = await api.post(endpoint, { email, password });
+      let res;
+      try {
+        res = await api.post(endpoint, { email, password });
+      } catch (firstErr) {
+        // Fallback inteligente: si intentó como pasajero y falló, probar como conductor automáticamente
+        if (activeRole === 'passenger') {
+          try {
+            res = await api.post('/auth/driver/login', { email, password });
+            activeRole = 'driver';
+          } catch {
+            throw firstErr;
+          }
+        } else if (activeRole === 'driver') {
+          try {
+            res = await api.post('/auth/passenger/login', { email, password });
+            activeRole = 'passenger';
+          } catch {
+            throw firstErr;
+          }
+        } else {
+          throw firstErr;
+        }
+      }
+
       const userData = res.data.user || res.data.driver;
 
-      saveSession(res.data.accessToken, { ...userData, role });
+      saveSession(res.data.accessToken, { ...userData, role: activeRole });
 
-      if (role === 'admin') router.push('/admin');
-      else if (role === 'driver') router.push('/driver');
+      if (activeRole === 'admin') router.push('/admin');
+      else if (activeRole === 'driver') router.push('/driver');
       else router.push('/passenger');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
-      setError(e.response?.data?.error || 'Error al iniciar sesión');
+      setError(e.response?.data?.error || 'Error al iniciar sesión. Revisa tus credenciales.');
     } finally {
       setLoading(false);
     }
@@ -131,6 +155,13 @@ export default function LoginPage() {
           ¿No tienes cuenta?{' '}
           <Link href="/register" style={{ color: 'var(--accent)', fontWeight: 600 }}>Regístrate gratis</Link>
         </p>
+
+        <div style={{ marginTop: '24px', padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>🔑 Cuentas activas:</div>
+          <div>🚖 <b>Conductor:</b> <code style={{ color: 'var(--accent)' }}>conductor@fimchile.cl</code> o <code style={{ color: 'var(--accent)' }}>chofer@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>test123</code></div>
+          <div>👤 <b>Pasajero:</b> <code style={{ color: 'var(--accent)' }}>pasajero@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>test123</code></div>
+          <div>⚡ <b>Admin:</b> <code style={{ color: 'var(--accent)' }}>admin@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>admin123</code></div>
+        </div>
       </div>
     </div>
   );

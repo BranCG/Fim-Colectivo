@@ -23,7 +23,7 @@ cd "$APP_DIR"
 echo "⚙️ Configurando variables de entorno de la API..."
 cat << 'EOF' > apps/api/.env
 PORT=3011
-DATABASE_URL="postgresql://postgres:Facu31052027..@db.sqnzjhhgovnelrbqwtyw.supabase.co:5432/postgres"
+DATABASE_URL="postgresql://postgres.sqnzjhhgovnelrbqwtyw:Facu31052027..@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
 JWT_SECRET="fim-colectivo-super-secret-jwt-key-2026-prod"
 JWT_REFRESH_SECRET="fim-colectivo-refresh-secret-2026-prod"
 CLIENT_URL="https://colectivo.fimchile.cl"
@@ -34,7 +34,7 @@ EOF
 
 # 3. Configurar .env de la Base de Datos (packages/database/.env)
 cat << 'EOF' > packages/database/.env
-DATABASE_URL="postgresql://postgres:Facu31052027..@db.sqnzjhhgovnelrbqwtyw.supabase.co:5432/postgres"
+DATABASE_URL="postgresql://postgres.sqnzjhhgovnelrbqwtyw:Facu31052027..@aws-0-us-east-2.pooler.supabase.com:5432/postgres"
 EOF
 
 # 4. Configurar .env del Frontend Web (apps/web/.env.production)
