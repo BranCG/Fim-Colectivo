@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  api:
+    container_name: fim-colectivo-api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: always
+    ports:
+      - "3011:3011"
+    environment:
+      - NODE_ENV=production
+      - PORT=3011
+      - DATABASE_URL=postgresql://postgres.sqnzjhhgovnelrbqwtyw:Facu31052027..@aws-0-us-east-2.pooler.supabase.com:5432/postgres
+      - JWT_SECRET=fim-colectivo-super-secret-jwt-key-2026-prod
+      - JWT_REFRESH_SECRET=fim-colectivo-refresh-secret-2026-prod
+      - CLIENT_URL=https://colectivo.fimchile.cl
+      - ADMIN_URL=https://colectivo.fimchile.cl/admin
+      - UPLOAD_DIR=/app/uploads
+      - MP_ACCESS_TOKEN=
+    volumes:
+      - api-uploads:/app/uploads
+
+  web:
+    container_name: fim-colectivo-web
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=https://colectivo.fimchile.cl
+    restart: always
+    ports:
+      - "3010:3010"
+    environment:
+      - NODE_ENV=production
+      - PORT=3010
+      - NEXT_PUBLIC_API_URL=https://colectivo.fimchile.cl
+    depends_on:
+      - api
+
+volumes:
+  api-uploads:

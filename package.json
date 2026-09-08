@@ -17,7 +17,12 @@
     "db:seed": "npm run seed --workspace=packages/database",
     "db:studio": "npm run studio --workspace=packages/database",
     "mobile:sync": "npm run mobile:sync --workspace=@fim-colectivo/web",
-    "mobile:open": "npm run mobile:open --workspace=@fim-colectivo/web"
+    "mobile:open": "npm run mobile:open --workspace=@fim-colectivo/web",
+    "docker:up": "docker compose up -d",
+    "docker:build": "docker compose up -d --build",
+    "docker:restart": "docker compose restart",
+    "docker:logs": "docker compose logs -f",
+    "docker:down": "docker compose down"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
