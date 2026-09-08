@@ -69,6 +69,15 @@ export function reproducirSonido(tipo: 'alerta' | 'exito' | 'rechazo') {
 
 // Cache de voces disponibles
 let vocesPrecargadas: SpeechSynthesisVoice[] = [];
+let audioActual: HTMLAudioElement | null = null;
+
+function getBaseApiUrl(): string {
+  if (typeof window === 'undefined') return 'https://colectivo.fimchile.cl';
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') return `http://${host}:3011`;
+  return 'https://colectivo.fimchile.cl';
+}
 
 function precargarVoces() {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -80,8 +89,27 @@ function precargarVoces() {
   }
 }
 
+// Desbloqueo pasivo al primer toque en la pantalla para WebView y navegadores móviles
 if (typeof window !== 'undefined') {
   precargarVoces();
+  const desbloquearPasivo = () => {
+    try {
+      const ctx = obtenerAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.resume();
+      }
+      const dummyAudio = new Audio();
+      dummyAudio.volume = 0.01;
+      dummyAudio.play().catch(() => {});
+    } catch {}
+    window.removeEventListener('touchstart', desbloquearPasivo);
+    window.removeEventListener('click', desbloquearPasivo);
+  };
+  window.addEventListener('touchstart', desbloquearPasivo, { passive: true, once: true });
+  window.addEventListener('click', desbloquearPasivo, { passive: true, once: true });
 }
 
 function buscarVozEspanol(): SpeechSynthesisVoice | undefined {
@@ -97,9 +125,12 @@ function buscarVozEspanol(): SpeechSynthesisVoice | undefined {
 }
 
 /**
- * Desbloquea de forma explícita el AudioContext y SpeechSynthesis tras un toque o click del usuario
+ * Desbloquea de forma explícita el AudioContext y sintetizador tras un toque o click del usuario
  */
-export function desbloquearAudioYVoz(mensajeTest = 'Audio y voz activados', alCompletar?: () => void) {
+export function desbloquearAudioYVoz(
+  mensajeTest = 'Audio y voz activados para el servicio de colectivos',
+  alCompletar?: () => void
+) {
   try {
     const ctx = obtenerAudioContext();
     if (ctx && ctx.state === 'suspended') {
@@ -111,27 +142,9 @@ export function desbloquearAudioYVoz(mensajeTest = 'Audio y voz activados', alCo
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.resume();
       precargarVoces();
-
-      const locucionTest = new SpeechSynthesisUtterance(mensajeTest);
-      locucionTest.lang = 'es-CL';
-      locucionTest.rate = 1.0;
-      locucionTest.pitch = 1.0;
-      locucionTest.volume = 1.0;
-
-      const voz = buscarVozEspanol();
-      if (voz) locucionTest.voice = voz;
-
-      locucionTest.onend = () => {
-        if (alCompletar) alCompletar();
-      };
-      locucionTest.onerror = () => {
-        if (alCompletar) alCompletar();
-      };
-
-      window.speechSynthesis.speak(locucionTest);
-    } else {
-      if (alCompletar) alCompletar();
     }
+
+    hablarTexto(mensajeTest, alCompletar);
   } catch (e) {
     console.warn('Error al desbloquear audio y voz:', e);
     if (alCompletar) alCompletar();
@@ -139,9 +152,88 @@ export function desbloquearAudioYVoz(mensajeTest = 'Audio y voz activados', alCo
 }
 
 /**
- * Lee texto en voz alta en español utilizando la API nativa SpeechSynthesis de forma robusta
+ * Detiene inmediatamente cualquier locución en curso (audio streaming o síntesis nativa)
+ */
+export function detenerVoz() {
+  if (audioActual) {
+    try {
+      audioActual.pause();
+      audioActual.currentTime = 0;
+    } catch {}
+    audioActual = null;
+  }
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {}
+  }
+}
+
+/**
+ * Lee texto en voz alta utilizando audio streaming neural en español con fallback nativo
  */
 export function hablarTexto(texto: string, alFinalizar?: () => void) {
+  if (typeof window === 'undefined') {
+    if (alFinalizar) alFinalizar();
+    return;
+  }
+
+  detenerVoz();
+
+  let finalizado = false;
+  const invocarFinal = () => {
+    if (!finalizado) {
+      finalizado = true;
+      if (alFinalizar) alFinalizar();
+    }
+  };
+
+  // Intentar reproducir stream de audio neural en español (Google TTS / proxy API)
+  try {
+    const textoCodificado = encodeURIComponent(texto.trim().slice(0, 250));
+    const urlProxy = `${getBaseApiUrl()}/api/colectivos/tts?texto=${textoCodificado}&lang=es`;
+    const urlGoogle = `https://translate.google.com/translate_tts?ie=UTF-8&q=${textoCodificado}&tl=es&client=tw-ob`;
+
+    const audio = new Audio();
+    audioActual = audio;
+
+    const timerSeguridad = setTimeout(() => {
+      invocarFinal();
+    }, 14000);
+
+    audio.onended = () => {
+      clearTimeout(timerSeguridad);
+      audioActual = null;
+      invocarFinal();
+    };
+
+    audio.onerror = () => {
+      clearTimeout(timerSeguridad);
+      console.warn('[TTS Audio] Falló stream primario, probando fallback secundario...');
+      audioActual = null;
+      ejecutarLecturaSintesis(texto, invocarFinal);
+    };
+
+    audio.src = urlProxy;
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn('[TTS Audio] Error en proxy, probando Google directo:', err);
+        audio.src = urlGoogle;
+        audio.play().catch(() => {
+          clearTimeout(timerSeguridad);
+          audioActual = null;
+          ejecutarLecturaSintesis(texto, invocarFinal);
+        });
+      });
+    }
+  } catch (e) {
+    console.warn('[TTS Audio] Error general al inicializar audio, pasando a síntesis nativa:', e);
+    ejecutarLecturaSintesis(texto, invocarFinal);
+  }
+}
+
+function ejecutarLecturaSintesis(texto: string, alFinalizar?: () => void) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
     if (alFinalizar) alFinalizar();
     return;
@@ -150,29 +242,9 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
   try {
     window.speechSynthesis.resume();
 
-    // En Chromium, llamar a speak() sincrónicamente tras cancel() anula la locución nueva.
-    // Si está hablando, cancelamos y damos 40ms para que la cola se desaloje limpiamente.
-    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-      window.speechSynthesis.cancel();
-      setTimeout(() => {
-        ejecutarLectura(texto, alFinalizar);
-      }, 40);
-    } else {
-      ejecutarLectura(texto, alFinalizar);
-    }
-  } catch (err) {
-    console.warn('Error al preparar hablarTexto:', err);
-    if (alFinalizar) alFinalizar();
-  }
-}
-
-function ejecutarLectura(texto: string, alFinalizar?: () => void) {
-  try {
-    window.speechSynthesis.resume();
-
     const locucion = new SpeechSynthesisUtterance(texto);
     locucion.lang = 'es-CL';
-    locucion.rate = 1.02; // Ritmo ágil y comprensible
+    locucion.rate = 1.02;
     locucion.pitch = 1.0;
     locucion.volume = 1.0;
 
@@ -195,9 +267,7 @@ function ejecutarLectura(texto: string, alFinalizar?: () => void) {
       invocarFinal();
     };
 
-    // Timeout de seguridad en caso de que el navegador no dispare onend
     setTimeout(invocarFinal, 12000);
-
     window.speechSynthesis.speak(locucion);
   } catch (err) {
     console.warn('Error al ejecutar speak:', err);
@@ -205,24 +275,16 @@ function ejecutarLectura(texto: string, alFinalizar?: () => void) {
   }
 }
 
-/**
- * Detiene inmediatamente cualquier lectura de voz en curso
- */
-export function detenerVoz() {
-  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-  }
-}
-
 interface OpcionesEscucha {
-  onSi: () => void;
-  onNo: () => void;
+  onSi?: () => void;
+  onNo?: () => void;
+  onAbordo?: () => void;
   onEscuchando?: (estado: boolean) => void;
   onError?: (error: string) => void;
 }
 
 /**
- * Inicia la escucha por micrófono de comandos rápidos "SÍ" o "NO" manos libres
+ * Inicia la escucha por micrófono de comandos rápidos ("SÍ", "NO", "A BORDO") manos libres
  */
 export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => void } {
   if (typeof window === 'undefined') {
@@ -269,16 +331,35 @@ export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => v
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '');
 
-        // Patrones afirmativos
+        // Patrón: Pasajero a bordo / Abordo
         if (
-          normalizado.includes('si') ||
-          normalizado.includes('dale') ||
-          normalizado.includes('tomar') ||
-          normalizado.includes('bueno') ||
-          normalizado.includes('aceptar') ||
-          normalizado.includes('ok') ||
-          normalizado.includes('vamos') ||
-          normalizado.includes('sube')
+          opciones.onAbordo &&
+          (normalizado.includes('a bordo') ||
+            normalizado.includes('abordo') ||
+            normalizado.includes('subio') ||
+            normalizado.includes('sube') ||
+            normalizado.includes('pasajero a bordo') ||
+            normalizado.includes('ya subio'))
+        ) {
+          finalizado = true;
+          detener();
+          opciones.onAbordo();
+          return;
+        }
+
+        // Patrones afirmativos: "SÍ"
+        if (
+          opciones.onSi &&
+          (normalizado.includes('si') ||
+            normalizado.includes('dale') ||
+            normalizado.includes('tomar') ||
+            normalizado.includes('bueno') ||
+            normalizado.includes('aceptar') ||
+            normalizado.includes('ok') ||
+            normalizado.includes('vamos') ||
+            normalizado.includes('confirma') ||
+            normalizado.includes('cobrar') ||
+            normalizado.includes('pagar'))
         ) {
           finalizado = true;
           detener();
@@ -286,14 +367,15 @@ export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => v
           return;
         }
 
-        // Patrones negativos
+        // Patrones negativos: "NO"
         if (
-          normalizado.includes('no') ||
-          normalizado.includes('pasar') ||
-          normalizado.includes('paso') ||
-          normalizado.includes('rechazar') ||
-          normalizado.includes('deja') ||
-          normalizado.includes('no puedo')
+          opciones.onNo &&
+          (normalizado.includes('no') ||
+            normalizado.includes('pasar') ||
+            normalizado.includes('paso') ||
+            normalizado.includes('rechazar') ||
+            normalizado.includes('deja') ||
+            normalizado.includes('no puedo'))
         ) {
           finalizado = true;
           detener();
@@ -306,7 +388,6 @@ export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => v
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     reconocimiento.onerror = (err: any) => {
       console.warn('[Voz Chofer] Reconocimiento error:', err?.error);
-      // Si no hay permisos de micrófono o fue cancelado, detener de inmediato
       if (
         err?.error === 'not-allowed' ||
         err?.error === 'service-not-allowed' ||
@@ -321,7 +402,6 @@ export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => v
     let reintentos = 0;
     reconocimiento.onend = () => {
       if (opciones.onEscuchando) opciones.onEscuchando(false);
-      // Reiniciar de forma controlada hasta máximo 3 veces con pausa de 600ms
       if (!finalizado && reintentos < 3) {
         reintentos++;
         setTimeout(() => {

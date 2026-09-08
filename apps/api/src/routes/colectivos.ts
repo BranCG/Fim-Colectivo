@@ -1006,4 +1006,38 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
   }
 });
 
+// ─── ENDPOINT STREAMING TTS EN ESPAÑOL / CHILENO (MANOS LIBRES LEY 21.377) ──
+router.get('/tts', async (req: Request, res: Response) => {
+  try {
+    const texto = String(req.query.texto || '').trim();
+    if (!texto) {
+      return res.status(400).json({ error: 'El parámetro texto es obligatorio' });
+    }
+
+    const textoSeguro = encodeURIComponent(texto.slice(0, 250));
+    const lang = String(req.query.lang || 'es');
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${textoSeguro}&tl=${lang}&client=tw-ob`;
+
+    const respuestaTTS = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Accept: 'audio/mpeg, audio/*;q=0.9',
+      },
+    });
+
+    if (!respuestaTTS.ok) {
+      return res.status(respuestaTTS.status).json({ error: 'Error al consultar servicio TTS externo' });
+    }
+
+    const arrayBuffer = await respuestaTTS.arrayBuffer();
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Accept-Ranges', 'bytes');
+    return res.send(Buffer.from(arrayBuffer));
+  } catch (error) {
+    console.error('Error en /tts:', error);
+    return res.status(500).json({ error: 'Error interno al generar audio TTS' });
+  }
+});
+
 export default router;

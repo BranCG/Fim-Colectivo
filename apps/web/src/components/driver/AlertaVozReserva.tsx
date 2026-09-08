@@ -38,13 +38,12 @@ export default function AlertaVozReserva({
     // Sonido de alerta
     reproducirSonido('alerta');
 
-    // Construir texto en lenguaje natural claro y conciso
+    // Construir texto en lenguaje natural claro y conciso exactamente como el chofer espera
     const nombre = solicitud.nombrePasajero.split(' ')[0];
-    const distancia = solicitud.distanciaMetros;
     const asientos = solicitud.cantidadAsientos;
-    const textoVoz = `${nombre} a ${distancia} metros, ${asientos} ${asientos > 1 ? 'asientos' : 'asiento'}. ¿Lo tomamos?`;
+    const textoVoz = `Reserva de ${nombre}, ${asientos} ${asientos > 1 ? 'asientos' : 'asiento'}. ¿Aceptar, SÍ o NO?`;
 
-    // Hablar inmediatamente y al terminar activar reconocimiento de voz
+    // Hablar inmediatamente con voz neuronal streaming y al terminar activar reconocimiento de voz
     hablarTexto(textoVoz, () => {
       // Iniciar reconocimiento de comandos por voz ("SÍ" o "NO")
       escuchaRef.current = iniciarEscuchaVoz({
