@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import api, { formatCLP, clearSession, getSession } from '@/lib/api';
+import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo } from '@/components/map/ColectivoMap';
 import {
@@ -68,6 +68,14 @@ export default function PaginaPasajeroColectivo() {
   // Feedback y mensajes
   const [mensajeAlerta, setMensajeAlerta] = useState<string>('');
   const [mensajeError, setMensajeError] = useState<string>('');
+
+  // Cálculo en tiempo real de asientos libres en la línea seleccionada
+  const totalAsientosLibres = useMemo(() => {
+    return conductoresEnVivo.reduce(
+      (acc, c) => acc + Math.max(0, (c.asientosTotales || 4) - c.asientosOcupados),
+      0
+    );
+  }, [conductoresEnVivo]);
 
   // 1. Validar autenticación
   useEffect(() => {
@@ -361,15 +369,6 @@ export default function PaginaPasajeroColectivo() {
                 display: 'inline-block',
               }} />
               {linea.nombre}
-              <span style={{
-                fontSize: '11px',
-                background: 'rgba(255, 255, 255, 0.1)',
-                padding: '2px 6px',
-                borderRadius: '10px',
-                color: '#38BDF8',
-              }}>
-                {formatCLP(linea.tarifa)}
-              </span>
             </button>
           );
         })}
@@ -484,10 +483,22 @@ export default function PaginaPasajeroColectivo() {
                 </h3>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '16px', fontWeight: '800', color: '#38BDF8' }}>
-                  {formatCLP(reservaActiva.tarifa)}
+                <span style={{
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  color: '#38BDF8',
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}>
+                  <IconoAsiento size={14} color="#38BDF8" />
+                  {reservaActiva.cantidadAsientos} asiento{reservaActiva.cantidadAsientos > 1 ? 's' : ''}
                 </span>
-                <div style={{ fontSize: '11px', color: '#94A3B8' }}>{reservaActiva.cantidadAsientos} asiento(s)</div>
+                <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '3px' }}>Asiento reservado</div>
               </div>
             </div>
 
@@ -630,8 +641,8 @@ export default function PaginaPasajeroColectivo() {
               {cargandoReserva
                 ? 'Reservando...'
                 : 4 - conductorElegido.asientosOcupados <= 0
-                ? 'Colectivo Completo'
-                : `Reservar ${cantidadAsientos} Asiento(s) • ${formatCLP((lineaSeleccionada?.tarifa || 800) * cantidadAsientos)}`}
+                ? 'Colectivo Completo (Sin Asientos)'
+                : `Reservar ${cantidadAsientos} Asiento${cantidadAsientos > 1 ? 's' : ''}`}
             </button>
           </div>
         ) : (
@@ -649,10 +660,53 @@ export default function PaginaPasajeroColectivo() {
               </p>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <span style={{ fontSize: '16px', fontWeight: '800', color: '#38BDF8' }}>
-                {formatCLP(lineaSeleccionada?.tarifa || 800)}
-              </span>
-              <div style={{ fontSize: '11px', color: '#94A3B8' }}>Tarifa fija por asiento</div>
+              {conductoresEnVivo.length === 0 ? (
+                <span style={{
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  color: '#94A3B8',
+                  background: 'rgba(148, 163, 184, 0.15)',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(148, 163, 184, 0.3)',
+                }}>
+                  Sin colectivos
+                </span>
+              ) : totalAsientosLibres > 0 ? (
+                <div>
+                  <span style={{
+                    fontSize: '13px',
+                    fontWeight: '800',
+                    color: '#34D399',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    padding: '4px 10px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                  }}>
+                    <IconoAsiento size={13} color="#34D399" />
+                    {totalAsientosLibres} libre{totalAsientosLibres > 1 ? 's' : ''}
+                  </span>
+                  <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '3px' }}>En la línea</div>
+                </div>
+              ) : (
+                <div>
+                  <span style={{
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    color: '#F87171',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    padding: '4px 10px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                  }}>
+                    Llenos
+                  </span>
+                  <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '3px' }}>Sin asientos</div>
+                </div>
+              )}
             </div>
           </div>
         )}

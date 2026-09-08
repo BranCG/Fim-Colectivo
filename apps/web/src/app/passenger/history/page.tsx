@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api, { formatCLP, getSession } from '@/lib/api';
+import api, { getSession } from '@/lib/api';
 
 interface Trip {
   id: string;
@@ -77,7 +77,7 @@ export default function PassengerHistoryPage() {
                   )}
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--gold)' }}>{formatCLP(trip.estimatedPrice)}</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--accent)' }}>Viaje Colectivo</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
                     {trip.paymentMethod === 'cash' ? (
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>

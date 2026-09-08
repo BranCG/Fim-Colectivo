@@ -796,7 +796,7 @@ export default function PaginaConductorColectivo() {
             >
               {lineasDisponibles.map((linea) => (
                 <option key={linea.id} value={linea.id}>
-                  {linea.nombre} (${linea.tarifa} CLP)
+                  {linea.nombre}
                 </option>
               ))}
             </select>
@@ -830,7 +830,7 @@ export default function PaginaConductorColectivo() {
 
         {lineaActual && (
           <div style={{ background: '#0B1329', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', color: '#94A3B8', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Tarifa oficial: <b style={{ color: '#F1F5F9' }}>${lineaActual.tarifa} CLP</b></span>
+            <span>Ruta activa: <b style={{ color: '#F1F5F9' }}>{lineaActual.nombre}</b></span>
             <span>Paradas en ruta: <b style={{ color: '#F1F5F9' }}>{lineaActual.paradas?.length || 0} paradas</b></span>
           </div>
         )}
@@ -896,7 +896,7 @@ export default function PaginaConductorColectivo() {
                     </h4>
                     <span style={{ fontSize: '12px', color: '#A78BFA', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
                       <IconoAsiento size={14} color="#A78BFA" />
-                      <span>{reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} • Tarifa: ${reserva.tarifa} CLP</span>
+                      <span>{reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} solicitado{reserva.cantidadAsientos > 1 ? 's' : ''}</span>
                     </span>
                   </div>
                   <span style={{
