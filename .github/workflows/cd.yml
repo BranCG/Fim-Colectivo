@@ -2,7 +2,7 @@ name: CD - Despliegue Continuo AWS
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, DevOpS ]
 
 jobs:
   build-check:
@@ -47,7 +47,9 @@ jobs:
             if [ -d "$APP_DIR" ]; then
               cd "$APP_DIR"
               echo "🔄 Obteniendo últimos cambios de Git..."
-              git pull origin main
+              git fetch origin
+              CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+              git pull origin $CURRENT_BRANCH
               
               echo "🐳 Reconstruyendo y actualizando contenedores Docker..."
               docker compose up -d --build
