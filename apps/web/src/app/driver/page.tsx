@@ -1097,18 +1097,18 @@ export default function PaginaConductorColectivo() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
           <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconoPasajero size={18} color="#A78BFA" />
-            <span>Reservas de Pasajeros en Espera</span>
+            <IconoPasajero size={18} color="#34D399" />
+            <span>Pasajeros en Ruta (Confirmados y a Bordo)</span>
           </h2>
           <span style={{
             fontSize: '11px',
             fontWeight: '800',
             padding: '3px 8px',
             borderRadius: '10px',
-            background: reservasPendientes.length > 0 ? '#7C3AED' : '#334155',
+            background: reservasPendientes.length > 0 ? '#059669' : '#334155',
             color: '#FFFFFF',
           }}>
-            {reservasPendientes.length} solicitud{reservasPendientes.length !== 1 ? 'es' : ''}
+            {reservasPendientes.length} en ruta
           </span>
         </div>
 
@@ -1118,7 +1118,7 @@ export default function PaginaConductorColectivo() {
               <IconoParada size={32} color="#64748B" />
             </div>
             <p style={{ margin: 0, fontSize: '13px' }}>
-              No hay solicitudes de reserva pendientes en tu ruta.
+              No hay pasajeros confirmados en tu ruta en este momento.
             </p>
             <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#475569' }}>
               Los pasajeros verán tu colectivo en tiempo real en el mapa mientras estés En Servicio.
@@ -1133,7 +1133,11 @@ export default function PaginaConductorColectivo() {
                   background: '#0B1329',
                   padding: '14px',
                   borderRadius: '12px',
-                  border: '1px solid rgba(124, 58, 237, 0.3)',
+                  border: reserva.estado === 'reservado'
+                    ? '1px solid rgba(16, 185, 129, 0.4)'
+                    : reserva.estado === 'abordado'
+                    ? '1px solid rgba(59, 130, 246, 0.4)'
+                    : '1px solid rgba(124, 58, 237, 0.3)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
@@ -1145,23 +1149,65 @@ export default function PaginaConductorColectivo() {
                     <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#F8FAFC' }}>
                       {reserva.pasajero.name}
                     </h4>
-                    <span style={{ fontSize: '12px', color: '#A78BFA', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
-                      <IconoAsiento size={14} color="#A78BFA" />
-                      <span>{reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} solicitado{reserva.cantidadAsientos > 1 ? 's' : ''}</span>
+                    <span style={{
+                      fontSize: '12px',
+                      color: reserva.estado === 'reservado' ? '#34D399' : reserva.estado === 'abordado' ? '#60A5FA' : '#A78BFA',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      marginTop: '2px',
+                    }}>
+                      <IconoAsiento size={14} color={reserva.estado === 'reservado' ? '#34D399' : reserva.estado === 'abordado' ? '#60A5FA' : '#A78BFA'} />
+                      <span>
+                        {reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} {reserva.estado === 'reservado' || reserva.estado === 'abordado' ? 'asignado' : 'solicitado'}{reserva.cantidadAsientos > 1 ? 's' : ''}
+                        {reserva.estado === 'reservado' ? ' (Esperando que aborde)' : reserva.estado === 'abordado' ? ' (A bordo del auto)' : ''}
+                      </span>
                     </span>
                   </div>
-                  <span style={{
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    padding: '3px 8px',
-                    borderRadius: '8px',
-                    background: reserva.metodoPago === 'rutpay' ? 'rgba(245, 158, 11, 0.2)' : reserva.metodoPago === 'mercadopago' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                    color: reserva.metodoPago === 'rutpay' ? '#FBBF24' : reserva.metodoPago === 'mercadopago' ? '#38BDF8' : '#34D399',
-                    border: '1px solid currentColor',
-                    textTransform: 'uppercase',
-                  }}>
-                    {reserva.metodoPago}
-                  </span>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: '800',
+                      padding: '3px 7px',
+                      borderRadius: '8px',
+                      background: reserva.estado === 'reservado'
+                        ? 'rgba(16, 185, 129, 0.2)'
+                        : reserva.estado === 'abordado'
+                        ? 'rgba(37, 99, 235, 0.2)'
+                        : reserva.estado === 'pagando'
+                        ? 'rgba(245, 158, 11, 0.2)'
+                        : 'rgba(148, 163, 184, 0.2)',
+                      color: reserva.estado === 'reservado'
+                        ? '#34D399'
+                        : reserva.estado === 'abordado'
+                        ? '#60A5FA'
+                        : reserva.estado === 'pagando'
+                        ? '#FBBF24'
+                        : '#CBD5E1',
+                      border: '1px solid currentColor',
+                    }}>
+                      {reserva.estado === 'reservado'
+                        ? 'CONFIRMADO (POR SUBIR)'
+                        : reserva.estado === 'abordado'
+                        ? 'A BORDO'
+                        : reserva.estado === 'pagando'
+                        ? 'PAGANDO'
+                        : 'PENDIENTE'}
+                    </span>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: '700',
+                      padding: '3px 7px',
+                      borderRadius: '8px',
+                      background: reserva.metodoPago === 'rutpay' ? 'rgba(245, 158, 11, 0.2)' : reserva.metodoPago === 'mercadopago' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                      color: reserva.metodoPago === 'rutpay' ? '#FBBF24' : reserva.metodoPago === 'mercadopago' ? '#38BDF8' : '#34D399',
+                      border: '1px solid currentColor',
+                      textTransform: 'uppercase',
+                    }}>
+                      {reserva.metodoPago}
+                    </span>
+                  </div>
                 </div>
 
                 {reserva.direccionSubida && (

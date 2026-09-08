@@ -154,71 +154,49 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
     }
 
     const valorTarifa = chofer.linea ? chofer.linea.tarifa * cantidadAsientos : 800 * cantidadAsientos;
-    const nuevosOcupados = Math.min(chofer.asientosTotales, chofer.asientosOcupados + cantidadAsientos);
 
-    // Crear la reserva de asiento y actualizar asientos ocupados en transacción
-    const [nuevaReserva, choferActualizado] = await prisma.$transaction([
-      prisma.reservaAsiento.create({
-        data: {
-          pasajeroId,
-          conductorId,
-          lineaId,
-          cantidadAsientos,
-          latitudSubida,
-          longitudSubida,
-          direccionSubida,
-          tarifa: valorTarifa,
-          metodoPago,
-          notas,
-          estado: 'reservado',
-        },
-        include: {
-          linea: true,
-          conductor: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-              vehiclePlate: true,
-              vehicleBrand: true,
-              vehicleModel: true,
-              telefonoRutPay: true,
-              mercadoPagoLink: true,
-            },
-          },
-          pasajero: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-            },
+    // Crear la reserva de asiento en estado pendiente_chofer (sin ocupar asientos hasta que el chofer acepte)
+    const nuevaReserva = await prisma.reservaAsiento.create({
+      data: {
+        pasajeroId,
+        conductorId,
+        lineaId,
+        cantidadAsientos,
+        latitudSubida,
+        longitudSubida,
+        direccionSubida,
+        tarifa: valorTarifa,
+        metodoPago,
+        notas,
+        estado: 'pendiente_chofer',
+      },
+      include: {
+        linea: true,
+        conductor: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            vehiclePlate: true,
+            vehicleBrand: true,
+            vehicleModel: true,
+            telefonoRutPay: true,
+            mercadoPagoLink: true,
           },
         },
-      }),
-      prisma.driver.update({
-        where: { id: conductorId },
-        data: { asientosOcupados: nuevosOcupados },
-      }),
-    ]);
-
-    // Emitir cambio de asientos a la flota y al conductor
-    if (chofer.lineaId) {
-      io.to(`linea:${chofer.lineaId}`).emit('colectivo:cambio-asientos', {
-        conductorId: chofer.id,
-        asientosOcupados: choferActualizado.asientosOcupados,
-        asientosTotales: choferActualizado.asientosTotales,
-      });
-    }
-    io.to(`driver:${conductorId}`).emit('colectivo:cambio-asientos', {
-      conductorId: chofer.id,
-      asientosOcupados: choferActualizado.asientosOcupados,
-      asientosTotales: choferActualizado.asientosTotales,
+        pasajero: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          },
+        },
+      },
     });
 
     // Notificar al conductor por WebSocket en tiempo real
     io.to(`driver:${conductorId}`).emit('colectivo:nueva-reserva', {
       reserva: nuevaReserva,
-      asientosOcupados: choferActualizado.asientosOcupados,
     });
 
     // Emitir también solicitud con voz al conductor
@@ -236,7 +214,7 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       direccionSubida: nuevaReserva.direccionSubida,
     });
 
-    respuesta.status(201).json({ reserva: nuevaReserva, asientosOcupados: choferActualizado.asientosOcupados });
+    respuesta.status(201).json({ reserva: nuevaReserva });
   } catch (error) {
     console.error('Error al reservar asiento:', error);
     respuesta.status(500).json({ error: 'Error al realizar la reserva del asiento' });
@@ -938,10 +916,13 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
       solicitudesDirigidasActivas.delete(id);
 
       const choferActual = await prisma.driver.findUnique({ where: { id: conductorId } });
-      const nuevosOcupados = Math.min(
-        choferActual?.asientosTotales || 4,
-        (choferActual?.asientosOcupados || 0) + reserva.cantidadAsientos
-      );
+      const yaOcupaba = reserva.estado === 'reservado' || reserva.estado === 'abordado';
+      const nuevosOcupados = yaOcupaba
+        ? (choferActual?.asientosOcupados || 0)
+        : Math.min(
+            choferActual?.asientosTotales || 4,
+            (choferActual?.asientosOcupados || 0) + reserva.cantidadAsientos
+          );
 
       const [reservaActualizada, choferActualizado] = await prisma.$transaction([
         prisma.reservaAsiento.update({
