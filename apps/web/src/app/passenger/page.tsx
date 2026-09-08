@@ -930,17 +930,17 @@ export default function PaginaPasajeroColectivo() {
                 {/* Botón principal de solicitud dirigida */}
                 <button
                   onClick={solicitarProximoColectivo}
-                  disabled={totalAsientosLibres <= 0 || conductoresEnVivo.length === 0}
+                  disabled={buscandoMovil || totalAsientosLibres <= 0 || conductoresEnVivo.length === 0}
                   style={{
                     width: '100%',
                     padding: '12px',
                     borderRadius: '10px',
-                    background: totalAsientosLibres <= 0 || conductoresEnVivo.length === 0 ? '#475569' : '#10B981',
+                    background: buscandoMovil || totalAsientosLibres <= 0 || conductoresEnVivo.length === 0 ? '#475569' : '#10B981',
                     color: '#FFFFFF',
                     fontWeight: '800',
                     fontSize: '14px',
                     border: 'none',
-                    cursor: totalAsientosLibres <= 0 || conductoresEnVivo.length === 0 ? 'not-allowed' : 'pointer',
+                    cursor: buscandoMovil || totalAsientosLibres <= 0 || conductoresEnVivo.length === 0 ? 'not-allowed' : 'pointer',
                     boxShadow: totalAsientosLibres <= 0 ? 'none' : '0 4px 14px rgba(16, 185, 129, 0.4)',
                     display: 'flex',
                     alignItems: 'center',

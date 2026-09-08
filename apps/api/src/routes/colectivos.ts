@@ -140,48 +140,72 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
     }
 
     const valorTarifa = chofer.linea ? chofer.linea.tarifa * cantidadAsientos : 800 * cantidadAsientos;
+    const nuevosOcupados = Math.min(chofer.asientosTotales, chofer.asientosOcupados + cantidadAsientos);
 
-    // Crear la reserva de asiento
-    const nuevaReserva = await prisma.reservaAsiento.create({
-      data: {
-        pasajeroId,
-        conductorId,
-        lineaId,
-        cantidadAsientos,
-        latitudSubida,
-        longitudSubida,
-        direccionSubida,
-        tarifa: valorTarifa,
-        metodoPago,
-        notas,
-        estado: 'reservado',
-      },
-      include: {
-        linea: true,
-        conductor: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            vehiclePlate: true,
-            vehicleBrand: true,
-            vehicleModel: true,
-            telefonoRutPay: true,
-            mercadoPagoLink: true,
+    // Crear la reserva de asiento y actualizar asientos ocupados en transacción
+    const [nuevaReserva, choferActualizado] = await prisma.$transaction([
+      prisma.reservaAsiento.create({
+        data: {
+          pasajeroId,
+          conductorId,
+          lineaId,
+          cantidadAsientos,
+          latitudSubida,
+          longitudSubida,
+          direccionSubida,
+          tarifa: valorTarifa,
+          metodoPago,
+          notas,
+          estado: 'reservado',
+        },
+        include: {
+          linea: true,
+          conductor: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              vehiclePlate: true,
+              vehicleBrand: true,
+              vehicleModel: true,
+              telefonoRutPay: true,
+              mercadoPagoLink: true,
+            },
+          },
+          pasajero: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+            },
           },
         },
-        pasajero: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-          },
-        },
-      },
+      }),
+      prisma.driver.update({
+        where: { id: conductorId },
+        data: { asientosOcupados: nuevosOcupados },
+      }),
+    ]);
+
+    // Emitir cambio de asientos a la flota y al conductor
+    if (chofer.lineaId) {
+      io.to(`linea:${chofer.lineaId}`).emit('colectivo:cambio-asientos', {
+        conductorId: chofer.id,
+        asientosOcupados: choferActualizado.asientosOcupados,
+        asientosTotales: choferActualizado.asientosTotales,
+      });
+    }
+    io.to(`driver:${conductorId}`).emit('colectivo:cambio-asientos', {
+      conductorId: chofer.id,
+      asientosOcupados: choferActualizado.asientosOcupados,
+      asientosTotales: choferActualizado.asientosTotales,
     });
 
     // Notificar al conductor por WebSocket en tiempo real
-    io.to(`driver:${conductorId}`).emit('colectivo:nueva-reserva', { reserva: nuevaReserva });
+    io.to(`driver:${conductorId}`).emit('colectivo:nueva-reserva', {
+      reserva: nuevaReserva,
+      asientosOcupados: choferActualizado.asientosOcupados,
+    });
 
     // Emitir también solicitud con voz al conductor
     const distKm = chofer.lastLat && chofer.lastLng && latitudSubida && longitudSubida
@@ -198,7 +222,7 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       direccionSubida: nuevaReserva.direccionSubida,
     });
 
-    respuesta.status(201).json({ reserva: nuevaReserva });
+    respuesta.status(201).json({ reserva: nuevaReserva, asientosOcupados: choferActualizado.asientosOcupados });
   } catch (error) {
     console.error('Error al reservar asiento:', error);
     respuesta.status(500).json({ error: 'Error al realizar la reserva del asiento' });
@@ -381,7 +405,10 @@ router.post('/reservas/:id/abordar', requireAuth, requireRole('driver', 'admin')
     }
 
     const choferActual = await prisma.driver.findUnique({ where: { id: conductorId } });
-    const nuevosOcupados = Math.min(4, (choferActual?.asientosOcupados || 0) + reserva.cantidadAsientos);
+    const yaOcupabaAsiento = reserva.estado === 'reservado';
+    const nuevosOcupados = yaOcupabaAsiento
+      ? (choferActual?.asientosOcupados || 0)
+      : Math.min(choferActual?.asientosTotales || 4, (choferActual?.asientosOcupados || 0) + reserva.cantidadAsientos);
 
     const [reservaActualizada, choferActualizado] = await prisma.$transaction([
       prisma.reservaAsiento.update({
@@ -544,16 +571,29 @@ router.post('/reservas/:id/cancelar', requireAuth, async (peticion: Request, res
       data: { estado: 'cancelado' },
     });
 
-    // Si ya había abordado y se cancela, liberar el asiento
-    if (reserva.estado === 'abordado') {
-      await prisma.driver.update({
-        where: { id: reserva.conductorId },
-        data: {
-          asientosOcupados: {
-            set: Math.max(0, reserva.conductor.asientosOcupados - reserva.cantidadAsientos),
-          },
-        },
-      });
+    // Si ya había reservado, abordado o estaba pagando y se cancela, liberar el asiento
+    if (['reservado', 'abordado', 'pagando'].includes(reserva.estado) && reserva.conductorId) {
+      const choferActual = await prisma.driver.findUnique({ where: { id: reserva.conductorId } });
+      if (choferActual) {
+        const nuevosOcupados = Math.max(0, choferActual.asientosOcupados - reserva.cantidadAsientos);
+        const choferActualizado = await prisma.driver.update({
+          where: { id: reserva.conductorId },
+          data: { asientosOcupados: nuevosOcupados },
+        });
+
+        if (choferActualizado.lineaId) {
+          io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:cambio-asientos', {
+            conductorId: choferActualizado.id,
+            asientosOcupados: choferActualizado.asientosOcupados,
+            asientosTotales: choferActualizado.asientosTotales,
+          });
+        }
+        io.to(`driver:${reserva.conductorId}`).emit('colectivo:cambio-asientos', {
+          conductorId: choferActualizado.id,
+          asientosOcupados: choferActualizado.asientosOcupados,
+          asientosTotales: choferActualizado.asientosTotales,
+        });
+      }
     }
 
     // Si la reserva estaba en proceso de despacho dirigido, cancelar el timer
@@ -869,14 +909,43 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
       if (solicitud?.timer) clearTimeout(solicitud.timer);
       solicitudesDirigidasActivas.delete(id);
 
-      const reservaActualizada = await prisma.reservaAsiento.update({
-        where: { id },
-        data: { estado: 'reservado' },
-        include: {
-          conductor: { select: { id: true, name: true, vehiclePlate: true, phone: true, lastLat: true, lastLng: true, telefonoRutPay: true, mercadoPagoLink: true } },
-          pasajero: { select: { id: true, name: true, phone: true } },
-          linea: true,
-        },
+      const choferActual = await prisma.driver.findUnique({ where: { id: conductorId } });
+      const nuevosOcupados = Math.min(
+        choferActual?.asientosTotales || 4,
+        (choferActual?.asientosOcupados || 0) + reserva.cantidadAsientos
+      );
+
+      const [reservaActualizada, choferActualizado] = await prisma.$transaction([
+        prisma.reservaAsiento.update({
+          where: { id },
+          data: {
+            conductorId,
+            estado: 'reservado',
+          },
+          include: {
+            conductor: { select: { id: true, name: true, vehiclePlate: true, phone: true, lastLat: true, lastLng: true, telefonoRutPay: true, mercadoPagoLink: true } },
+            pasajero: { select: { id: true, name: true, phone: true } },
+            linea: true,
+          },
+        }),
+        prisma.driver.update({
+          where: { id: conductorId },
+          data: { asientosOcupados: nuevosOcupados },
+        }),
+      ]);
+
+      // Emitir cambio de asientos a la flota de la línea y al conductor
+      if (choferActualizado.lineaId) {
+        io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:cambio-asientos', {
+          conductorId: choferActualizado.id,
+          asientosOcupados: choferActualizado.asientosOcupados,
+          asientosTotales: choferActualizado.asientosTotales,
+        });
+      }
+      io.to(`driver:${conductorId}`).emit('colectivo:cambio-asientos', {
+        conductorId: choferActualizado.id,
+        asientosOcupados: choferActualizado.asientosOcupados,
+        asientosTotales: choferActualizado.asientosTotales,
       });
 
       // Notificar al pasajero confirmación inmediata
@@ -887,9 +956,14 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
       // Confirmar al conductor
       io.to(`driver:${conductorId}`).emit('colectivo:reserva-confirmada-chofer', {
         reserva: reservaActualizada,
+        asientosOcupados: choferActualizado.asientosOcupados,
       });
 
-      return respuesta.json({ ok: true, reserva: reservaActualizada });
+      return respuesta.json({
+        ok: true,
+        reserva: reservaActualizada,
+        asientosOcupados: choferActualizado.asientosOcupados,
+      });
     } else {
       // Chofer rechazó ("NO" o botón rojo)
       if (solicitud?.timer) clearTimeout(solicitud.timer);
