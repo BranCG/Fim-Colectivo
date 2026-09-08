@@ -59,8 +59,32 @@ interface Props {
   altura?: string;
 }
 
-// Estilo Vectorial MapLibre de Carto Voyager (Altísima legibilidad de calles, avenidas y rotulación)
-const ESTILO_MAPLIBRE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+// Estilo MapLibre con teselas OpenStreetMap de alta disponibilidad y sin marcas de agua
+const ESTILO_MAPLIBRE: any = {
+  version: 8,
+  sources: {
+    'osm-tiles': {
+      type: 'raster',
+      tiles: [
+        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      ],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors',
+      maxzoom: 19,
+    },
+  },
+  layers: [
+    {
+      id: 'osm-tiles-layer',
+      type: 'raster',
+      source: 'osm-tiles',
+      minzoom: 0,
+      maxzoom: 19,
+    },
+  ],
+};
 
 export default function ColectivoMap({
   ubicacionUsuario,
@@ -119,12 +143,22 @@ export default function ColectivoMap({
         'bottom-right'
       );
 
-      mapa.on('load', () => {
+      mapa.on('error', (err: any) => {
+        console.warn('MapLibre evento:', err);
+      });
+
+      const marcarListo = () => {
         if (cancelado) return;
         mapaRef.current = mapa;
         setMapaCargado(true);
-        setTimeout(() => mapa.resize(), 150);
-      });
+        setTimeout(() => mapa.resize(), 100);
+      };
+
+      if (mapa.loaded()) {
+        marcarListo();
+      } else {
+        mapa.on('load', marcarListo);
+      }
     });
 
     return () => {
@@ -422,10 +456,14 @@ export default function ColectivoMap({
   return (
     <div
       style={{
-        position: 'relative',
+        position: altura === '100%' ? 'absolute' : 'relative',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
         width: '100%',
         height: altura,
-        minHeight: '320px',
+        minHeight: altura === '100%' ? '100%' : '320px',
         borderRadius: '16px',
         overflow: 'hidden',
       }}
