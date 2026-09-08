@@ -7,9 +7,10 @@ echo "🚀 Iniciando despliegue de Fim Colectivo en AWS..."
 APP_DIR="/var/www/fim-colectivo"
 
 if [ ! -d "$APP_DIR" ]; then
-  echo "📥 Clonando repositorio..."
-  sudo git clone https://github.com/BranCG/Fim-Colectivo.git "$APP_DIR"
+  echo "📥 Preparando directorio $APP_DIR..."
+  sudo mkdir -p "$APP_DIR"
   sudo chown -R $USER:$USER "$APP_DIR"
+  git clone git@github.com:BranCG/Fim-Colectivo.git "$APP_DIR" || git clone https://github.com/BranCG/Fim-Colectivo.git "$APP_DIR"
 else
   echo "🔄 Actualizando repositorio existente..."
   cd "$APP_DIR"
