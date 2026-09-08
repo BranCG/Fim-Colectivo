@@ -52,8 +52,39 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+import client from 'prom-client';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+// Prometheus Default Metrics
+const collectDefaultMetrics = client.collectDefaultMetrics;
+collectDefaultMetrics({ prefix: 'fim_colectivo_' });
+
+// Custom Prometheus Gauge for active socket connections
+const activeSocketsGauge = new client.Gauge({
+  name: 'fim_colectivo_active_sockets',
+  help: 'Número de conexiones activas Socket.io (conductores/pasajeros en vivo)',
+});
+
+// Custom HTTP request counter
+const httpRequestCounter = new client.Counter({
+  name: 'fim_colectivo_http_requests_total',
+  help: 'Total de peticiones HTTP procesadas',
+  labelNames: ['method', 'route', 'status_code'],
+});
+
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// Middleware para métricas HTTP
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    const route = req.route ? req.route.path : req.path;
+    httpRequestCounter.inc({ method: req.method, route, status_code: res.statusCode });
+  });
+  next();
+});
 
 // ─── Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -64,9 +95,39 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/colectivos', colectivosRoutes);
 
-// Health check
-app.get('/api/health', (_, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'Fim Colectivo API' });
+// Health check extendido con estado de BD y memoria
+app.get('/api/health', async (_, res) => {
+  let dbStatus = 'disconnected';
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    dbStatus = 'connected';
+  } catch (error) {
+    dbStatus = 'error';
+  }
+
+  const memoryUsage = process.memoryUsage();
+  res.json({
+    status: dbStatus === 'connected' ? 'ok' : 'degraded',
+    service: 'Fim Colectivo API',
+    database: dbStatus,
+    uptimeSeconds: Math.floor(process.uptime()),
+    memory: {
+      rssMB: Math.round(memoryUsage.rss / 1024 / 1024),
+      heapUsedMB: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Prometheus Metrics Endpoint
+app.get('/api/metrics', async (_, res) => {
+  try {
+    activeSocketsGauge.set(io.sockets.sockets.size);
+    res.set('Content-Type', client.register.contentType);
+    res.end(await client.register.metrics());
+  } catch (err) {
+    res.status(500).end(err);
+  }
 });
 
 // ─── Socket.io handlers ───────────────────────────────────────────────────
