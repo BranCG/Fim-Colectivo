@@ -57,7 +57,7 @@ npm run db:seed
 
 # 8. Compilar aplicaciones Web y API
 echo "🔨 Compilando aplicaciones..."
-npm run build --workspaces
+npm run build --workspaces --if-present
 
 # 9. Iniciar o reiniciar con PM2 sin tocar Fim principal ni MC Simulator
 echo "⚡ Levantando procesos con PM2 en puertos 3010 y 3011..."
