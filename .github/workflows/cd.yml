@@ -1,0 +1,62 @@
+name: CD - Despliegue Continuo AWS
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-check:
+    name: Validar Compilación
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalación de dependencias
+        run: npm ci || npm install
+
+      - name: Generar cliente de Prisma
+        run: npx prisma generate --schema=./packages/database/schema.prisma
+
+      - name: Compilar Monorepo
+        run: npm run build
+
+  deploy:
+    name: Desplegar en Servidor AWS
+    runs-on: ubuntu-latest
+    needs: [build-check]
+
+    steps:
+      - name: Ejecutar despliegue vía SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            echo "🚀 Iniciando despliegue automático de Fim Colectivo..."
+            
+            APP_DIR="/var/www/fim-colectivo"
+            if [ -d "$APP_DIR" ]; then
+              cd "$APP_DIR"
+              echo "🔄 Obteniendo últimos cambios de Git..."
+              git pull origin main
+              
+              echo "🐳 Reconstruyendo y actualizando contenedores Docker..."
+              docker compose up -d --build
+              
+              echo "🧹 Limpiando imágenes y contenedores en desuso..."
+              docker image prune -f
+              
+              echo "✅ Despliegue completado con éxito en https://colectivo.fimchile.cl"
+            else
+              echo "❌ Error: El directorio $APP_DIR no existe en el servidor."
+              exit 1
+            fi
