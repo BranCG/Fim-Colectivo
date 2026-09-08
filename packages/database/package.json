@@ -1,0 +1,19 @@
+{
+  "name": "@fim-colectivo/database",
+  "version": "1.0.0",
+  "scripts": {
+    "generate": "prisma generate --schema=./schema.prisma",
+    "migrate": "prisma migrate dev --schema=./schema.prisma",
+    "migrate:deploy": "prisma migrate deploy --schema=./schema.prisma",
+    "studio": "prisma studio --schema=./schema.prisma",
+    "seed": "node -r ts-node/register seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,230 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String           @id @default(cuid())
+  email            String           @unique
+  phone            String           @unique
+  name             String
+  passwordHash     String
+  rut              String?          @unique
+  birthDate        DateTime?
+  address          String?
+  idFrontUrl       String?
+  idBackUrl        String?
+  isVerified       Boolean          @default(false)
+  paymentMethod    String?
+  mpCardToken      String?
+  role             String           @default("passenger")
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  selfieUrl        String?
+  ratings          Rating[]         @relation("PassengerRatings")
+  trips            Trip[]           @relation("PassengerTrips")
+  reservasAsiento  ReservaAsiento[] @relation("PasajeroReservas")
+
+  @@map("users")
+}
+
+model Driver {
+  id                  String           @id @default(cuid())
+  email               String           @unique
+  phone               String           @unique
+  name                String
+  passwordHash        String
+  rut                 String           @unique
+  birthDate           DateTime
+  address             String
+  idFrontUrl          String
+  idBackUrl           String
+  selfieUrl           String?
+  licenseNumber       String
+  licenseUrl          String
+  vehicleBrand        String
+  vehicleModel        String
+  vehicleYear         Int
+  vehiclePlate        String           @unique
+  vehiclePhotoUrl     String
+  tagNumber           String
+  status              String           @default("pending")
+  membershipPaid      Boolean          @default(false)
+  membershipPlan      String           @default("PREPAID")
+  membershipProgress  Int              @default(0)
+  membershipGoal      Int              @default(100000)
+  dailyCashTripsCount Int              @default(0)
+  membershipDate      DateTime?
+  mpSubscriptionId    String?
+  membershipExpiresAt DateTime?
+  walletBalance       Int              @default(0)
+  adminNotes          String?
+  mercadoPagoLink     String?          // Link directo MercadoPago
+  telefonoRutPay      String?          // Teléfono o RUT para pago con RutPay BancoEstado
+  isOnline            Boolean          @default(false)
+  lastLat             Float?
+  lastLng             Float?
+  lastSeen            DateTime?
+  totalRating         Float            @default(0)
+  totalTrips          Int              @default(0)
+  bankName            String?
+  bankAccountType     String?
+  bankAccountNumber   String?
+  bankAccountName     String?
+  bankAccountRut      String?
+  bankAccountEmail    String?
+
+  // Datos específicos del colectivo en español
+  lineaId             String?
+  linea               LineaColectivo?  @relation(fields: [lineaId], references: [id])
+  asientosTotales     Int              @default(4)
+  asientosOcupados    Int              @default(0)
+  sentidoRuta         String           @default("ida") // "ida" | "vuelta"
+
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  payouts             Payout[]
+  ratings             Rating[]         @relation("DriverRatings")
+  trips               Trip[]           @relation("DriverTrips")
+  reservasAsiento     ReservaAsiento[] @relation("ConductorReservas")
+
+  @@map("drivers")
+}
+
+model LineaColectivo {
+  id               String            @id @default(cuid())
+  nombre           String            // ej: "Línea 10"
+  codigo           String            @unique // ej: "10"
+  descripcion      String?           // ej: "Terminal Norte - Hospital - Centro - Playa"
+  color            String            @default("#2563EB") // Color distintivo en el mapa (hexadecimal)
+  tarifa           Int               @default(800) // Tarifa estándar CLP
+  tarifaNoche      Int?              // Tarifa nocturna opcional CLP
+  puntosRuta       String?           // JSON con array de coordenadas [lat, lng] del trazado
+  origen           String?           // Nombre de la cabecera o terminal de origen
+  destino          String?           // Nombre de la cabecera o terminal de destino
+  activa           Boolean           @default(true)
+  fechaCreacion    DateTime          @default(now())
+  fechaActualizacion DateTime        @updatedAt
+  conductores      Driver[]
+  paradas          ParadaColectivo[]
+  reservas         ReservaAsiento[]
+
+  @@map("lineas_colectivo")
+}
+
+model ParadaColectivo {
+  id               String         @id @default(cuid())
+  lineaId          String
+  nombre           String         // ej: "Plaza de Armas"
+  latitud          Float
+  longitud         Float
+  orden            Int            @default(0)
+  sentido          String         @default("ida") // "ida" | "vuelta"
+  fechaCreacion    DateTime       @default(now())
+  linea            LineaColectivo @relation(fields: [lineaId], references: [id], onDelete: Cascade)
+
+  @@map("paradas_colectivo")
+}
+
+model ReservaAsiento {
+  id                 String         @id @default(cuid())
+  pasajeroId         String
+  conductorId        String
+  lineaId            String
+  cantidadAsientos   Int            @default(1)
+  latitudSubida      Float?
+  longitudSubida     Float?
+  direccionSubida    String?
+  estado             String         @default("reservado") // "reservado", "abordado", "completado", "cancelado"
+  tarifa             Int            @default(800)
+  metodoPago         String         @default("efectivo") // "efectivo", "rutpay", "mercadopago"
+  notas              String?
+  fechaCreacion      DateTime       @default(now())
+  fechaActualizacion DateTime       @updatedAt
+  conductor          Driver         @relation("ConductorReservas", fields: [conductorId], references: [id], onDelete: Cascade)
+  pasajero           User           @relation("PasajeroReservas", fields: [pasajeroId], references: [id], onDelete: Cascade)
+  linea              LineaColectivo @relation(fields: [lineaId], references: [id], onDelete: Cascade)
+
+  @@map("reservas_asiento")
+}
+
+model Trip {
+  id              String    @id @default(cuid())
+  passengerId     String
+  driverId        String?
+  originLat       Float
+  originLng       Float
+  originAddress   String
+  destLat         Float
+  destLng         Float
+  destAddress     String
+  distanceKm      Float
+  durationMin     Int
+  estimatedPrice  Int
+  finalPrice      Int?
+  isDiscounted    Boolean   @default(false)
+  paymentMethod   String
+  isPaid          Boolean   @default(false)
+  paymentStatus   String    @default("pending")
+  otpCode         String?
+  mpPaymentId     String?
+  status          String    @default("searching")
+  cancelledBy     String?
+  cancelReason    String?
+  requestedAt     DateTime  @default(now())
+  acceptedAt      DateTime?
+  driverArrivedAt DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  rating          Rating?
+  driver          Driver?   @relation("DriverTrips", fields: [driverId], references: [id])
+  passenger       User      @relation("PassengerTrips", fields: [passengerId], references: [id])
+
+  @@map("trips")
+}
+
+model Rating {
+  id            String   @id @default(cuid())
+  tripId        String   @unique
+  passengerId   String
+  driverId      String
+  driverScore   Int
+  driverComment String?
+  createdAt     DateTime @default(now())
+  driver        Driver   @relation("DriverRatings", fields: [driverId], references: [id])
+  passenger     User     @relation("PassengerRatings", fields: [passengerId], references: [id])
+  trip          Trip     @relation(fields: [tripId], references: [id])
+
+  @@map("ratings")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String?
+  driverId  String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model Payout {
+  id         String   @id @default(cuid())
+  driverId   String
+  amount     Int
+  status     String   @default("pending")
+  receiptUrl String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  driver     Driver   @relation(fields: [driverId], references: [id])
+
+  @@map("payouts")
+}

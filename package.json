@@ -1,0 +1,23 @@
+{
+  "name": "fim-colectivo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\" \"npm run dev --workspace=apps/admin\"",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:admin": "npm run dev --workspace=apps/admin",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "build": "npm run build --workspaces",
+    "db:generate": "npm run generate --workspace=packages/database",
+    "db:migrate": "npm run migrate --workspace=packages/database",
+    "db:seed": "npm run seed --workspace=packages/database",
+    "db:studio": "npm run studio --workspace=packages/database"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

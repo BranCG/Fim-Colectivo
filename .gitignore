@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# SQLite databases & temp files
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite-journal
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Uploads
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep
+
+# Android build & Capacitor outputs
+apps/web/android/.gradle/
+apps/web/android/app/build/
+apps/web/android/build/
+apps/web/android/.idea/
+apps/web/android/*.iml
+apps/web/android/local.properties
+apps/web/android/.kotlin/
+
+# IDE / OS
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.vscode/
