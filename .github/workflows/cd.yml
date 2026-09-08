@@ -23,9 +23,16 @@ jobs:
 
       - name: Generar cliente de Prisma
         run: npm run db:generate
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
 
       - name: Compilar Monorepo
         run: npm run build
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+          NEXT_PUBLIC_API_URL: "https://colectivo.fimchile.cl"
+          JWT_SECRET: "ci-secret-key"
+          JWT_REFRESH_SECRET: "ci-refresh-secret"
 
   deploy:
     name: Desplegar en Servidor AWS
