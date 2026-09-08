@@ -12,8 +12,9 @@ COPY apps/web/package*.json ./apps/web/
 # Instalar dependencias
 RUN npm install
 
-# Copiar código fuente web
+# Copiar código fuente web y asegurar directorio public
 COPY apps/web ./apps/web
+RUN mkdir -p /app/apps/web/public
 
 # Argumentos y variables de compilación Next.js
 ARG NEXT_PUBLIC_API_URL=https://colectivo.fimchile.cl
