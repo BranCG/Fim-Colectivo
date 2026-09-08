@@ -16,11 +16,12 @@ RUN npm install
 COPY apps/web ./apps/web
 RUN mkdir -p /app/apps/web/public
 
-# Argumentos y variables de compilación Next.js
+# Argumentos y variables de compilación Next.js (optimizado para CPU ligera de AWS Lightsail)
 ARG NEXT_PUBLIC_API_URL=https://colectivo.fimchile.cl
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_OPTIONS="--max-old-space-size=1024"
+ENV NEXT_CPU_COUNT=1
+ENV NODE_OPTIONS="--max-old-space-size=768"
 
 # Compilar Next.js
 RUN npm run build --workspace=@fim-colectivo/web
