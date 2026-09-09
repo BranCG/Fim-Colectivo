@@ -24,6 +24,8 @@ import {
   IconoParada,
   IconoSalir,
   IconoGuardar,
+  IconoReloj,
+  IconoMicrofono,
 } from '@/components/icons/Iconos';
 
 // Cargar mapa dinámico sin SSR para Leaflet
@@ -791,41 +793,44 @@ export default function PaginaConductorColectivo() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#090D1A', color: '#F1F5F9', padding: '16px', maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', background: '#090D1A', color: '#F1F5F9', padding: '12px 10px', maxWidth: '800px', margin: '0 auto', width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
       {/* ── Encabezado Principal ── */}
       <header style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingBottom: '14px',
+        paddingBottom: '12px',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        marginBottom: '16px',
+        marginBottom: '14px',
+        flexWrap: 'wrap',
+        gap: '10px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '180px' }}>
           <div style={{
-            width: '42px',
-            height: '42px',
+            width: '40px',
+            height: '40px',
             borderRadius: '12px',
             background: 'linear-gradient(135deg, #F59E0B, #D97706)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
+            flexShrink: 0,
           }}>
             <IconoColectivo size={22} color="#0B1329" />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800', letterSpacing: '-0.3px' }}>
+            <h1 style={{ margin: 0, fontSize: '17px', fontWeight: '800', letterSpacing: '-0.3px' }}>
               Fim <span style={{ color: '#F59E0B' }}>Colectivo Chofer</span>
             </h1>
-            <p style={{ margin: 0, fontSize: '12px', color: '#94A3B8' }}>
+            <p style={{ margin: 0, fontSize: '11px', color: '#94A3B8' }}>
               {choferSesion ? choferSesion.name : 'Conductor'} • {lineaActual ? lineaActual.nombre : 'Línea no asignada'}
             </p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={() => {
               desbloquearAudioYVoz('Audio y voz activados para el servicio de colectivos', () => {
@@ -838,17 +843,17 @@ export default function PaginaConductorColectivo() {
               color: audioDesbloqueado ? '#34D399' : '#FBBF24',
               border: audioDesbloqueado ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.5)',
               borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '12px',
+              padding: '6px 10px',
+              fontSize: '11.5px',
               fontWeight: '700',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
             }}
             title="Toca para probar y asegurar que tu dispositivo reproduce la voz del pasajero"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
               <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
             </svg>
@@ -861,16 +866,16 @@ export default function PaginaConductorColectivo() {
               color: '#F8FAFC',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '12px',
+              padding: '6px 10px',
+              fontSize: '11.5px',
               fontWeight: '600',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
             }}
           >
-            <IconoTarjeta size={14} />
+            <IconoTarjeta size={13} />
             <span>Pagos</span>
           </button>
           <button
@@ -880,8 +885,8 @@ export default function PaginaConductorColectivo() {
               color: '#F87171',
               border: '1px solid rgba(239, 68, 68, 0.3)',
               borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '12px',
+              padding: '6px 10px',
+              fontSize: '11.5px',
               fontWeight: '600',
               cursor: 'pointer',
             }}
@@ -1056,9 +1061,10 @@ export default function PaginaConductorColectivo() {
                 borderRadius: '8px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px',
+                gap: '5px',
               }}>
-                <span>🎤</span> Di &quot;A bordo&quot; o pulsa el botón
+                <IconoMicrofono size={13} color="#FBBF24" />
+                <span>Di &quot;A bordo&quot; o pulsa el botón</span>
               </span>
             )}
             <span style={{
@@ -1193,6 +1199,8 @@ export default function PaginaConductorColectivo() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '8px',
                       background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.18) 0%, rgba(245, 158, 11, 0.06) 100%)',
                       border: '1.5px solid rgba(245, 158, 11, 0.45)',
                       borderRadius: '10px',
@@ -1201,7 +1209,18 @@ export default function PaginaConductorColectivo() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '18px' }}>⏱️</span>
+                      <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '50%',
+                        background: 'rgba(245, 158, 11, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        <IconoReloj size={18} color="#FBBF24" />
+                      </div>
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: '800', color: '#FBBF24' }}>
                           Llegas a buscarlo en ~{infoLlegada.minutos} min
@@ -1477,7 +1496,7 @@ export default function PaginaConductorColectivo() {
         </div>
 
         {/* Visualizador de los 4 Asientos (Táctiles interactivos de 3 colores) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', marginBottom: '14px' }}>
           {[1, 2, 3, 4].map((numeroAsiento) => {
             const estadoInfo = obtenerEstadoAsiento(numeroAsiento);
             return (
@@ -1485,19 +1504,22 @@ export default function PaginaConductorColectivo() {
                 key={numeroAsiento}
                 onClick={() => alternarAsientoDirecto(numeroAsiento)}
                 style={{
-                  height: '80px',
-                  borderRadius: '12px',
+                  height: '74px',
+                  borderRadius: '10px',
                   background: estadoInfo.bgColor,
                   border: `2px solid ${estadoInfo.borderColor}`,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '4px',
+                  gap: '2px',
                   cursor: 'pointer',
                   userSelect: 'none',
                   transition: 'transform 0.12s, box-shadow 0.12s',
                   boxShadow: estadoInfo.boxShadow,
+                  padding: '4px 2px',
+                  minWidth: 0,
+                  overflow: 'hidden',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.95)')}
                 onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
@@ -1506,10 +1528,10 @@ export default function PaginaConductorColectivo() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {estadoInfo.icono}
                 </div>
-                <span style={{ fontSize: '11px', fontWeight: '800', color: estadoInfo.textColor }}>
+                <span style={{ fontSize: '10.5px', fontWeight: '800', color: estadoInfo.textColor, whiteSpace: 'nowrap' }}>
                   Asiento {numeroAsiento}
                 </span>
-                <span style={{ fontSize: '9px', fontWeight: '700', color: estadoInfo.textColor, textTransform: 'uppercase' }}>
+                <span style={{ fontSize: '8.5px', fontWeight: '700', color: estadoInfo.textColor, textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {estadoInfo.texto}
                 </span>
               </div>
@@ -1873,7 +1895,10 @@ export default function PaginaConductorColectivo() {
                   boxShadow: '0 0 10px #38BDF8',
                 }}
               />
-              <span>🎤 Di &quot;SÍ&quot; para confirmar por voz o toca el botón</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <IconoMicrofono size={16} color="#38BDF8" />
+                <span>Di &quot;SÍ&quot; para confirmar por voz o toca el botón</span>
+              </span>
             </div>
 
             {/* BOTÓN GIGANTE DE ACEPTACIÓN */}

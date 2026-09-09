@@ -18,6 +18,7 @@ import {
   IconoTarjeta,
   IconoEfectivo,
   IconoAsiento,
+  IconoReloj,
 } from '@/components/icons/Iconos';
 
 // Cargar mapa de colectivos de forma dinámica para evitar problemas con SSR en Next.js
@@ -481,16 +482,18 @@ export default function PaginaPasajeroColectivo() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0F172A', color: '#F8FAFC' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0F172A', color: '#F8FAFC', width: '100%', overflowX: 'hidden' }}>
       {/* ── Barra Superior / Encabezado ── */}
       <header style={{
-        padding: '12px 16px',
+        padding: '10px 14px',
         background: 'rgba(15, 23, 42, 0.95)',
         backdropFilter: 'blur(12px)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '8px',
         zIndex: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -647,11 +650,14 @@ export default function PaginaPasajeroColectivo() {
 
       {/* ── Panel Inferior: Colectivo Seleccionado o Reserva Activa ── */}
       <div style={{
-        padding: '16px',
+        padding: '14px 12px',
         background: '#1E293B',
         borderTop: '1px solid rgba(255, 255, 255, 0.1)',
         boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.3)',
         zIndex: 10,
+        maxHeight: '48vh',
+        overflowY: 'auto',
+        boxSizing: 'border-box',
       }}>
         {/* Caso 1: Reserva Activa */}
         {reservaActiva ? (
@@ -706,6 +712,8 @@ export default function PaginaPasajeroColectivo() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
                   boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
                 }}
               >
@@ -719,10 +727,10 @@ export default function PaginaPasajeroColectivo() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '18px',
+                      flexShrink: 0,
                     }}
                   >
-                    ⏱️
+                    <IconoReloj size={20} color="#38BDF8" />
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
@@ -866,9 +874,10 @@ export default function PaginaPasajeroColectivo() {
                   color: '#38BDF8',
                   fontSize: '12px',
                   fontWeight: '700',
+                  flexWrap: 'wrap',
                 }}
               >
-                <span style={{ fontSize: '16px' }}>⏱️</span>
+                <IconoReloj size={16} color="#38BDF8" />
                 <span>
                   Llegaría en <b>{infoLlegadaPreseleccionado.textoTiempo}</b> ({infoLlegadaPreseleccionado.textoDistancia} de tu posición)
                 </span>

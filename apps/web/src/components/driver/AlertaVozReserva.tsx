@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { hablarTexto, iniciarEscuchaVoz, reproducirSonido, detenerVoz } from '@/lib/voice';
-import { IconoCheck, IconoCruz, IconoAsiento } from '@/components/icons/Iconos';
+import { IconoCheck, IconoCruz, IconoAsiento, IconoReloj } from '@/components/icons/Iconos';
 
 export interface DatosSolicitudDirigida {
   reservaId: string;
@@ -282,25 +282,29 @@ export default function AlertaVozReserva({
         <div
           style={{
             marginTop: '8px',
-            fontSize: '18px',
+            fontSize: '15px',
             fontWeight: '700',
             background: 'rgba(0, 0, 0, 0.25)',
-            padding: '6px 18px',
+            padding: '6px 14px',
             borderRadius: '24px',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            gap: '6px',
+            maxWidth: '92%',
+            textAlign: 'center',
           }}
         >
           <span>{solicitud.nombrePasajero.split(' ')[0]}</span>
           <span>•</span>
           <span style={{ color: '#FDE047', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <span>⏱️</span>
+            <IconoReloj size={15} color="#FDE047" />
             <span>LLEGAS EN ~{minutosLlegada} MIN ({textoDistancia})</span>
           </span>
           <span>•</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <IconoAsiento size={18} color="#FFFFFF" />
+            <IconoAsiento size={16} color="#FFFFFF" />
             {solicitud.cantidadAsientos} as.
           </span>
         </div>
