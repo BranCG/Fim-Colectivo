@@ -786,44 +786,44 @@ export default function PaginaConductorColectivo() {
     if (numeroAsiento <= conteoAsientos.totalAbordados) {
       return {
         estado: 'abordado' as const,
-        color: '#EF4444',
-        bgColor: 'rgba(239, 68, 68, 0.22)',
-        borderColor: '#EF4444',
-        boxShadow: '0 2px 10px rgba(239, 68, 68, 0.3)',
+        color: '#000000',
+        bgColor: '#FACC15',
+        borderColor: '#FACC15',
+        boxShadow: '0 2px 10px rgba(250, 204, 21, 0.4)',
         texto: 'A Bordo',
         subtexto: 'Ocupado',
-        textColor: '#F87171',
-        icono: <IconoPasajero size={22} color="#F87171" />,
+        textColor: '#000000',
+        icono: <IconoPasajero size={22} color="#000000" />,
       };
     }
     if (numeroAsiento <= conteoAsientos.totalAbordados + conteoAsientos.totalReservados) {
       return {
         estado: 'reservado' as const,
-        color: '#F59E0B',
-        bgColor: 'rgba(245, 158, 11, 0.22)',
-        borderColor: '#F59E0B',
-        boxShadow: '0 2px 10px rgba(245, 158, 11, 0.35)',
+        color: '#FACC15',
+        bgColor: 'rgba(250, 204, 21, 0.15)',
+        borderColor: '#FACC15',
+        boxShadow: '0 2px 10px rgba(250, 204, 21, 0.25)',
         texto: 'Reservado',
         subtexto: 'Por subir',
-        textColor: '#FBBF24',
-        icono: <IconoAsiento size={22} color="#FBBF24" />,
+        textColor: '#FACC15',
+        icono: <IconoAsiento size={22} color="#FACC15" />,
       };
     }
     return {
       estado: 'libre' as const,
-      color: '#10B981',
-      bgColor: 'rgba(16, 185, 129, 0.18)',
-      borderColor: '#10B981',
-      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.2)',
+      color: '#A3A3A3',
+      bgColor: '#171717',
+      borderColor: 'rgba(255, 255, 255, 0.15)',
+      boxShadow: 'none',
       texto: 'Disponible',
       subtexto: 'Libre',
-      textColor: '#34D399',
-      icono: <IconoAsiento size={22} color="#34D399" />,
+      textColor: '#D4D4D4',
+      icono: <IconoAsiento size={22} color="#D4D4D4" />,
     };
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#090D1A', color: '#F1F5F9', padding: '12px 10px', maxWidth: '800px', margin: '0 auto', width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
+    <div style={{ minHeight: '100vh', background: '#0A0A0A', color: '#FFFFFF', padding: '12px 10px', maxWidth: '800px', margin: '0 auto', width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
       {/* ── Encabezado Principal ── */}
       <header style={{
@@ -841,20 +841,20 @@ export default function PaginaConductorColectivo() {
             width: '40px',
             height: '40px',
             borderRadius: '12px',
-            background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+            background: '#FACC15',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
+            boxShadow: '0 4px 12px rgba(250, 204, 21, 0.3)',
             flexShrink: 0,
           }}>
-            <IconoColectivo size={22} color="#0B1329" />
+            <IconoColectivo size={22} color="#000000" />
           </div>
           <div>
             <h1 style={{ margin: 0, fontSize: '17px', fontWeight: '800', letterSpacing: '-0.3px' }}>
-              Fim <span style={{ color: '#F59E0B' }}>Colectivo Chofer</span>
+              Fim <span style={{ color: '#FACC15' }}>Colectivo Chofer</span>
             </h1>
-            <p style={{ margin: 0, fontSize: '11px', color: '#94A3B8' }}>
+            <p style={{ margin: 0, fontSize: '11px', color: '#A3A3A3' }}>
               {choferSesion ? choferSesion.name : 'Conductor'} • {lineaActual ? lineaActual.nombre : 'Línea no asignada'}
             </p>
           </div>
@@ -869,9 +869,9 @@ export default function PaginaConductorColectivo() {
               });
             }}
             style={{
-              background: audioDesbloqueado ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.2)',
-              color: audioDesbloqueado ? '#34D399' : '#FBBF24',
-              border: audioDesbloqueado ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.5)',
+              background: audioDesbloqueado ? 'rgba(250, 204, 21, 0.15)' : '#171717',
+              color: audioDesbloqueado ? '#FACC15' : '#D4D4D4',
+              border: audioDesbloqueado ? '1px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.2)',
               borderRadius: '8px',
               padding: '6px 10px',
               fontSize: '11.5px',
@@ -892,8 +892,8 @@ export default function PaginaConductorColectivo() {
           <button
             onClick={() => setMostrarConfigCobro(!mostrarConfigCobro)}
             style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              color: '#F8FAFC',
+              background: '#171717',
+              color: '#FFFFFF',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               borderRadius: '8px',
               padding: '6px 10px',
@@ -905,15 +905,15 @@ export default function PaginaConductorColectivo() {
               gap: '5px',
             }}
           >
-            <IconoTarjeta size={13} />
+            <IconoTarjeta size={13} color="#FACC15" />
             <span>Pagos</span>
           </button>
           <button
             onClick={cerrarSesionChofer}
             style={{
-              background: 'rgba(239, 68, 68, 0.15)',
-              color: '#F87171',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
+              background: '#171717',
+              color: '#D4D4D4',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
               borderRadius: '8px',
               padding: '6px 10px',
               fontSize: '11.5px',
@@ -928,21 +928,21 @@ export default function PaginaConductorColectivo() {
 
       {/* ── Alertas ── */}
       {mensajeExito && (
-        <div style={{ background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10B981', padding: '10px 14px', borderRadius: '10px', color: '#6EE7B7', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: 'rgba(250, 204, 21, 0.15)', border: '1px solid #FACC15', padding: '10px 14px', borderRadius: '10px', color: '#FACC15', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconoCheck size={16} color="#10B981" />
+            <IconoCheck size={16} color="#FACC15" />
             <span>{mensajeExito}</span>
           </div>
-          <button onClick={() => setMensajeExito('')} style={{ background: 'transparent', border: 'none', color: '#6EE7B7', cursor: 'pointer' }}><IconoCruz size={14} color="#6EE7B7" /></button>
+          <button onClick={() => setMensajeExito('')} style={{ background: 'transparent', border: 'none', color: '#FACC15', cursor: 'pointer' }}><IconoCruz size={14} color="#FACC15" /></button>
         </div>
       )}
       {mensajeError && (
-        <div style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #EF4444', padding: '10px 14px', borderRadius: '10px', color: '#FCA5A5', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: '#171717', border: '1px solid rgba(255, 255, 255, 0.3)', padding: '10px 14px', borderRadius: '10px', color: '#FFFFFF', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconoCruz size={16} color="#EF4444" />
+            <IconoCruz size={16} color="#FFFFFF" />
             <span>{mensajeError}</span>
           </div>
-          <button onClick={() => setMensajeError('')} style={{ background: 'transparent', border: 'none', color: '#FCA5A5', cursor: 'pointer' }}><IconoCruz size={14} color="#FCA5A5" /></button>
+          <button onClick={() => setMensajeError('')} style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer' }}><IconoCruz size={14} color="#FFFFFF" /></button>
         </div>
       )}
 
@@ -954,7 +954,7 @@ export default function PaginaConductorColectivo() {
         border: '1px solid rgba(255, 255, 255, 0.12)',
         marginBottom: '18px',
         boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
-        background: '#131D33',
+        background: '#121212',
       }}>
         {/* Badges superiores sobre el mapa */}
         <div style={{
@@ -968,31 +968,31 @@ export default function PaginaConductorColectivo() {
           flexWrap: 'wrap',
         }}>
           <div style={{
-            background: 'rgba(15, 23, 42, 0.88)',
+            background: 'rgba(0, 0, 0, 0.85)',
             backdropFilter: 'blur(8px)',
             border: '1px solid rgba(255, 255, 255, 0.15)',
             borderRadius: '20px',
             padding: '5px 12px',
             fontSize: '12px',
             fontWeight: '700',
-            color: '#F8FAFC',
+            color: '#FFFFFF',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
           }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: lineaActual?.color || '#2563EB' }} />
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#FACC15' }} />
             {lineaActual ? `${lineaActual.nombre} • ${sentidoRuta.toUpperCase()}` : 'Línea'}
           </div>
 
           <div style={{
-            background: enServicio ? 'rgba(16, 185, 129, 0.95)' : 'rgba(100, 116, 139, 0.85)',
+            background: enServicio ? '#FACC15' : '#262626',
             backdropFilter: 'blur(8px)',
             borderRadius: '20px',
             padding: '5px 10px',
             fontSize: '11px',
-            fontWeight: '700',
-            color: '#FFFFFF',
-            boxShadow: enServicio ? '0 0 10px rgba(16, 185, 129, 0.6)' : 'none',
+            fontWeight: '800',
+            color: enServicio ? '#000000' : '#A3A3A3',
+            boxShadow: enServicio ? '0 0 10px rgba(250, 204, 21, 0.5)' : 'none',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -1002,19 +1002,19 @@ export default function PaginaConductorColectivo() {
           </div>
 
           <div style={{
-            background: 'rgba(15, 23, 42, 0.88)',
+            background: 'rgba(0, 0, 0, 0.85)',
             backdropFilter: 'blur(8px)',
             borderRadius: '20px',
             padding: '5px 10px',
             fontSize: '11px',
             fontWeight: '700',
-            color: asientosLibres === 0 ? '#F87171' : '#34D399',
+            color: asientosLibres === 0 ? '#A3A3A3' : '#FACC15',
             border: '1px solid rgba(255, 255, 255, 0.1)',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
           }}>
-            <IconoAsiento size={13} color={asientosLibres === 0 ? '#F87171' : '#34D399'} />
+            <IconoAsiento size={13} color={asientosLibres === 0 ? '#A3A3A3' : '#FACC15'} />
             <span>{asientosLibres === 0 ? 'Lleno' : `${asientosLibres} libre${asientosLibres > 1 ? 's' : ''}`}</span>
           </div>
         </div>
@@ -1027,15 +1027,15 @@ export default function PaginaConductorColectivo() {
             bottom: '16px',
             right: '16px',
             zIndex: 10,
-            background: '#2563EB',
-            color: '#FFFFFF',
+            background: '#FACC15',
+            color: '#000000',
             border: 'none',
             borderRadius: '50px',
             padding: '10px 16px',
             fontSize: '13px',
-            fontWeight: '700',
+            fontWeight: '800',
             cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(37, 99, 235, 0.5)',
+            boxShadow: '0 4px 14px rgba(250, 204, 21, 0.4)',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -1044,7 +1044,7 @@ export default function PaginaConductorColectivo() {
           onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.94)')}
           onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
         >
-          <IconoGps size={16} color="#FFFFFF" />
+          <IconoGps size={16} color="#000000" />
           <span>Centrar mi auto</span>
         </button>
 
@@ -1066,7 +1066,7 @@ export default function PaginaConductorColectivo() {
 
       {/* ── SECCIÓN 2: PASAJEROS EN RUTA Y ACCIÓN RÁPIDA DE ABORDO / COBRO (INMEDIATAMENTE DEBAJO DEL MAPA) ── */}
       <section style={{
-        background: '#131D33',
+        background: '#121212',
         borderRadius: '16px',
         padding: '18px',
         border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -1074,8 +1074,8 @@ export default function PaginaConductorColectivo() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconoPasajero size={20} color="#34D399" />
-            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#F8FAFC' }}>
+            <IconoPasajero size={20} color="#FACC15" />
+            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#FFFFFF' }}>
               Pasajeros en Ruta (Acción Rápida de Abordaje)
             </h2>
           </div>
@@ -1084,16 +1084,16 @@ export default function PaginaConductorColectivo() {
               <span style={{
                 fontSize: '11px',
                 fontWeight: '700',
-                color: '#FBBF24',
-                background: 'rgba(245, 158, 11, 0.15)',
-                border: '1px solid rgba(245, 158, 11, 0.3)',
+                color: '#FACC15',
+                background: 'rgba(250, 204, 21, 0.15)',
+                border: '1px solid rgba(250, 204, 21, 0.35)',
                 padding: '3px 8px',
                 borderRadius: '8px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '5px',
               }}>
-                <IconoMicrofono size={13} color="#FBBF24" />
+                <IconoMicrofono size={13} color="#FACC15" />
                 <span>Di &quot;A bordo&quot; o pulsa el botón</span>
               </span>
             )}
@@ -1102,8 +1102,8 @@ export default function PaginaConductorColectivo() {
               fontWeight: '800',
               padding: '3px 8px',
               borderRadius: '10px',
-              background: reservasPendientes.length > 0 ? '#059669' : '#334155',
-              color: '#FFFFFF',
+              background: reservasPendientes.length > 0 ? '#FACC15' : '#262626',
+              color: reservasPendientes.length > 0 ? '#000000' : '#A3A3A3',
             }}>
               {reservasPendientes.length} en ruta
             </span>
@@ -1111,14 +1111,14 @@ export default function PaginaConductorColectivo() {
         </div>
 
         {reservasPendientes.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '20px 12px', color: '#64748B', background: '#0B1329', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ textAlign: 'center', padding: '20px 12px', color: '#A3A3A3', background: '#171717', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ marginBottom: '6px' }}>
-              <IconoParada size={28} color="#64748B" />
+              <IconoParada size={28} color="#737373" />
             </div>
-            <p style={{ margin: 0, fontSize: '13px', fontWeight: '600' }}>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#D4D4D4' }}>
               Sin pasajeros esperando en tu recorrido en este momento.
             </p>
-            <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: '#475569' }}>
+            <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: '#737373' }}>
               Al estar En Servicio, las solicitudes de pasajeros aparecerán aquí con botón gigante de Abordo.
             </p>
           </div>
@@ -1147,37 +1147,37 @@ export default function PaginaConductorColectivo() {
                 <div
                   key={reserva.id}
                 style={{
-                  background: '#0B1329',
+                  background: '#171717',
                   padding: '14px',
                   borderRadius: '12px',
                   border: reserva.estado === 'reservado'
-                    ? '2px solid rgba(245, 158, 11, 0.5)'
+                    ? '2px solid #FACC15'
                     : reserva.estado === 'abordado'
-                    ? '1px solid rgba(239, 68, 68, 0.4)'
-                    : '1px solid rgba(56, 189, 248, 0.4)',
+                    ? '1px solid rgba(255, 255, 255, 0.25)'
+                    : '1px solid #FACC15',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
-                  boxShadow: reserva.estado === 'reservado' ? '0 4px 14px rgba(245, 158, 11, 0.25)' : '0 4px 12px rgba(0, 0, 0, 0.25)',
+                  boxShadow: reserva.estado === 'reservado' ? '0 4px 14px rgba(250, 204, 21, 0.25)' : '0 4px 12px rgba(0, 0, 0, 0.3)',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#F8FAFC' }}>
+                    <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#FFFFFF' }}>
                       {reserva.pasajero.name}
                     </h4>
                     <span style={{
                       fontSize: '12px',
-                      color: reserva.estado === 'reservado' ? '#FBBF24' : reserva.estado === 'abordado' ? '#F87171' : '#38BDF8',
+                      color: reserva.estado === 'reservado' ? '#FACC15' : reserva.estado === 'abordado' ? '#FFFFFF' : '#FACC15',
                       fontWeight: '700',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '5px',
                       marginTop: '2px',
                     }}>
-                      <IconoAsiento size={14} color={reserva.estado === 'reservado' ? '#FBBF24' : reserva.estado === 'abordado' ? '#F87171' : '#38BDF8'} />
+                      <IconoAsiento size={14} color={reserva.estado === 'reservado' ? '#FACC15' : reserva.estado === 'abordado' ? '#FFFFFF' : '#FACC15'} />
                       <span>
-                        {reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} {reserva.estado === 'reservado' ? 'reservado (esperando subir)' : reserva.estado === 'abordado' ? 'a bordo (asiento rojo)' : 'en proceso de pago'}
+                        {reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} {reserva.estado === 'reservado' ? 'reservado (esperando subir)' : reserva.estado === 'abordado' ? 'a bordo (asiento ocupado)' : 'en proceso de pago'}
                       </span>
                     </span>
                   </div>
@@ -1188,15 +1188,15 @@ export default function PaginaConductorColectivo() {
                       padding: '4px 8px',
                       borderRadius: '8px',
                       background: reserva.estado === 'reservado'
-                        ? 'rgba(245, 158, 11, 0.2)'
+                        ? 'rgba(250, 204, 21, 0.15)'
                         : reserva.estado === 'abordado'
-                        ? 'rgba(239, 68, 68, 0.2)'
-                        : 'rgba(56, 189, 248, 0.2)',
+                        ? '#262626'
+                        : 'rgba(250, 204, 21, 0.15)',
                       color: reserva.estado === 'reservado'
-                        ? '#FBBF24'
+                        ? '#FACC15'
                         : reserva.estado === 'abordado'
-                        ? '#F87171'
-                        : '#38BDF8',
+                        ? '#FFFFFF'
+                        : '#FACC15',
                       border: '1px solid currentColor',
                     }}>
                       {reserva.estado === 'reservado'
@@ -1212,9 +1212,9 @@ export default function PaginaConductorColectivo() {
                       fontWeight: '700',
                       padding: '4px 8px',
                       borderRadius: '8px',
-                      background: reserva.metodoPago === 'rutpay' ? 'rgba(245, 158, 11, 0.2)' : reserva.metodoPago === 'mercadopago' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                      color: reserva.metodoPago === 'rutpay' ? '#FBBF24' : reserva.metodoPago === 'mercadopago' ? '#38BDF8' : '#34D399',
-                      border: '1px solid currentColor',
+                      background: '#262626',
+                      color: '#FACC15',
+                      border: '1px solid rgba(250, 204, 21, 0.4)',
                       textTransform: 'uppercase',
                     }}>
                       {reserva.metodoPago}
@@ -1231,11 +1231,11 @@ export default function PaginaConductorColectivo() {
                       justifyContent: 'space-between',
                       flexWrap: 'wrap',
                       gap: '8px',
-                      background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.18) 0%, rgba(245, 158, 11, 0.06) 100%)',
-                      border: '1.5px solid rgba(245, 158, 11, 0.45)',
+                      background: 'rgba(250, 204, 21, 0.12)',
+                      border: '1.5px solid #FACC15',
                       borderRadius: '10px',
                       padding: '8px 12px',
-                      boxShadow: '0 2px 10px rgba(245, 158, 11, 0.15)',
+                      boxShadow: '0 2px 10px rgba(250, 204, 21, 0.2)',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1243,19 +1243,19 @@ export default function PaginaConductorColectivo() {
                         width: '32px',
                         height: '32px',
                         borderRadius: '50%',
-                        background: 'rgba(245, 158, 11, 0.2)',
+                        background: '#FACC15',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexShrink: 0,
                       }}>
-                        <IconoReloj size={18} color="#FBBF24" />
+                        <IconoReloj size={18} color="#000000" />
                       </div>
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: '800', color: '#FBBF24' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '800', color: '#FACC15' }}>
                           Llegas a buscarlo en ~{infoLlegada.minutos} min
                         </div>
-                        <div style={{ fontSize: '11px', color: '#CBD5E1' }}>
+                        <div style={{ fontSize: '11px', color: '#D4D4D4' }}>
                           Distancia: {infoLlegada.textoDistancia}
                         </div>
                       </div>
@@ -1264,8 +1264,8 @@ export default function PaginaConductorColectivo() {
                       style={{
                         fontSize: '11px',
                         fontWeight: '800',
-                        color: '#0B1329',
-                        background: '#FBBF24',
+                        color: '#000000',
+                        background: '#FACC15',
                         padding: '3px 8px',
                         borderRadius: '6px',
                         textTransform: 'uppercase',
@@ -1278,8 +1278,8 @@ export default function PaginaConductorColectivo() {
                 )}
 
                 {reserva.direccionSubida && (
-                  <div style={{ fontSize: '12px', color: '#CBD5E1', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.03)', padding: '6px 10px', borderRadius: '8px' }}>
-                    <IconoUbicacion size={14} color="#38BDF8" />
+                  <div style={{ fontSize: '12px', color: '#D4D4D4', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.05)', padding: '6px 10px', borderRadius: '8px' }}>
+                    <IconoUbicacion size={14} color="#FACC15" />
                     <span>Punto de recogida: <b>{reserva.direccionSubida}</b></span>
                   </div>
                 )}
@@ -1289,7 +1289,7 @@ export default function PaginaConductorColectivo() {
                     href={`tel:${reserva.pasajero.phone}`}
                     style={{
                       fontSize: '12px',
-                      color: '#38BDF8',
+                      color: '#FACC15',
                       textDecoration: 'none',
                       fontWeight: '600',
                       display: 'flex',
@@ -1297,7 +1297,7 @@ export default function PaginaConductorColectivo() {
                       gap: '6px',
                     }}
                   >
-                    <IconoTelefono size={13} color="#38BDF8" />
+                    <IconoTelefono size={13} color="#FACC15" />
                     <span>Llamar ({reserva.pasajero.phone})</span>
                   </a>
 
@@ -1309,19 +1309,19 @@ export default function PaginaConductorColectivo() {
                         style={{
                           padding: '10px 16px',
                           borderRadius: '10px',
-                          background: '#38BDF8',
-                          color: '#0F172A',
+                          background: '#FACC15',
+                          color: '#000000',
                           border: 'none',
                           fontWeight: '800',
                           fontSize: '13px',
                           cursor: 'pointer',
-                          boxShadow: '0 2px 10px rgba(56, 189, 248, 0.4)',
+                          boxShadow: '0 2px 10px rgba(250, 204, 21, 0.4)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '6px',
                         }}
                       >
-                        <IconoTarjeta size={15} color="#0F172A" />
+                        <IconoTarjeta size={15} color="#000000" />
                         <span>{cargandoAccion === reserva.id ? 'Confirmando...' : 'Aceptar Pago'}</span>
                       </button>
                     ) : reserva.estado === 'abordado' ? (
@@ -1331,19 +1331,19 @@ export default function PaginaConductorColectivo() {
                         style={{
                           padding: '10px 16px',
                           borderRadius: '10px',
-                          background: '#10B981',
-                          color: '#FFF',
+                          background: '#FACC15',
+                          color: '#000000',
                           border: 'none',
                           fontWeight: '800',
                           fontSize: '13px',
                           cursor: 'pointer',
-                          boxShadow: '0 2px 10px rgba(16, 185, 129, 0.4)',
+                          boxShadow: '0 2px 10px rgba(250, 204, 21, 0.4)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '6px',
                         }}
                       >
-                        <IconoCheck size={15} color="#FFF" />
+                        <IconoCheck size={15} color="#000000" />
                         <span>{cargandoAccion === reserva.id ? 'Liberando...' : 'Cobrar y Liberar'}</span>
                       </button>
                     ) : reserva.estado === 'pendiente_chofer' ? (
@@ -1353,8 +1353,8 @@ export default function PaginaConductorColectivo() {
                           style={{
                             padding: '8px 14px',
                             borderRadius: '8px',
-                            background: '#10B981',
-                            color: '#FFF',
+                            background: '#FACC15',
+                            color: '#000000',
                             border: 'none',
                             fontWeight: '800',
                             fontSize: '12px',
@@ -1364,7 +1364,7 @@ export default function PaginaConductorColectivo() {
                             gap: '4px',
                           }}
                         >
-                          <IconoCheck size={13} color="#FFF" />
+                          <IconoCheck size={13} color="#000000" />
                           <span>Aceptar</span>
                         </button>
                         <button
@@ -1372,9 +1372,9 @@ export default function PaginaConductorColectivo() {
                           style={{
                             padding: '8px 10px',
                             borderRadius: '8px',
-                            background: 'rgba(239, 68, 68, 0.2)',
-                            color: '#F87171',
-                            border: '1px solid rgba(239, 68, 68, 0.4)',
+                            background: '#262626',
+                            color: '#A3A3A3',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
                             fontWeight: '700',
                             fontSize: '12px',
                             cursor: 'pointer',
@@ -1391,19 +1391,19 @@ export default function PaginaConductorColectivo() {
                         style={{
                           padding: '11px 18px',
                           borderRadius: '10px',
-                          background: 'linear-gradient(135deg, #F59E0B, #D97706)',
-                          color: '#FFFFFF',
+                          background: '#FACC15',
+                          color: '#000000',
                           border: 'none',
                           fontWeight: '900',
                           fontSize: '13px',
                           cursor: 'pointer',
-                          boxShadow: '0 4px 14px rgba(245, 158, 11, 0.45)',
+                          boxShadow: '0 4px 14px rgba(250, 204, 21, 0.45)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '6px',
                         }}
                       >
-                        <IconoCheck size={16} color="#FFFFFF" />
+                        <IconoCheck size={16} color="#000000" />
                         <span>{cargandoAccion === reserva.id ? 'Marcando...' : 'SUBIR A BORDO'}</span>
                       </button>
                     )}
@@ -1412,9 +1412,9 @@ export default function PaginaConductorColectivo() {
                       style={{
                         padding: '9px 12px',
                         borderRadius: '8px',
-                        background: 'rgba(239, 68, 68, 0.15)',
-                        color: '#F87171',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        background: 'transparent',
+                        color: '#A3A3A3',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
                         fontWeight: '700',
                         fontSize: '12px',
                         cursor: 'pointer',
@@ -1423,7 +1423,7 @@ export default function PaginaConductorColectivo() {
                         gap: '4px',
                       }}
                     >
-                      <IconoCruz size={12} color="#F87171" />
+                      <IconoCruz size={12} color="#A3A3A3" />
                       <span>Cancelar</span>
                     </button>
                   </div>
@@ -1445,14 +1445,14 @@ export default function PaginaConductorColectivo() {
             borderRadius: '14px',
             border: 'none',
             background: enServicio
-              ? 'linear-gradient(135deg, #10B981, #059669)'
-              : 'linear-gradient(135deg, #475569, #334155)',
-            fontWeight: '800',
+              ? '#FACC15'
+              : '#262626',
+            fontWeight: '900',
             fontSize: '14px',
             cursor: 'pointer',
-            color: '#FFFFFF',
+            color: enServicio ? '#000000' : '#FFFFFF',
             boxShadow: enServicio
-              ? '0 6px 22px rgba(16, 185, 129, 0.45)'
+              ? '0 6px 22px rgba(250, 204, 21, 0.45)'
               : '0 4px 12px rgba(0, 0, 0, 0.3)',
             display: 'flex',
             alignItems: 'center',
@@ -1467,9 +1467,9 @@ export default function PaginaConductorColectivo() {
         </button>
       </div>
 
-      {/* ── SECCIÓN 4: CONTROL RÁPIDO DE LOS 4 ASIENTOS (STAGE: VERDE / NARANJO / ROJO) ── */}
+      {/* ── SECCIÓN 4: CONTROL RÁPIDO DE LOS 4 ASIENTOS (NEGRO / AMARILLO) ── */}
       <section style={{
-        background: '#131D33',
+        background: '#121212',
         borderRadius: '16px',
         padding: '18px',
         border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -1477,11 +1477,11 @@ export default function PaginaConductorColectivo() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#F8FAFC' }}>
+            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#FFFFFF' }}>
               Control de Asientos en Tiempo Real
             </h2>
-            <p style={{ margin: 0, fontSize: '11px', color: '#94A3B8' }}>
-              Verde: Disponible • Naranjo: Reservado • Rojo: A Bordo
+            <p style={{ margin: 0, fontSize: '11px', color: '#A3A3A3' }}>
+              Oscuro: Disponible • Borde Amarillo: Reservado • Amarillo Sólido: A Bordo
             </p>
           </div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1490,9 +1490,9 @@ export default function PaginaConductorColectivo() {
               fontWeight: '800',
               padding: '4px 8px',
               borderRadius: '8px',
-              background: 'rgba(16, 185, 129, 0.2)',
-              border: '1px solid #10B981',
-              color: '#34D399',
+              background: '#262626',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#D4D4D4',
             }}>
               {conteoAsientos.totalLibres} Libres
             </span>
@@ -1502,9 +1502,9 @@ export default function PaginaConductorColectivo() {
                 fontWeight: '800',
                 padding: '4px 8px',
                 borderRadius: '8px',
-                background: 'rgba(245, 158, 11, 0.2)',
-                border: '1px solid #F59E0B',
-                color: '#FBBF24',
+                background: 'rgba(250, 204, 21, 0.15)',
+                border: '1px solid #FACC15',
+                color: '#FACC15',
               }}>
                 {conteoAsientos.totalReservados} Reservados
               </span>
@@ -1515,9 +1515,9 @@ export default function PaginaConductorColectivo() {
                 fontWeight: '800',
                 padding: '4px 8px',
                 borderRadius: '8px',
-                background: 'rgba(239, 68, 68, 0.2)',
-                border: '1px solid #EF4444',
-                color: '#F87171',
+                background: '#FACC15',
+                border: '1px solid #FACC15',
+                color: '#000000',
               }}>
                 {conteoAsientos.totalAbordados} A Bordo
               </span>
@@ -1525,7 +1525,7 @@ export default function PaginaConductorColectivo() {
           </div>
         </div>
 
-        {/* Visualizador de los 4 Asientos (Táctiles interactivos de 3 colores) */}
+        {/* Visualizador de los 4 Asientos (Táctiles interactivos) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', marginBottom: '14px' }}>
           {[1, 2, 3, 4].map((numeroAsiento) => {
             const estadoInfo = obtenerEstadoAsiento(numeroAsiento);
@@ -1578,7 +1578,7 @@ export default function PaginaConductorColectivo() {
               flex: 1,
               padding: '14px',
               borderRadius: '12px',
-              background: '#1E293B',
+              background: '#171717',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: '#FFFFFF',
               fontSize: '15px',
@@ -1600,14 +1600,14 @@ export default function PaginaConductorColectivo() {
               flex: 1,
               padding: '14px',
               borderRadius: '12px',
-              background: '#2563EB',
+              background: '#FACC15',
               border: 'none',
-              color: '#FFFFFF',
+              color: '#000000',
               fontSize: '15px',
               fontWeight: '800',
               cursor: asientosOcupados >= 4 ? 'not-allowed' : 'pointer',
               opacity: asientosOcupados >= 4 ? 0.35 : 1,
-              boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
+              boxShadow: '0 4px 14px rgba(250, 204, 21, 0.35)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1621,7 +1621,7 @@ export default function PaginaConductorColectivo() {
 
       {/* ── SECCIÓN 5: CONTROL DE LÍNEA Y SENTIDO DE RUTA ── */}
       <section style={{
-        background: '#131D33',
+        background: '#121212',
         borderRadius: '16px',
         padding: '18px',
         border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -1632,7 +1632,7 @@ export default function PaginaConductorColectivo() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#94A3B8', marginBottom: '6px', fontWeight: '600' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#A3A3A3', marginBottom: '6px', fontWeight: '600' }}>
               Línea Asignada:
             </label>
             <select
@@ -1642,7 +1642,7 @@ export default function PaginaConductorColectivo() {
                 width: '100%',
                 padding: '10px 12px',
                 borderRadius: '10px',
-                background: '#0B1329',
+                background: '#171717',
                 border: '1px solid rgba(255, 255, 255, 0.2)',
                 color: '#FFFFFF',
                 fontSize: '14px',
@@ -1658,7 +1658,7 @@ export default function PaginaConductorColectivo() {
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '12px', color: '#94A3B8', marginBottom: '6px', fontWeight: '600' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#A3A3A3', marginBottom: '6px', fontWeight: '600' }}>
               Sentido de Ruta:
             </label>
             <button
@@ -1666,9 +1666,9 @@ export default function PaginaConductorColectivo() {
               style={{
                 padding: '10px 16px',
                 borderRadius: '10px',
-                background: '#1E293B',
-                color: '#38BDF8',
-                border: '1px solid rgba(56, 189, 248, 0.4)',
+                background: '#171717',
+                color: '#FACC15',
+                border: '1px solid #FACC15',
                 fontSize: '13px',
                 fontWeight: '800',
                 cursor: 'pointer',
@@ -1677,16 +1677,16 @@ export default function PaginaConductorColectivo() {
                 gap: '8px',
               }}
             >
-              <IconoSentido size={16} color="#38BDF8" />
+              <IconoSentido size={16} color="#FACC15" />
               <span>Sentido {sentidoRuta === 'ida' ? 'IDA ->' : 'VUELTA ->'}</span>
             </button>
           </div>
         </div>
 
         {lineaActual && (
-          <div style={{ background: '#0B1329', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', color: '#94A3B8', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Ruta activa: <b style={{ color: '#F1F5F9' }}>{lineaActual.nombre}</b></span>
-            <span>Paradas en ruta: <b style={{ color: '#F1F5F9' }}>{lineaActual.paradas?.length || 0} paradas</b></span>
+          <div style={{ background: '#171717', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', color: '#A3A3A3', display: 'flex', justifyContent: 'space-between' }}>
+            <span>Ruta activa: <b style={{ color: '#FFFFFF' }}>{lineaActual.nombre}</b></span>
+            <span>Paradas en ruta: <b style={{ color: '#FFFFFF' }}>{lineaActual.paradas?.length || 0} paradas</b></span>
           </div>
         )}
       </section>
@@ -1694,7 +1694,7 @@ export default function PaginaConductorColectivo() {
       {/* ── SECCIÓN 6: CONFIGURACIÓN DE COBROS (RUTPAY Y MERCADOPAGO) ── */}
       {mostrarConfigCobro && (
         <section style={{
-          background: '#131D33',
+          background: '#121212',
           borderRadius: '16px',
           padding: '18px',
           border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -1702,23 +1702,23 @@ export default function PaginaConductorColectivo() {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <IconoTarjeta size={16} color="#38BDF8" />
+              <IconoTarjeta size={16} color="#FACC15" />
               <span>Métodos de Cobro Electrónico</span>
             </h3>
             <button
               onClick={() => setMostrarConfigCobro(false)}
-              style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              style={{ background: 'transparent', border: 'none', color: '#A3A3A3', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
             >
-              <IconoCruz size={16} color="#94A3B8" />
+              <IconoCruz size={16} color="#A3A3A3" />
             </button>
           </div>
-          <p style={{ fontSize: '12px', color: '#94A3B8', margin: '0 0 14px 0' }}>
+          <p style={{ fontSize: '12px', color: '#A3A3A3', margin: '0 0 14px 0' }}>
             Permite a los pasajeros transferirte vía RutPay BancoEstado o pagarte con MercadoPago directamente en el colectivo.
           </p>
 
           <form onSubmit={guardarDatosCobro} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', color: '#CBD5E1', marginBottom: '4px', fontWeight: '600' }}>
+              <label style={{ display: 'block', fontSize: '12px', color: '#D4D4D4', marginBottom: '4px', fontWeight: '600' }}>
                 Teléfono para RutPay BancoEstado:
               </label>
               <input
@@ -1730,8 +1730,8 @@ export default function PaginaConductorColectivo() {
                   width: '100%',
                   padding: '10px 12px',
                   borderRadius: '10px',
-                  background: '#0B1329',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  background: '#171717',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
                   color: '#FFFFFF',
                   fontSize: '13px',
                 }}
@@ -1739,7 +1739,7 @@ export default function PaginaConductorColectivo() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12px', color: '#CBD5E1', marginBottom: '4px', fontWeight: '600' }}>
+              <label style={{ display: 'block', fontSize: '12px', color: '#D4D4D4', marginBottom: '4px', fontWeight: '600' }}>
                 Link o Alias de MercadoPago:
               </label>
               <input
@@ -1751,8 +1751,8 @@ export default function PaginaConductorColectivo() {
                   width: '100%',
                   padding: '10px 12px',
                   borderRadius: '10px',
-                  background: '#0B1329',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  background: '#171717',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
                   color: '#FFFFFF',
                   fontSize: '13px',
                 }}
@@ -1765,20 +1765,20 @@ export default function PaginaConductorColectivo() {
               style={{
                 padding: '12px',
                 borderRadius: '10px',
-                background: '#2563EB',
-                color: '#FFFFFF',
+                background: '#FACC15',
+                color: '#000000',
                 border: 'none',
-                fontWeight: '700',
+                fontWeight: '800',
                 fontSize: '13px',
                 cursor: guardandoCobro ? 'not-allowed' : 'pointer',
-                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.4)',
+                boxShadow: '0 4px 12px rgba(250, 204, 21, 0.35)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
               }}
             >
-              <IconoGuardar size={16} color="#FFFFFF" />
+              <IconoGuardar size={16} color="#000000" />
               <span>{guardandoCobro ? 'Guardando...' : 'Guardar Datos de Cobro'}</span>
             </button>
           </form>
@@ -1802,7 +1802,7 @@ export default function PaginaConductorColectivo() {
             position: 'fixed',
             inset: 0,
             zIndex: 99998,
-            background: 'rgba(9, 13, 22, 0.88)',
+            background: 'rgba(0, 0, 0, 0.85)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
             flexDirection: 'column',
@@ -1815,11 +1815,11 @@ export default function PaginaConductorColectivo() {
             style={{
               width: '100%',
               maxWidth: '480px',
-              background: '#0F172A',
-              border: '2px solid #38BDF8',
+              background: '#121212',
+              border: '2px solid #FACC15',
               borderRadius: '20px',
               padding: '24px',
-              boxShadow: '0 12px 40px rgba(56, 189, 248, 0.3)',
+              boxShadow: '0 12px 40px rgba(250, 204, 21, 0.25)',
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
@@ -1832,14 +1832,14 @@ export default function PaginaConductorColectivo() {
                   width: '64px',
                   height: '64px',
                   borderRadius: '50%',
-                  background: 'rgba(56, 189, 248, 0.2)',
-                  border: '2px solid #38BDF8',
+                  background: 'rgba(250, 204, 21, 0.15)',
+                  border: '2px solid #FACC15',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <IconoTarjeta size={36} color="#38BDF8" />
+                <IconoTarjeta size={36} color="#FACC15" />
               </div>
             </div>
 
@@ -1848,7 +1848,7 @@ export default function PaginaConductorColectivo() {
                 style={{
                   fontSize: '12px',
                   fontWeight: '800',
-                  color: '#38BDF8',
+                  color: '#FACC15',
                   letterSpacing: '1px',
                   textTransform: 'uppercase',
                 }}
@@ -1865,24 +1865,25 @@ export default function PaginaConductorColectivo() {
               >
                 Pasajero {pagoPendiente.pasajeroNombre}
               </h2>
-              <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#94A3B8' }}>
+              <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#A3A3A3' }}>
                 Desea pagar y descender del vehículo
               </p>
             </div>
 
             <div
               style={{
-                background: 'rgba(255, 255, 255, 0.05)',
+                background: '#171717',
                 borderRadius: '12px',
                 padding: '12px 16px',
                 display: 'flex',
                 justifyContent: 'space-around',
                 alignItems: 'center',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
               }}
             >
               <div>
-                <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Medio de Pago</span>
-                <span style={{ fontSize: '14px', fontWeight: '800', color: '#F8FAFC', textTransform: 'uppercase' }}>
+                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Medio de Pago</span>
+                <span style={{ fontSize: '14px', fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase' }}>
                   {pagoPendiente.metodoPago === 'rutpay'
                     ? 'RutPay BancoEstado'
                     : pagoPendiente.metodoPago === 'mercadopago'
@@ -1892,8 +1893,8 @@ export default function PaginaConductorColectivo() {
               </div>
               <div style={{ width: '1px', height: '30px', background: 'rgba(255, 255, 255, 0.1)' }} />
               <div>
-                <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Cupos a Liberar</span>
-                <span style={{ fontSize: '14px', fontWeight: '800', color: '#34D399' }}>
+                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Cupos a Liberar</span>
+                <span style={{ fontSize: '14px', fontWeight: '800', color: '#FACC15' }}>
                   {pagoPendiente.cantidadAsientos} Asiento{pagoPendiente.cantidadAsientos > 1 ? 's' : ''}
                 </span>
               </div>
@@ -1907,10 +1908,10 @@ export default function PaginaConductorColectivo() {
                 justifyContent: 'center',
                 gap: '8px',
                 padding: '10px 14px',
-                background: 'rgba(56, 189, 248, 0.12)',
+                background: 'rgba(250, 204, 21, 0.12)',
                 borderRadius: '12px',
-                border: '1px solid rgba(56, 189, 248, 0.35)',
-                color: '#38BDF8',
+                border: '1px solid #FACC15',
+                color: '#FACC15',
                 fontSize: '13px',
                 fontWeight: '700',
               }}
@@ -1921,12 +1922,12 @@ export default function PaginaConductorColectivo() {
                   width: '10px',
                   height: '10px',
                   borderRadius: '50%',
-                  background: '#38BDF8',
-                  boxShadow: '0 0 10px #38BDF8',
+                  background: '#FACC15',
+                  boxShadow: '0 0 10px #FACC15',
                 }}
               />
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IconoMicrofono size={16} color="#38BDF8" />
+                <IconoMicrofono size={16} color="#FACC15" />
                 <span>Di &quot;SÍ&quot; para confirmar por voz o toca el botón</span>
               </span>
             </div>
@@ -1939,14 +1940,14 @@ export default function PaginaConductorColectivo() {
                 width: '100%',
                 padding: '18px 20px',
                 borderRadius: '14px',
-                background: 'linear-gradient(180deg, #10B981 0%, #059669 100%)',
+                background: '#FACC15',
                 border: 'none',
-                color: '#FFFFFF',
+                color: '#000000',
                 fontSize: '18px',
                 fontWeight: '900',
                 letterSpacing: '0.5px',
                 cursor: 'pointer',
-                boxShadow: '0 6px 20px rgba(16, 185, 129, 0.4)',
+                boxShadow: '0 6px 20px rgba(250, 204, 21, 0.4)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1954,7 +1955,7 @@ export default function PaginaConductorColectivo() {
                 textTransform: 'uppercase',
               }}
             >
-              <IconoCheck size={26} color="#FFFFFF" />
+              <IconoCheck size={26} color="#000000" />
               <span>
                 {cargandoAccion === pagoPendiente.reservaId
                   ? 'Liberando Asiento...'

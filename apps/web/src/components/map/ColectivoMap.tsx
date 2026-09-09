@@ -374,7 +374,7 @@ export default function ColectivoMap({
             },
           };
 
-          const colorRuta = lineaSeleccionada.color || '#2563EB';
+          const colorRuta = '#FACC15';
 
           if (mapa.getSource(idFuenteRuta)) {
             mapa.getSource(idFuenteRuta).setData(geojsonData);
@@ -384,7 +384,7 @@ export default function ColectivoMap({
               data: geojsonData,
             });
 
-            // Capa exterior de resalte (glow)
+            // Capa exterior negra de contraste
             mapa.addLayer({
               id: idCapaRutaGlow,
               type: 'line',
@@ -394,13 +394,13 @@ export default function ColectivoMap({
                 'line-cap': 'round',
               },
               paint: {
-                'line-color': '#0F172A',
-                'line-width': 8,
-                'line-opacity': 0.35,
+                'line-color': '#000000',
+                'line-width': 9,
+                'line-opacity': 0.8,
               },
             });
 
-            // Capa principal con el color de la línea
+            // Capa principal en amarillo colectivo
             mapa.addLayer({
               id: idCapaRutaLinea,
               type: 'line',
@@ -437,9 +437,9 @@ export default function ColectivoMap({
         el.innerHTML = generarSvgColectivoHtml({
           patente: miPatente || 'MI AUTO',
           textoBadge: 'TU COLECTIVO',
-          colorBadge: '#F59E0B',
-          colorAuto: '#F59E0B',
-          colorLetrero: '#FDE047',
+          colorBadge: '#FACC15',
+          colorAuto: '#000000',
+          colorLetrero: '#FACC15',
           esDestacado: true,
           idUnico: 'chofer_propio',
           iconoBadge: 'auto',
@@ -449,7 +449,7 @@ export default function ColectivoMap({
           .setLngLat([ubicacionUsuario.longitud, ubicacionUsuario.latitud])
           .setPopup(
             new Popup({ offset: 22, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              '<b>Tu Colectivo en tiempo real</b><br/><span style="color: #FBBF24; font-size: 10.5px;">GPS activo y en servicio</span>'
+              '<b>Tu Colectivo en tiempo real</b><br/><span style="color: #FACC15; font-size: 10.5px;">GPS activo y en servicio</span>'
             )
           )
           .addTo(mapa);
@@ -461,8 +461,8 @@ export default function ColectivoMap({
         el.className = 'fim-marker-container';
         el.style.cssText = 'position: relative; width: 28px; height: 28px; cursor: pointer;';
         el.innerHTML = `
-          <div style="position: absolute; inset: 0; background: #3B82F6; border-radius: 50%; opacity: 0.4; animation: fimPulse 1.8s ease-out infinite;"></div>
-          <div style="position: absolute; inset: 4px; background: #2563EB; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 14px rgba(37,99,235,0.9);"></div>
+          <div style="position: absolute; inset: 0; background: #FACC15; border-radius: 50%; opacity: 0.45; animation: fimPulse 1.8s ease-out infinite;"></div>
+          <div style="position: absolute; inset: 4px; background: #000000; border-radius: 50%; border: 2.5px solid #FFFFFF; box-shadow: 0 0 14px rgba(250,204,21,0.95);"></div>
         `;
 
         const marcador = new Marker({ element: el, anchor: 'center' })
@@ -480,24 +480,22 @@ export default function ColectivoMap({
 
     // D. Marcador: Paradas de la línea
     if (lineaSeleccionada?.paradas && lineaSeleccionada.paradas.length > 0) {
-      const colorLinea = lineaSeleccionada.color || '#2563EB';
-
       lineaSeleccionada.paradas.forEach((parada) => {
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = `
-          background: #FFFFFF;
-          border: 2.5px solid ${colorLinea};
+          background: #000000;
+          border: 2.5px solid #FACC15;
           border-radius: 50%;
           width: 22px;
           height: 22px;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+          box-shadow: 0 3px 8px rgba(0,0,0,0.7);
           font-size: 11px;
-          font-weight: 800;
-          color: ${colorLinea};
+          font-weight: 900;
+          color: #FFFFFF;
           cursor: pointer;
         `;
         el.innerText = String(parada.orden);
@@ -506,7 +504,7 @@ export default function ColectivoMap({
           .setLngLat([parada.longitud, parada.latitud])
           .setPopup(
             new Popup({ offset: 14, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              `<b>Parada ${parada.orden}: ${parada.nombre}</b><br/><span style="font-size: 10px; color: #94A3B8;">Sentido: ${parada.sentido.toUpperCase()}</span>`
+              `<b>Parada ${parada.orden}: ${parada.nombre}</b><br/><span style="font-size: 10px; color: #A3A3A3;">Sentido: ${parada.sentido.toUpperCase()}</span>`
             )
           )
           .addTo(mapa);
@@ -528,13 +526,13 @@ export default function ColectivoMap({
           ? calcularInfoLlegada(chofer.latitud, chofer.longitud, ubicacionUsuario.latitud, ubicacionUsuario.longitud)
           : null;
 
-        let colorAsientos = '#10B981'; // Verde
+        let colorAsientos = '#FACC15'; // Amarillo colectivo
         let textoAsientos = `${asientosDisponibles} libres`;
         if (estaLleno) {
-          colorAsientos = '#EF4444'; // Rojo
+          colorAsientos = '#171717'; // Lleno en negro/gris
           textoAsientos = 'Lleno';
         } else if (asientosDisponibles === 1) {
-          colorAsientos = '#F59E0B'; // Ámbar
+          colorAsientos = '#FACC15';
           textoAsientos = '1 libre';
         }
 
@@ -543,9 +541,9 @@ export default function ColectivoMap({
           ? (eta ? `TU COLECTIVO • ${eta.textoTiempo}` : 'TU COLECTIVO')
           : textoPill;
 
-        const colorBadge = esSeleccionado ? '#2563EB' : colorAsientos;
-        const colorAuto = esSeleccionado ? '#38BDF8' : colorAsientos;
-        const colorLetrero = esSeleccionado ? '#38BDF8' : '#FDE047';
+        const colorBadge = esSeleccionado ? '#FACC15' : colorAsientos;
+        const colorAuto = '#000000';
+        const colorLetrero = '#FACC15';
 
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
@@ -574,7 +572,7 @@ export default function ColectivoMap({
         });
 
         const infoEtaHtml = eta
-          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #38BDF8; font-weight: 800;">Llega en ${eta.textoTiempo} (${eta.textoDistancia})</div>`
+          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-weight: 800;">Llega en ${eta.textoTiempo} (${eta.textoDistancia})</div>`
           : '';
 
         const tituloPopup = esSeleccionado
@@ -609,16 +607,16 @@ export default function ColectivoMap({
         el.className = 'fim-marker-container';
         el.style.cssText = 'display: flex; flex-direction: column; align-items: center; cursor: pointer; z-index: 90;';
         el.innerHTML = `
-          <div style="background: #7C3AED; color: white; font-size: 10px; font-weight: 800; padding: 2.5px 8px; border-radius: 12px; box-shadow: 0 2px 10px rgba(124,58,237,0.7); margin-bottom: 2px; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
-            ${textoTiempoPasajero ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg> ${textoTiempoPasajero} • ` : ''}${p.nombre.split(' ')[0]} (${p.asientos} as.)
+          <div style="background: #000000; color: #FACC15; border: 1.5px solid #FACC15; font-size: 10px; font-weight: 900; padding: 2.5px 8px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.8); margin-bottom: 2px; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+            ${textoTiempoPasajero ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FACC15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg> ${textoTiempoPasajero} • ` : ''}${p.nombre.split(' ')[0]} (${p.asientos} as.)
           </div>
-          <div style="background: #6D28D9; border: 2px solid #DDD6FE; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(109,40,217,0.7);">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <div style="background: #FACC15; border: 2px solid #000000; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(250,204,21,0.5);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
         `;
 
         const infoLlegadaChoferHtml = eta
-          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FBBF24; font-weight: 800;">Llegas a recogerlo en: ${eta.textoTiempo} (${eta.textoDistancia})</div>`
+          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-weight: 800;">Llegas a recogerlo en: ${eta.textoTiempo} (${eta.textoDistancia})</div>`
           : '';
 
         const marcador = new Marker({ element: el, anchor: 'bottom' })
@@ -665,7 +663,7 @@ export default function ColectivoMap({
         titulo: `Llegas a buscar a ${primerPasajero.nombre.split(' ')[0]}`,
         textoTiempo: eta.textoTiempo,
         textoDistancia: eta.textoDistancia,
-        color: '#F59E0B',
+        color: '#FACC15',
       };
     } else {
       // Modo pasajero: si hay conductor seleccionado o asignado
@@ -684,7 +682,7 @@ export default function ColectivoMap({
         titulo: `Colectivo ${chofer.patente}`,
         textoTiempo: eta.textoTiempo,
         textoDistancia: eta.textoDistancia,
-        color: '#38BDF8',
+        color: '#FACC15',
       };
     }
   }, [ubicacionUsuario, esModoConductor, pasajerosEnEspera, conductorSeleccionadoId, conductoresEnVivo]);
@@ -713,7 +711,7 @@ export default function ColectivoMap({
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 10,
-            background: 'rgba(15, 23, 42, 0.94)',
+            background: 'rgba(0, 0, 0, 0.95)',
             backdropFilter: 'blur(10px)',
             border: `1.5px solid ${etaDestacado.color}`,
             borderRadius: '24px',
@@ -721,7 +719,7 @@ export default function ColectivoMap({
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.55)',
+            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.75)',
             pointerEvents: 'none',
             maxWidth: 'calc(100% - 24px)',
             boxSizing: 'border-box',
@@ -731,12 +729,12 @@ export default function ColectivoMap({
             <circle cx="12" cy="12" r="9" />
             <polyline points="12 6 12 12 16 14" />
           </svg>
-          <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#F8FAFC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#FFFFFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {etaDestacado.titulo}:{' '}
-            <span style={{ color: '#34D399', fontWeight: '900' }}>
+            <span style={{ color: '#FACC15', fontWeight: '900' }}>
               {etaDestacado.tipo === 'conductor' ? 'en ' : 'llega en '}{etaDestacado.textoTiempo}
             </span>{' '}
-            <span style={{ color: '#94A3B8', fontWeight: '600', fontSize: '11px' }}>
+            <span style={{ color: '#A3A3A3', fontWeight: '600', fontSize: '11px' }}>
               ({etaDestacado.textoDistancia})
             </span>
           </span>
@@ -749,18 +747,18 @@ export default function ColectivoMap({
           outline: none;
         }
         .fim-map-popup .maplibregl-popup-content {
-          background: rgba(15, 23, 42, 0.95) !important;
-          color: #f8fafc !important;
-          border: 1px solid rgba(255, 255, 255, 0.15) !important;
+          background: #0A0A0A !important;
+          color: #FFFFFF !important;
+          border: 1px solid rgba(250, 204, 21, 0.4) !important;
           border-radius: 10px !important;
           font-size: 11px !important;
-          font-weight: 500 !important;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+          font-weight: 600 !important;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7) !important;
           padding: 8px 12px !important;
           backdrop-filter: blur(8px);
         }
         .fim-map-popup .maplibregl-popup-tip {
-          border-top-color: rgba(15, 23, 42, 0.95) !important;
+          border-top-color: #0A0A0A !important;
         }
         @keyframes fimPulse {
           0% {
