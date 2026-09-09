@@ -24,85 +24,17 @@ export default function Home() {
   return (
     <main style={{ minHeight: '100vh', background: '#0A0A0A', color: '#FFFFFF', overflowX: 'hidden' }}>
       
-      {/* ─── CINTILLO INSTITUCIONAL SUPERIOR ─── */}
-      <div
-        style={{
-          background: '#FACC15',
-          color: '#000000',
-          textAlign: 'center',
-          padding: '8px 16px',
-          fontSize: '0.8rem',
-          fontWeight: 800,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-          flexWrap: 'wrap',
-          zIndex: 101,
-          position: 'relative',
-        }}
-      >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <IconoAuto size={15} color="#000000" />
-          SISTEMA OFICIAL DE TAXIS COLECTIVOS DE CHILE
-        </span>
-        <span style={{ opacity: 0.6 }}>•</span>
-        <span>CONDUCCIÓN MANOS LIBRES LEY 21.377 (NO CHAT)</span>
-      </div>
+      {/* ─── NAVBAR ELEGANTE & RESPONSIVE ─── */}
+      <nav className="nav-header">
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+          <Logo width="100" height="34" />
+        </Link>
 
-      {/* ─── NAVBAR ELEGANTE ─── */}
-      <nav
-        style={{
-          padding: '14px 20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(16px)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          background: 'rgba(10, 10, 10, 0.9)',
-          maxWidth: '100vw',
-          boxSizing: 'border-box',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Logo width="110" height="38" />
-        </div>
-
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <Link
-            href="/login"
-            style={{
-              padding: '8px 14px',
-              borderRadius: '8px',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              color: '#FFFFFF',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              textDecoration: 'none',
-              transition: 'all 0.2s ease',
-              background: '#171717',
-            }}
-          >
+        <div className="nav-actions">
+          <Link href="/login" className="nav-btn-login">
             Iniciar sesión
           </Link>
-          <Link
-            href="/register"
-            style={{
-              padding: '8px 16px',
-              borderRadius: '8px',
-              background: '#FACC15',
-              color: '#000000',
-              fontSize: '0.85rem',
-              fontWeight: 800,
-              textDecoration: 'none',
-              boxShadow: '0 2px 10px rgba(250, 204, 21, 0.3)',
-            }}
-          >
+          <Link href="/register" className="nav-btn-register">
             Registrarse
           </Link>
         </div>
@@ -110,9 +42,10 @@ export default function Home() {
 
       {/* ─── HERO PRINCIPAL ─── */}
       <section
+        className="hero-section"
         style={{
           position: 'relative',
-          padding: '50px 20px 40px',
+          padding: '48px 20px 36px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -340,6 +273,7 @@ export default function Home() {
 
           {/* Toggle de Selección de Rol */}
           <div
+            className="role-toggle-container"
             style={{
               display: 'inline-flex',
               background: '#121212',
@@ -351,6 +285,7 @@ export default function Home() {
           >
             <button
               onClick={() => setRolActivo('pasajero')}
+              className="role-toggle-btn"
               style={{
                 padding: '10px 24px',
                 borderRadius: '9999px',
@@ -371,6 +306,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => setRolActivo('conductor')}
+              className="role-toggle-btn"
               style={{
                 padding: '10px 24px',
                 borderRadius: '9999px',
