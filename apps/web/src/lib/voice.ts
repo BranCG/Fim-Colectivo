@@ -118,6 +118,7 @@ function buscarVozEspanol(): SpeechSynthesisVoice | undefined {
   return (
     voces.find((v) => v.lang === 'es-CL') ||
     voces.find((v) => v.lang === 'es-419') ||
+    voces.find((v) => v.lang === 'es-US') ||
     voces.find((v) => v.lang === 'es-MX') ||
     voces.find((v) => v.lang === 'es-ES') ||
     voces.find((v) => v.lang.startsWith('es'))
@@ -170,7 +171,8 @@ export function detenerVoz() {
 }
 
 /**
- * Lee texto en voz alta utilizando audio streaming neural en español con fallback nativo
+ * Lee texto en voz alta utilizando el motor nativo de síntesis de voz (SpeechSynthesis)
+ * de alta fluidez y sin retrasos de red, con fallback a audio streaming.
  */
 export function hablarTexto(texto: string, alFinalizar?: () => void) {
   if (typeof window === 'undefined') {
@@ -188,18 +190,51 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
     }
   };
 
-  // Intentar reproducir stream de audio neural en español (Google TTS / proxy API)
+  // 1. Prioridad: Síntesis nativa del dispositivo (0ms de latencia, audio fluido sin cortes)
+  if ('speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.resume();
+
+      const locucion = new SpeechSynthesisUtterance(texto);
+      locucion.lang = 'es-CL';
+      locucion.rate = 1.08;
+      locucion.pitch = 1.0;
+      locucion.volume = 1.0;
+
+      const vozEspanol = buscarVozEspanol();
+      if (vozEspanol) {
+        locucion.voice = vozEspanol;
+      }
+
+      const timerSeguridad = setTimeout(invocarFinal, 7000);
+
+      locucion.onend = () => {
+        clearTimeout(timerSeguridad);
+        invocarFinal();
+      };
+
+      locucion.onerror = (err) => {
+        clearTimeout(timerSeguridad);
+        console.warn('[TTS] SpeechSynthesis error:', err);
+        invocarFinal();
+      };
+
+      window.speechSynthesis.speak(locucion);
+      return;
+    } catch (e) {
+      console.warn('[TTS] Error en SpeechSynthesis nativo, probando fallback:', e);
+    }
+  }
+
+  // 2. Fallback: Stream de audio si el navegador no cuenta con speechSynthesis
   try {
     const textoCodificado = encodeURIComponent(texto.trim().slice(0, 250));
     const urlProxy = `${getBaseApiUrl()}/api/colectivos/tts?texto=${textoCodificado}&lang=es`;
-    const urlGoogle = `https://translate.google.com/translate_tts?ie=UTF-8&q=${textoCodificado}&tl=es&client=tw-ob`;
 
     const audio = new Audio();
     audioActual = audio;
 
-    const timerSeguridad = setTimeout(() => {
-      invocarFinal();
-    }, 14000);
+    const timerSeguridad = setTimeout(invocarFinal, 7000);
 
     audio.onended = () => {
       clearTimeout(timerSeguridad);
@@ -209,69 +244,19 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
 
     audio.onerror = () => {
       clearTimeout(timerSeguridad);
-      console.warn('[TTS Audio] Falló stream primario, probando fallback secundario...');
       audioActual = null;
-      ejecutarLecturaSintesis(texto, invocarFinal);
-    };
-
-    audio.src = urlProxy;
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise.catch((err) => {
-        console.warn('[TTS Audio] Error en proxy, probando Google directo:', err);
-        audio.src = urlGoogle;
-        audio.play().catch(() => {
-          clearTimeout(timerSeguridad);
-          audioActual = null;
-          ejecutarLecturaSintesis(texto, invocarFinal);
-        });
-      });
-    }
-  } catch (e) {
-    console.warn('[TTS Audio] Error general al inicializar audio, pasando a síntesis nativa:', e);
-    ejecutarLecturaSintesis(texto, invocarFinal);
-  }
-}
-
-function ejecutarLecturaSintesis(texto: string, alFinalizar?: () => void) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    if (alFinalizar) alFinalizar();
-    return;
-  }
-
-  try {
-    window.speechSynthesis.resume();
-
-    const locucion = new SpeechSynthesisUtterance(texto);
-    locucion.lang = 'es-CL';
-    locucion.rate = 1.02;
-    locucion.pitch = 1.0;
-    locucion.volume = 1.0;
-
-    const vozEspanol = buscarVozEspanol();
-    if (vozEspanol) {
-      locucion.voice = vozEspanol;
-    }
-
-    let completado = false;
-    const invocarFinal = () => {
-      if (!completado) {
-        completado = true;
-        if (alFinalizar) alFinalizar();
-      }
-    };
-
-    locucion.onend = invocarFinal;
-    locucion.onerror = (err) => {
-      console.warn('SpeechSynthesis error en ejecución:', err);
       invocarFinal();
     };
 
-    setTimeout(invocarFinal, 12000);
-    window.speechSynthesis.speak(locucion);
-  } catch (err) {
-    console.warn('Error al ejecutar speak:', err);
-    if (alFinalizar) alFinalizar();
+    audio.src = urlProxy;
+    audio.play().catch(() => {
+      clearTimeout(timerSeguridad);
+      audioActual = null;
+      invocarFinal();
+    });
+  } catch (e) {
+    console.warn('[TTS Audio] Error en audio fallback:', e);
+    invocarFinal();
   }
 }
 
@@ -327,11 +312,6 @@ class GestorReconocimientoVoz {
       this.reconocimiento.onstart = () => {
         this.estaCorriendo = true;
         this.notificarEstadoEscucha(true);
-      };
-
-      // Si el usuario comienza a hablar, pausar inmediatamente cualquier audio TTS saliente (Barge-in)
-      this.reconocimiento.onspeechstart = () => {
-        detenerVoz();
       };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
