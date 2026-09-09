@@ -39,36 +39,46 @@ export default function AlertaVozReserva({
     ? `${(solicitud.distanciaMetros / 1000).toFixed(1)} km`
     : `${solicitud.distanciaMetros} m`;
 
-  // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS)
+  // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS), luego activar micrófono
   useEffect(() => {
-    // Sonido de alerta
+    // Sonido de alerta chime inicial
     reproducirSonido('alerta');
 
-    // Locución ultra-concisa de 1 segundo para no acaparar el micrófono ni saturar el audio del chofer
-    const nombre = solicitud.nombrePasajero.split(' ')[0];
-    const asientos = solicitud.cantidadAsientos;
-    const textoVoz = `${nombre}, ${asientos} ${asientos > 1 ? 'cupos' : 'cupo'}. ¿Tomamos?`;
+    // Locución ultra-concisa de 1 segundo ("JUAN, UN ASIENTO. ¿TOMAMOS?")
+    const nombre = (solicitud.nombrePasajero || 'Pasajero').split(' ')[0];
+    const asientos = solicitud.cantidadAsientos || 1;
+    const textoAsientos = asientos === 1 ? 'un asiento' : `${asientos} asientos`;
+    const textoVoz = `${nombre}, ${textoAsientos}. ¿Tomamos?`;
 
-    // Iniciar reconocimiento de comandos por voz ("SÍ" o "NO") de forma inmediata
-    escuchaRef.current = iniciarEscuchaVoz({
-      onSi: () => {
-        manejarAceptar();
-      },
-      onNo: () => {
-        manejarRechazar();
-      },
-      onEscuchando: (activo) => {
-        setEscuchandoVoz(activo);
-      },
+    let microfonoIniciado = false;
+    const activarMicrofono = () => {
+      if (microfonoIniciado || respondido) return;
+      microfonoIniciado = true;
+      escuchaRef.current = iniciarEscuchaVoz({
+        onSi: () => {
+          manejarAceptar();
+        },
+        onNo: () => {
+          manejarRechazar();
+        },
+        onEscuchando: (activo) => {
+          setEscuchandoVoz(activo);
+        },
+      });
+    };
+
+    // Hablar inmediatamente; al terminar la frase (o a los 1.3s), se enciende el micrófono
+    hablarTexto(textoVoz, () => {
+      activarMicrofono();
     });
 
-    // Hablar inmediatamente con voz neuronal streaming
-    hablarTexto(textoVoz);
+    const timerSeguridadMic = setTimeout(() => {
+      activarMicrofono();
+    }, 1300);
 
     return () => {
-      if (!respondido) {
-        detenerVoz();
-      }
+      clearTimeout(timerSeguridadMic);
+      detenerVoz();
       if (escuchaRef.current) {
         try {
           escuchaRef.current.detener();
@@ -101,6 +111,7 @@ export default function AlertaVozReserva({
   const manejarAceptar = () => {
     if (respondido) return;
     setRespondido(true);
+    detenerVoz();
     if (escuchaRef.current) {
       try {
         escuchaRef.current.detener();
@@ -109,7 +120,7 @@ export default function AlertaVozReserva({
 
     try {
       reproducirSonido('exito');
-      hablarTexto('Reserva aceptada. Te espera.');
+      hablarTexto('Reserva aceptada');
     } catch {}
 
     try {
@@ -122,6 +133,7 @@ export default function AlertaVozReserva({
   const manejarRechazar = () => {
     if (respondido) return;
     setRespondido(true);
+    detenerVoz();
     if (escuchaRef.current) {
       try {
         escuchaRef.current.detener();
@@ -130,7 +142,6 @@ export default function AlertaVozReserva({
 
     try {
       reproducirSonido('rechazo');
-      hablarTexto('Pasado al siguiente móvil.');
     } catch {}
 
     try {
@@ -143,6 +154,7 @@ export default function AlertaVozReserva({
   const manejarExpiracion = () => {
     if (respondido) return;
     setRespondido(true);
+    detenerVoz();
     if (escuchaRef.current) {
       try {
         escuchaRef.current.detener();
@@ -151,7 +163,6 @@ export default function AlertaVozReserva({
 
     try {
       reproducirSonido('rechazo');
-      hablarTexto('Tiempo expirado. Pasando al siguiente móvil.');
     } catch {}
 
     try {

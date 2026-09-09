@@ -193,6 +193,7 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
   // 1. Prioridad: Síntesis nativa del dispositivo (0ms de latencia, audio fluido sin cortes)
   if ('speechSynthesis' in window) {
     try {
+      window.speechSynthesis.cancel();
       window.speechSynthesis.resume();
 
       const locucion = new SpeechSynthesisUtterance(texto);
