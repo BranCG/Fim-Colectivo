@@ -243,7 +243,8 @@ export default function PaginaPasajeroColectivo() {
           copia[indice] = { ...copia[indice], ...actualizado };
           return copia;
         }
-        return [...prev, actualizado];
+        // Si el chofer no está en servicio activo en la lista, no agregarlo
+        return prev;
       });
     };
 
@@ -326,6 +327,7 @@ export default function PaginaPasajeroColectivo() {
     };
 
     socket.on('colectivo:actualizacion-ubicacion', manejarActualizacionUbicacion);
+    socket.on('colectivo:location-update', manejarActualizacionUbicacion);
     socket.on('colectivo:conductor-offline', manejarConductorOffline);
     socket.on('colectivo:conductor-online', manejarConductorOnline);
     socket.on('colectivo:cambio-asientos', manejarCambioAsientos);
@@ -374,6 +376,7 @@ export default function PaginaPasajeroColectivo() {
         socket.emit('colectivo:salir-linea', { lineaId: lineaSeleccionada.id });
       }
       socket.off('colectivo:actualizacion-ubicacion', manejarActualizacionUbicacion);
+      socket.off('colectivo:location-update', manejarActualizacionUbicacion);
       socket.off('colectivo:conductor-offline', manejarConductorOffline);
       socket.off('colectivo:conductor-online', manejarConductorOnline);
       socket.off('colectivo:cambio-asientos', manejarCambioAsientos);

@@ -16,6 +16,8 @@ import uploadRoutes from './routes/uploads';
 import paymentRoutes from './routes/payments.routes';
 import colectivosRoutes from './routes/colectivos';
 
+import prisma from './utils/prisma';
+
 // Socket handler
 import { setupSocketHandlers } from './socket/handlers';
 
@@ -74,7 +76,18 @@ setupSocketHandlers(io);
 
 // ─── Start server ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3011;
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, async () => {
+  // Resetear estados online residuales para garantizar que choferes no conectados no aparezcan como fantasmas
+  try {
+    await prisma.driver.updateMany({
+      where: { isOnline: true },
+      data: { isOnline: false },
+    });
+    console.log('[Startup] Estado de conductores reseteado a fuera de servicio.');
+  } catch (err) {
+    console.error('[Startup] Error reseteando estado de conductores:', err);
+  }
+
   console.log(`
 ╔═══════════════════════════════════╗
 ║       FIM COLECTIVO API           ║

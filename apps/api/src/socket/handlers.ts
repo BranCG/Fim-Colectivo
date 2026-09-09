@@ -26,16 +26,71 @@ export function setupSocketHandlers(io: Server) {
       socket.data.driverId = driverId;
       socket.join(`driver:${driverId}`);
 
-      await prisma.driver.update({
+      const chofer = await prisma.driver.update({
         where: { id: driverId },
         data: { isOnline: true, lastLat: lat, lastLng: lng, lastSeen: new Date() },
+        select: {
+          id: true,
+          lineaId: true,
+          isOnline: true,
+          asientosTotales: true,
+          asientosOcupados: true,
+          sentidoRuta: true,
+          vehiclePlate: true,
+          name: true,
+        },
       }).catch(console.error);
+
+      if (chofer && chofer.lineaId) {
+        socket.join(`linea:${chofer.lineaId}`);
+        io.to(`linea:${chofer.lineaId}`).emit('colectivo:conductor-online', {
+          conductorId: chofer.id,
+          lineaId: chofer.lineaId,
+          asientosOcupados: chofer.asientosOcupados,
+          asientosTotales: chofer.asientosTotales,
+          sentidoRuta: chofer.sentidoRuta,
+          patente: chofer.vehiclePlate,
+          nombre: chofer.name,
+          latitud: lat,
+          longitud: lng,
+        });
+      }
 
       console.log(`[Socket] Conductor ${driverId} en línea en (${lat}, ${lng})`);
     });
 
     // ─── CONDUCTOR: actualiza posición ────────────────────────────────────
     socket.on('driver:location', async ({ driverId, lat, lng }: { driverId: string; lat: number; lng: number }) => {
+      // Verificar si el conductor existe y está efectivamente en servicio
+      const chofer = await prisma.driver.findUnique({
+        where: { id: driverId },
+        select: {
+          id: true,
+          lineaId: true,
+          isOnline: true,
+          asientosOcupados: true,
+          asientosTotales: true,
+          sentidoRuta: true,
+          vehiclePlate: true,
+          name: true,
+        },
+      }).catch(() => null);
+
+      if (!chofer) return;
+
+      // Si el conductor está FUERA DE SERVICIO:
+      // Jamás emitir su ubicación a los pasajeros y asegurar que los clientes lo purguen
+      if (!chofer.isOnline) {
+        onlineDrivers.delete(driverId);
+        if (chofer.lineaId) {
+          io.to(`linea:${chofer.lineaId}`).emit('colectivo:conductor-offline', {
+            conductorId: chofer.id,
+            lineaId: chofer.lineaId,
+          });
+        }
+        return;
+      }
+
       onlineDrivers.set(driverId, { socketId: socket.id, lat, lng });
 
       await prisma.driver.update({
@@ -56,12 +111,7 @@ export function setupSocketHandlers(io: Server) {
       }
 
       // Si el conductor es de colectivo y tiene línea asignada, emitir a todos los pasajeros de la línea
-      const chofer = await prisma.driver.findUnique({
-        where: { id: driverId },
-        select: { id: true, lineaId: true, asientosOcupados: true, asientosTotales: true, sentidoRuta: true, vehiclePlate: true, name: true },
-      }).catch(() => null);
-
-      if (chofer?.lineaId) {
+      if (chofer.lineaId) {
         const payloadUbicacion = {
           conductorId: chofer.id,
           lineaId: chofer.lineaId,

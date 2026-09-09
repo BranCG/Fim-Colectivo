@@ -194,11 +194,17 @@ export default function PaginaConductorColectivo() {
     const suscribirSalas = () => {
       if (choferSesion?.id) {
         socket.emit('conductor:unirse', { conductorId: choferSesion.id });
-        socket.emit('driver:online', {
-          driverId: choferSesion.id,
-          lat: ubicacionChoferRef.current?.latitud || -33.4489,
-          lng: ubicacionChoferRef.current?.longitud || -70.6693,
-        });
+        if (enServicio) {
+          socket.emit('driver:online', {
+            driverId: choferSesion.id,
+            lat: ubicacionChoferRef.current?.latitud || -33.4489,
+            lng: ubicacionChoferRef.current?.longitud || -70.6693,
+          });
+        } else {
+          socket.emit('driver:offline', {
+            driverId: choferSesion.id,
+          });
+        }
       }
       if (lineaActual?.id) {
         socket.emit('colectivo:unirse-linea', { lineaId: lineaActual.id });
