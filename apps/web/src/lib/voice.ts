@@ -322,11 +322,16 @@ class GestorReconocimientoVoz {
       this.reconocimiento.lang = 'es-CL';
       this.reconocimiento.continuous = true;
       this.reconocimiento.interimResults = true;
-      this.reconocimiento.maxAlternatives = 3;
+      this.reconocimiento.maxAlternatives = 5;
 
       this.reconocimiento.onstart = () => {
         this.estaCorriendo = true;
         this.notificarEstadoEscucha(true);
+      };
+
+      // Si el usuario comienza a hablar, pausar inmediatamente cualquier audio TTS saliente (Barge-in)
+      this.reconocimiento.onspeechstart = () => {
+        detenerVoz();
       };
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -334,8 +339,8 @@ class GestorReconocimientoVoz {
         const ahora = Date.now();
         const resultados = evento.results;
 
-        // Antirrebote de comandos (1.2 segundos entre ejecuciones)
-        if (ahora - this.ultimoDisparoComando < 1200) {
+        // Antirrebote mínimo de 500ms entre comandos aceptados
+        if (ahora - this.ultimoDisparoComando < 500) {
           return;
         }
 
@@ -344,45 +349,51 @@ class GestorReconocimientoVoz {
           const numAlternativas = item.length || 1;
 
           for (let altIdx = 0; altIdx < numAlternativas; altIdx++) {
-            const transcripcion = (item[altIdx]?.transcript || '').trim().toLowerCase();
-            if (!transcripcion) continue;
+            const rawTranscript = (item[altIdx]?.transcript || '').trim();
+            if (!rawTranscript) continue;
 
-            console.log('[Voz Chofer] Audio detectado (alt ' + altIdx + '):', transcripcion, item.isFinal ? '(final)' : '(interim)');
-
-            // Normalizar quitando tildes y caracteres extra
-            const normalizado = transcripcion
+            // Normalizar quitando tildes, signos y puntuaciones
+            const normalizado = rawTranscript
               .normalize('NFD')
               .replace(/[\u0300-\u036f]/g, '')
-              .toLowerCase();
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            if (!normalizado) continue;
+
+            console.log('[Voz Chofer] Detectado (alt ' + altIdx + '):', normalizado, item.isFinal ? '(final)' : '(interim)');
 
             // 1. Comando: A BORDO (sube pasajero)
-            const regexAbordo = /\b(a bordo|abordo|subio|sube|subieron|ya subio|arriba|pasajero a bordo|listo|aborde)\b/i;
+            const regexAbordo = /\b(a bordo|abordo|subio|sube|subieron|ya subio|arriba|pasajero a bordo|listo|aborde|adentro)\b/i;
             if (regexAbordo.test(normalizado)) {
+              this.ultimoDisparoComando = ahora;
+              detenerVoz();
               const ejecutado = this.despacharComando('onAbordo');
-              if (ejecutado) {
-                this.ultimoDisparoComando = ahora;
-                return;
-              }
+              if (ejecutado) return;
             }
 
-            // 2. Comando: SÍ (confirmar/aceptar) - Palabras afirmativas exclusivas del conductor
-            const regexSi = /\b(si|sí|dale|bueno|ok|acepto|sipo|si po)\b/i;
+            // 2. Comando: SÍ (confirmar/aceptar)
+            // Alta sensibilidad fonética para dialecto chileno y ASR en cabina:
+            // "si", "sii", "siii", "sip", "sipo", "si po", "se", "dale", "ya", "yapo", "ya po",
+            // "bueno", "ok", "oka", "okay", "toma", "tomar", "tomalo", "tomala", "tomamos",
+            // "claro", "confirmo", "confirmar", "afirmativo", "positivo", "acepto", "aceptar"
+            const regexSi = /\b(s+i+|s+i+p+o*|se|dale|ya|yapo|ya po|bueno|ok|oka|okay|acepto|aceptar|toma|tomar|tomalo|tomala|tomamos|claro|confirmo|confirmar|afirmativo|positivo)\b/i;
             if (regexSi.test(normalizado)) {
+              this.ultimoDisparoComando = ahora;
+              detenerVoz();
               const ejecutado = this.despacharComando('onSi');
-              if (ejecutado) {
-                this.ultimoDisparoComando = ahora;
-                return;
-              }
+              if (ejecutado) return;
             }
 
             // 3. Comando: NO (rechazar/pasar)
-            const regexNo = /\b(no|paso|rechazo|rechazar|dejalo|no puedo|cancelar)\b/i;
+            const regexNo = /\b(n+o+|nop|nopo|no po|paso|rechazo|rechazar|dejalo|dejala|no puedo|cancelar|negativo)\b/i;
             if (regexNo.test(normalizado)) {
+              this.ultimoDisparoComando = ahora;
+              detenerVoz();
               const ejecutado = this.despacharComando('onNo');
-              if (ejecutado) {
-                this.ultimoDisparoComando = ahora;
-                return;
-              }
+              if (ejecutado) return;
             }
           }
         }
@@ -403,12 +414,12 @@ class GestorReconocimientoVoz {
         this.estaCorriendo = false;
         this.notificarEstadoEscucha(false);
 
-        // Si el conductor tiene oyentes activos (ruta o modal), reiniciar de inmediato sin límite de 3
+        // Si el conductor tiene oyentes activos (ruta o modal), reiniciar de inmediato en 50ms
         if (this.escuchandoDeseado && this.suscriptores.size > 0) {
           if (this.timerReintento) clearTimeout(this.timerReintento);
           this.timerReintento = setTimeout(() => {
             this.iniciarCiclo();
-          }, 200);
+          }, 50);
         }
       };
     } catch (e) {
@@ -471,6 +482,7 @@ class GestorReconocimientoVoz {
     const id = opciones.id || Math.random().toString(36).slice(2);
     this.suscriptores.set(id, opciones);
     this.escuchandoDeseado = true;
+    this.ultimoDisparoComando = 0; // Permitir que la primera respuesta del chofer se procese de inmediato
 
     if (!this.estaCorriendo) {
       this.iniciarCiclo();

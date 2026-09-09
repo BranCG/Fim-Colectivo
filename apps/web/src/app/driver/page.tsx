@@ -286,8 +286,8 @@ export default function PaginaConductorColectivo() {
       }
       setPagoPendiente(datos);
       reproducirSonido('alerta');
-      const primerNombre = datos.pasajeroNombre.split(' ')[0];
-      const mensajeVoz = `Pasajero ${primerNombre} va a descender. ¿Confirmas recepción?`;
+      const primerNombre = (datos.pasajeroNombre || 'Pasajero').split(' ')[0];
+      const mensajeVoz = `${primerNombre} desciende. ¿Confirmas pago?`;
 
       // Activar escucha de inmediato para capturar "SÍ" sin demora
       if (escuchaPagoRef.current) {
