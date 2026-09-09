@@ -1052,7 +1052,7 @@ export default function Home() {
           <Link href="/privacy" style={{ color: '#94A3B8', textDecoration: 'none' }}>
             Políticas de Privacidad
           </Link>
-          <Link href="/login" style={{ color: '#94A3B8', textDecoration: 'none' }}>
+          <Link href="/login?role=driver" style={{ color: '#94A3B8', textDecoration: 'none' }}>
             Acceso Conductores
           </Link>
         </div>
