@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { calcularInfoLlegada } from '@/lib/geo';
 
 export interface Parada {
   id: string;
@@ -44,6 +45,8 @@ export interface PasajeroEnEspera {
   asientos: number;
   paradaNombre?: string;
   metodoPago?: string;
+  minutosLlegada?: number;
+  distanciaTexto?: string;
 }
 
 interface Props {
@@ -362,6 +365,11 @@ export default function ColectivoMap({
         const estaLleno = asientosDisponibles <= 0;
         const esSeleccionado = conductorSeleccionadoId === chofer.conductorId;
 
+        // Calcular tiempo y distancia de aproximación
+        const eta = ubicacionUsuario
+          ? calcularInfoLlegada(chofer.latitud, chofer.longitud, ubicacionUsuario.latitud, ubicacionUsuario.longitud)
+          : null;
+
         let colorAsientos = '#10B981'; // Verde
         let textoAsientos = `${asientosDisponibles} libres`;
         if (estaLleno) {
@@ -372,7 +380,8 @@ export default function ColectivoMap({
           textoAsientos = '1 libre';
         }
 
-        const colorBorde = esSeleccionado ? '#F59E0B' : '#1E293B';
+        const textoPill = eta ? `⏱️ ${eta.textoTiempo} • ${textoAsientos}` : textoAsientos;
+        const colorBorde = esSeleccionado ? '#38BDF8' : '#1E293B';
 
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
@@ -381,16 +390,17 @@ export default function ColectivoMap({
           flex-direction: column;
           align-items: center;
           cursor: pointer;
-          transform: ${esSeleccionado ? 'scale(1.15)' : 'scale(1)'};
+          transform: ${esSeleccionado ? 'scale(1.18)' : 'scale(1)'};
           transition: transform 0.2s;
+          z-index: ${esSeleccionado ? 80 : 40};
         `;
         el.innerHTML = `
-          <div style="background: ${colorAsientos}; color: white; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.35); white-space: nowrap; margin-bottom: 2px; letter-spacing: 0.2px;">
-            ${textoAsientos}
+          <div style="background: ${esSeleccionado ? '#2563EB' : colorAsientos}; color: white; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.4); white-space: nowrap; margin-bottom: 2px; letter-spacing: 0.2px; border: ${esSeleccionado ? '1px solid #93C5FD' : 'none'};">
+            ${textoPill}
           </div>
-          <div style="position: relative; background: #0F172A; border: 2.5px solid ${colorBorde}; border-radius: 10px; padding: 4px 6px; display: flex; align-items: center; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.45);">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F1F5F9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 3c-.1.2-.1.5-.1.8v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
-            <span style="color: #F1F5F9; font-size: 10px; font-weight: bold; font-family: monospace;">${chofer.patente}</span>
+          <div style="position: relative; background: #0F172A; border: 2.5px solid ${colorBorde}; border-radius: 10px; padding: 4px 6px; display: flex; align-items: center; gap: 4px; box-shadow: 0 4px 14px rgba(0,0,0,0.5);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${esSeleccionado ? '#38BDF8' : '#F1F5F9'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 3c-.1.2-.1.5-.1.8v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+            <span style="color: ${esSeleccionado ? '#38BDF8' : '#F1F5F9'}; font-size: 10px; font-weight: bold; font-family: monospace;">${chofer.patente}</span>
           </div>
         `;
 
@@ -400,11 +410,15 @@ export default function ColectivoMap({
           }
         });
 
+        const infoEtaHtml = eta
+          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #38BDF8; font-weight: 800;">⏱️ Llega en ${eta.textoTiempo} (${eta.textoDistancia})</div>`
+          : '';
+
         const marcador = new Marker({ element: el, anchor: 'bottom' })
           .setLngLat([chofer.longitud, chofer.latitud])
           .setPopup(
             new Popup({ offset: 18, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              `<b>${chofer.nombre}</b><br/>Sentido: ${chofer.sentidoRuta.toUpperCase()}<br/>Disponibles: ${asientosDisponibles}/4`
+              `<b>${chofer.nombre}</b> (${chofer.patente})<br/>Sentido: ${chofer.sentidoRuta.toUpperCase()}<br/>Disponibles: ${asientosDisponibles}/4${infoEtaHtml}`
             )
           )
           .addTo(mapa);
@@ -417,23 +431,34 @@ export default function ColectivoMap({
       pasajerosEnEspera.forEach((p) => {
         if (!p.latitud || !p.longitud) return;
 
+        // Calcular tiempo de llegada del chofer a este pasajero
+        const eta = ubicacionUsuario
+          ? calcularInfoLlegada(ubicacionUsuario.latitud, ubicacionUsuario.longitud, p.latitud, p.longitud)
+          : null;
+
+        const textoTiempoPasajero = eta ? `⏱️ ${eta.textoTiempo}` : (p.minutosLlegada ? `⏱️ ~${p.minutosLlegada} min` : '');
+
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
-        el.style.cssText = 'display: flex; flex-direction: column; align-items: center; cursor: pointer;';
+        el.style.cssText = 'display: flex; flex-direction: column; align-items: center; cursor: pointer; z-index: 90;';
         el.innerHTML = `
-          <div style="background: #7C3AED; color: white; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 12px; box-shadow: 0 2px 8px rgba(124,58,237,0.6); margin-bottom: 2px; white-space: nowrap;">
-            ${p.nombre.split(' ')[0]} (${p.asientos} as.)
+          <div style="background: #7C3AED; color: white; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 12px; box-shadow: 0 2px 10px rgba(124,58,237,0.7); margin-bottom: 2px; white-space: nowrap;">
+            ${textoTiempoPasajero ? `${textoTiempoPasajero} • ` : ''}${p.nombre.split(' ')[0]} (${p.asientos} as.)
           </div>
-          <div style="background: #6D28D9; border: 2px solid #DDD6FE; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(109,40,217,0.6);">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <div style="background: #6D28D9; border: 2px solid #DDD6FE; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(109,40,217,0.7);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
         `;
+
+        const infoLlegadaChoferHtml = eta
+          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FBBF24; font-weight: 800;">⏱️ Llegas a recogerlo en: ${eta.textoTiempo} (${eta.textoDistancia})</div>`
+          : '';
 
         const marcador = new Marker({ element: el, anchor: 'bottom' })
           .setLngLat([p.longitud, p.latitud])
           .setPopup(
             new Popup({ offset: 18, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              `<b>Reserva de Pasajero</b><br/>Pasajero: ${p.nombre}<br/>Asientos: ${p.asientos}<br/>Pago: ${p.metodoPago?.toUpperCase() || 'EFECTIVO'}${p.paradaNombre ? '<br/>En: ' + p.paradaNombre : ''}`
+              `<b>Reserva de Pasajero</b><br/>Pasajero: ${p.nombre}<br/>Asientos: ${p.asientos}<br/>Pago: ${p.metodoPago?.toUpperCase() || 'EFECTIVO'}${p.paradaNombre ? '<br/>En: ' + p.paradaNombre : ''}${infoLlegadaChoferHtml}`
             )
           )
           .addTo(mapa);
@@ -453,6 +478,50 @@ export default function ColectivoMap({
     pasajerosEnEspera,
   ]);
 
+  // ETA destacado para mostrar en el HUD flotante superior del mapa
+  const etaDestacado = useMemo(() => {
+    if (!ubicacionUsuario) return null;
+
+    if (esModoConductor) {
+      if (pasajerosEnEspera.length === 0) return null;
+      const primerPasajero = pasajerosEnEspera[0];
+      if (!primerPasajero.latitud || !primerPasajero.longitud) return null;
+      const eta = calcularInfoLlegada(
+        ubicacionUsuario.latitud,
+        ubicacionUsuario.longitud,
+        primerPasajero.latitud,
+        primerPasajero.longitud
+      );
+      if (!eta) return null;
+      return {
+        tipo: 'conductor',
+        titulo: `Llegas a buscar a ${primerPasajero.nombre.split(' ')[0]}`,
+        textoTiempo: eta.textoTiempo,
+        textoDistancia: eta.textoDistancia,
+        color: '#F59E0B',
+      };
+    } else {
+      // Modo pasajero: si hay conductor seleccionado o asignado
+      if (!conductorSeleccionadoId) return null;
+      const chofer = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
+      if (!chofer) return null;
+      const eta = calcularInfoLlegada(
+        chofer.latitud,
+        chofer.longitud,
+        ubicacionUsuario.latitud,
+        ubicacionUsuario.longitud
+      );
+      if (!eta) return null;
+      return {
+        tipo: 'pasajero',
+        titulo: `Colectivo ${chofer.patente}`,
+        textoTiempo: eta.textoTiempo,
+        textoDistancia: eta.textoDistancia,
+        color: '#38BDF8',
+      };
+    }
+  }, [ubicacionUsuario, esModoConductor, pasajerosEnEspera, conductorSeleccionadoId, conductoresEnVivo]);
+
   return (
     <div
       style={{
@@ -468,6 +537,50 @@ export default function ColectivoMap({
         overflow: 'hidden',
       }}
     >
+      {/* ── HUD Flotante: Estimación Cuantitativa de Llegada ── */}
+      {etaDestacado && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '12px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10,
+            background: 'rgba(15, 23, 42, 0.94)',
+            backdropFilter: 'blur(10px)',
+            border: `1.5px solid ${etaDestacado.color}`,
+            borderRadius: '24px',
+            padding: '6px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.55)',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: etaDestacado.color,
+              boxShadow: `0 0 10px ${etaDestacado.color}`,
+              display: 'inline-block',
+            }}
+          />
+          <span style={{ fontSize: '12px', fontWeight: '800', color: '#F8FAFC' }}>
+            {etaDestacado.titulo}:{' '}
+            <span style={{ color: '#34D399', fontWeight: '900' }}>
+              {etaDestacado.tipo === 'conductor' ? 'en ' : 'llega en '}{etaDestacado.textoTiempo}
+            </span>{' '}
+            <span style={{ color: '#94A3B8', fontWeight: '600', fontSize: '11px' }}>
+              ({etaDestacado.textoDistancia})
+            </span>
+          </span>
+        </div>
+      )}
+
       <div ref={contenedorRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
       <style jsx global>{`
         .maplibregl-canvas {

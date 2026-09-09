@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo, PasajeroEnEspera } from '@/components/map/ColectivoMap';
+import { calcularInfoLlegada } from '@/lib/geo';
 import {
   IconoColectivo,
   IconoAsiento,
@@ -673,7 +674,7 @@ export default function PaginaConductorColectivo() {
     router.push('/login');
   };
 
-  // Pasajeros en espera formateados para marcadores en el mapa
+  // Pasajeros en espera formateados para marcadores en el mapa con cálculo de ETA cuantitativo
   const pasajerosEnEspera: PasajeroEnEspera[] = useMemo(() => {
     return reservasPendientes
       .filter((r) => r.estado === 'reservado')
@@ -690,6 +691,23 @@ export default function PaginaConductorColectivo() {
           }
         }
         if (!lat || !lng) return null;
+
+        let minutosLlegada: number | undefined;
+        let distanciaTexto: string | undefined;
+
+        if (ubicacionChofer?.latitud && ubicacionChofer?.longitud) {
+          const info = calcularInfoLlegada(
+            ubicacionChofer.latitud,
+            ubicacionChofer.longitud,
+            lat,
+            lng
+          );
+          if (info) {
+            minutosLlegada = info.minutos;
+            distanciaTexto = info.textoDistancia;
+          }
+        }
+
         return {
           id: r.id,
           nombre: r.pasajero.name,
@@ -698,10 +716,12 @@ export default function PaginaConductorColectivo() {
           asientos: r.cantidadAsientos,
           paradaNombre: r.direccionSubida,
           metodoPago: r.metodoPago,
+          minutosLlegada,
+          distanciaTexto,
         };
       })
       .filter(Boolean) as PasajeroEnEspera[];
-  }, [reservasPendientes, lineaActual]);
+  }, [reservasPendientes, lineaActual, ubicacionChofer]);
 
   // ─── Desglose de Asientos por Estado (Libre: Verde, Reservado: Naranjo, A Bordo: Rojo) ───
   const conteoAsientos = useMemo(() => {
@@ -1067,9 +1087,28 @@ export default function PaginaConductorColectivo() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {reservasPendientes.map((reserva) => (
-              <div
-                key={reserva.id}
+            {reservasPendientes.map((reserva) => {
+              // Calcular tiempo estimado de llegada para el conductor a buscar al pasajero
+              const infoLlegada = (() => {
+                if (reserva.estado !== 'reservado') return null;
+                let lat = reserva.latitudSubida;
+                let lng = reserva.longitudSubida;
+                if ((!lat || !lng) && lineaActual?.paradas) {
+                  const parada = lineaActual.paradas.find(
+                    (p) => p.nombre.toLowerCase() === reserva.direccionSubida?.toLowerCase()
+                  );
+                  if (parada) {
+                    lat = parada.latitud;
+                    lng = parada.longitud;
+                  }
+                }
+                if (!lat || !lng || !ubicacionChofer?.latitud || !ubicacionChofer?.longitud) return null;
+                return calcularInfoLlegada(ubicacionChofer.latitud, ubicacionChofer.longitud, lat, lng);
+              })();
+
+              return (
+                <div
+                  key={reserva.id}
                 style={{
                   background: '#0B1329',
                   padding: '14px',
@@ -1145,6 +1184,48 @@ export default function PaginaConductorColectivo() {
                     </span>
                   </div>
                 </div>
+
+                {/* Badge cuantitativo de tiempo estimado de llegada para el conductor */}
+                {infoLlegada && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.18) 0%, rgba(245, 158, 11, 0.06) 100%)',
+                      border: '1.5px solid rgba(245, 158, 11, 0.45)',
+                      borderRadius: '10px',
+                      padding: '8px 12px',
+                      boxShadow: '0 2px 10px rgba(245, 158, 11, 0.15)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '18px' }}>⏱️</span>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '800', color: '#FBBF24' }}>
+                          Llegas a buscarlo en ~{infoLlegada.minutos} min
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#CBD5E1' }}>
+                          Distancia: {infoLlegada.textoDistancia}
+                        </div>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: '800',
+                        color: '#0B1329',
+                        background: '#FBBF24',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.3px',
+                      }}
+                    >
+                      En camino
+                    </span>
+                  </div>
+                )}
 
                 {reserva.direccionSubida && (
                   <div style={{ fontSize: '12px', color: '#CBD5E1', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.03)', padding: '6px 10px', borderRadius: '8px' }}>
@@ -1298,7 +1379,8 @@ export default function PaginaConductorColectivo() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

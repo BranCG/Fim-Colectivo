@@ -33,15 +33,21 @@ export default function AlertaVozReserva({
 
   const escuchaRef = useRef<{ detener: () => void } | null>(null);
 
+  // Estimación cuantitativa de llegada a recoger al pasajero
+  const minutosLlegada = Math.max(1, Math.round((solicitud.distanciaMetros * 1.25) / 400));
+  const textoDistancia = solicitud.distanciaMetros >= 1000
+    ? `${(solicitud.distanciaMetros / 1000).toFixed(1)} km`
+    : `${solicitud.distanciaMetros} m`;
+
   // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS)
   useEffect(() => {
     // Sonido de alerta
     reproducirSonido('alerta');
 
-    // Construir texto en lenguaje natural claro y conciso exactamente como el chofer espera
+    // Construir texto en lenguaje natural claro y conciso cuantitativo con tiempo en minutos
     const nombre = solicitud.nombrePasajero.split(' ')[0];
     const asientos = solicitud.cantidadAsientos;
-    const textoVoz = `Reserva de ${nombre}, ${asientos} ${asientos > 1 ? 'asientos' : 'asiento'}. ¿Aceptar, SÍ o NO?`;
+    const textoVoz = `Reserva de ${nombre}, ${asientos} ${asientos > 1 ? 'asientos' : 'asiento'}, a ${minutosLlegada} ${minutosLlegada === 1 ? 'minuto' : 'minutos'}. ¿Aceptar, SÍ o NO?`;
 
     // Iniciar reconocimiento de comandos por voz ("SÍ" o "NO") de forma inmediata
     escuchaRef.current = iniciarEscuchaVoz({
@@ -288,7 +294,10 @@ export default function AlertaVozReserva({
         >
           <span>{solicitud.nombrePasajero.split(' ')[0]}</span>
           <span>•</span>
-          <span style={{ color: '#FDE047' }}>A {solicitud.distanciaMetros} METROS</span>
+          <span style={{ color: '#FDE047', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <span>⏱️</span>
+            <span>LLEGAS EN ~{minutosLlegada} MIN ({textoDistancia})</span>
+          </span>
           <span>•</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
             <IconoAsiento size={18} color="#FFFFFF" />

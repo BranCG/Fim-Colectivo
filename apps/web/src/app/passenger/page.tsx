@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo } from '@/components/map/ColectivoMap';
+import { calcularInfoLlegada } from '@/lib/geo';
 import {
   IconoColectivo,
   IconoCheck,
@@ -24,6 +25,9 @@ const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ss
 
 interface ReservaActiva {
   id: string;
+  conductorId?: string;
+  latitudSubida?: number;
+  longitudSubida?: number;
   linea: { nombre: string; tarifa: number };
   conductor: {
     id: string;
@@ -34,6 +38,8 @@ interface ReservaActiva {
     vehicleModel: string;
     telefonoRutPay?: string | null;
     mercadoPagoLink?: string | null;
+    lastLat?: number;
+    lastLng?: number;
   };
   cantidadAsientos: number;
   tarifa: number;
@@ -89,6 +95,32 @@ export default function PaginaPasajeroColectivo() {
       0
     );
   }, [conductoresEnVivo]);
+
+  // Cálculo cuantitativo de tiempo estimado de llegada del colectivo reservado/asignado
+  const infoLlegadaReserva = useMemo(() => {
+    if (!reservaActiva || reservaActiva.estado === 'abordado' || reservaActiva.estado === 'completado') {
+      return null;
+    }
+    const conductorIdTarget = reservaActiva.conductor?.id || (reservaActiva as any).conductorId;
+    const choferEnVivo = conductoresEnVivo.find((c) => c.conductorId === conductorIdTarget);
+    const latChofer = choferEnVivo?.latitud ?? (reservaActiva.conductor as any)?.lastLat;
+    const lngChofer = choferEnVivo?.longitud ?? (reservaActiva.conductor as any)?.lastLng;
+    const latPasajero = ubicacionPasajero?.latitud ?? reservaActiva.latitudSubida;
+    const lngPasajero = ubicacionPasajero?.longitud ?? reservaActiva.longitudSubida;
+
+    return calcularInfoLlegada(latChofer, lngChofer, latPasajero, lngPasajero);
+  }, [reservaActiva, conductoresEnVivo, ubicacionPasajero]);
+
+  // Cálculo cuantitativo de tiempo de llegada del colectivo pre-seleccionado antes de reservar
+  const infoLlegadaPreseleccionado = useMemo(() => {
+    if (!conductorElegido || !ubicacionPasajero) return null;
+    return calcularInfoLlegada(
+      conductorElegido.latitud,
+      conductorElegido.longitud,
+      ubicacionPasajero.latitud,
+      ubicacionPasajero.longitud
+    );
+  }, [conductorElegido, ubicacionPasajero]);
 
   // 1. Validar autenticación
   useEffect(() => {
@@ -581,7 +613,7 @@ export default function PaginaPasajeroColectivo() {
           ubicacionUsuario={ubicacionPasajero}
           lineaSeleccionada={lineaSeleccionada}
           conductoresEnVivo={conductoresEnVivo}
-          conductorSeleccionadoId={conductorElegido?.conductorId}
+          conductorSeleccionadoId={reservaActiva ? (reservaActiva.conductor?.id || (reservaActiva as any).conductorId) : conductorElegido?.conductorId}
           alSeleccionarConductor={(chofer) => setConductorElegido(chofer)}
           disparadorCentrado={disparadorCentrado}
         />
@@ -662,6 +694,61 @@ export default function PaginaPasajeroColectivo() {
                 <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '3px' }}>Asiento reservado</div>
               </div>
             </div>
+
+            {/* Tiempo estimado de llegada del colectivo reservado (cuantitativo en minutos) */}
+            {infoLlegadaReserva && (
+              <div
+                style={{
+                  background: 'linear-gradient(90deg, rgba(16, 185, 129, 0.15) 0%, rgba(56, 189, 248, 0.15) 100%)',
+                  border: '1.5px solid rgba(56, 189, 248, 0.45)',
+                  borderRadius: '12px',
+                  padding: '10px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      background: 'rgba(56, 189, 248, 0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '18px',
+                    }}
+                  >
+                    ⏱️
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                      Tiempo estimado de llegada
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: '900', color: '#38BDF8' }}>
+                      {infoLlegadaReserva.resumen}
+                    </div>
+                  </div>
+                </div>
+                <span
+                  style={{
+                    background: '#10B981',
+                    color: '#0F172A',
+                    fontSize: '11px',
+                    fontWeight: '900',
+                    padding: '4px 10px',
+                    borderRadius: '20px',
+                    letterSpacing: '0.3px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  EN RUTA
+                </span>
+              </div>
+            )}
 
             {/* Opciones de Pago directo BancoEstado RutPay / MercadoPago */}
             <div style={{
@@ -764,6 +851,29 @@ export default function PaginaPasajeroColectivo() {
                 <IconoCruz size={16} color="#94A3B8" />
               </button>
             </div>
+
+            {/* Tiempo estimado de llegada si decide reservar este colectivo */}
+            {infoLlegadaPreseleccionado && (
+              <div
+                style={{
+                  background: 'rgba(56, 189, 248, 0.12)',
+                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  color: '#38BDF8',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                }}
+              >
+                <span style={{ fontSize: '16px' }}>⏱️</span>
+                <span>
+                  Llegaría en <b>{infoLlegadaPreseleccionado.textoTiempo}</b> ({infoLlegadaPreseleccionado.textoDistancia} de tu posición)
+                </span>
+              </div>
+            )}
 
             {/* Selector de Asientos */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0F172A', padding: '8px 12px', borderRadius: '8px' }}>
