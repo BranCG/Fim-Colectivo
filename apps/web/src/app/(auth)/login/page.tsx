@@ -3,16 +3,15 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import api, { saveSession } from '@/lib/api';
+import api, { saveSession, getSession } from '@/lib/api';
 import Logo from '@/components/Logo';
 import {
   IconoAlerta,
   IconoPasajero,
   IconoAuto,
-  IconoLlave,
 } from '@/components/icons/Iconos';
 
-type Role = 'driver' | 'passenger' | 'admin';
+type Role = 'passenger' | 'driver';
 
 function ContenidoLogin() {
   const router = useRouter();
@@ -21,8 +20,6 @@ function ContenidoLogin() {
   const paramRole = searchParams.get('role');
   const rolInicial: Role = paramRole === 'driver' || paramRole === 'conductor'
     ? 'driver'
-    : paramRole === 'admin'
-    ? 'admin'
     : 'passenger';
 
   const [role, setRole] = useState<Role>(rolInicial);
@@ -32,14 +29,23 @@ function ContenidoLogin() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const s = getSession();
+    if (s?.token) {
+      if (s.user?.role === 'driver') {
+        router.push('/driver');
+        return;
+      } else if (s.user?.role === 'passenger') {
+        router.push('/passenger');
+        return;
+      }
+    }
+
     if (paramRole === 'driver' || paramRole === 'conductor') {
       setRole('driver');
     } else if (paramRole === 'passenger' || paramRole === 'pasajero') {
       setRole('passenger');
-    } else if (paramRole === 'admin') {
-      setRole('admin');
     }
-  }, [paramRole]);
+  }, [paramRole, router]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -48,9 +54,7 @@ function ContenidoLogin() {
 
     try {
       let activeRole = role;
-      const endpoint = activeRole === 'admin' ? '/auth/admin/login'
-        : activeRole === 'driver' ? '/auth/driver/login'
-        : '/auth/passenger/login';
+      const endpoint = activeRole === 'driver' ? '/auth/driver/login' : '/auth/passenger/login';
 
       let res;
       try {
@@ -78,8 +82,7 @@ function ContenidoLogin() {
       const userData = res.data.user || res.data.driver;
       saveSession(res.data.accessToken, { ...userData, role: activeRole });
 
-      if (activeRole === 'admin') router.push('/admin');
-      else if (activeRole === 'driver') router.push('/driver');
+      if (activeRole === 'driver') router.push('/driver');
       else router.push('/passenger');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
@@ -113,12 +116,12 @@ function ContenidoLogin() {
         </p>
       </div>
 
-      {/* Selector de Rol Minimalista (Negro y Amarillo) */}
+      {/* Selector de Rol Minimalista (Solo Pasajero y Conductor) */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 0.8fr',
-          gap: '4px',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '6px',
           padding: '4px',
           background: '#000000',
           borderRadius: '10px',
@@ -128,39 +131,15 @@ function ContenidoLogin() {
       >
         <button
           type="button"
-          id="role-driver"
-          onClick={() => setRole('driver')}
-          style={{
-            padding: '9px 6px',
-            border: 'none',
-            borderRadius: '7px',
-            cursor: 'pointer',
-            fontWeight: role === 'driver' ? 800 : 600,
-            fontSize: '12.5px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            transition: 'all 0.15s ease',
-            background: role === 'driver' ? '#FACC15' : 'transparent',
-            color: role === 'driver' ? '#000000' : '#A3A3A3',
-          }}
-        >
-          <IconoAuto size={14} color={role === 'driver' ? '#000000' : '#A3A3A3'} />
-          <span>Conductor</span>
-        </button>
-
-        <button
-          type="button"
           id="role-passenger"
           onClick={() => setRole('passenger')}
           style={{
-            padding: '9px 6px',
+            padding: '10px 8px',
             border: 'none',
             borderRadius: '7px',
             cursor: 'pointer',
             fontWeight: role === 'passenger' ? 800 : 600,
-            fontSize: '12.5px',
+            fontSize: '13px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -170,32 +149,32 @@ function ContenidoLogin() {
             color: role === 'passenger' ? '#000000' : '#A3A3A3',
           }}
         >
-          <IconoPasajero size={14} color={role === 'passenger' ? '#000000' : '#A3A3A3'} />
+          <IconoPasajero size={15} color={role === 'passenger' ? '#000000' : '#A3A3A3'} />
           <span>Pasajero</span>
         </button>
 
         <button
           type="button"
-          id="role-admin"
-          onClick={() => setRole('admin')}
+          id="role-driver"
+          onClick={() => setRole('driver')}
           style={{
-            padding: '9px 6px',
+            padding: '10px 8px',
             border: 'none',
             borderRadius: '7px',
             cursor: 'pointer',
-            fontWeight: role === 'admin' ? 800 : 600,
-            fontSize: '12px',
+            fontWeight: role === 'driver' ? 800 : 600,
+            fontSize: '13px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '5px',
+            gap: '6px',
             transition: 'all 0.15s ease',
-            background: role === 'admin' ? '#FACC15' : 'transparent',
-            color: role === 'admin' ? '#000000' : '#A3A3A3',
+            background: role === 'driver' ? '#FACC15' : 'transparent',
+            color: role === 'driver' ? '#000000' : '#A3A3A3',
           }}
         >
-          <IconoLlave size={13} color={role === 'admin' ? '#000000' : '#A3A3A3'} />
-          <span>Admin</span>
+          <IconoAuto size={15} color={role === 'driver' ? '#000000' : '#A3A3A3'} />
+          <span>Conductor</span>
         </button>
       </div>
 
@@ -297,7 +276,7 @@ function ContenidoLogin() {
             opacity: loading ? 0.7 : 1,
           }}
         >
-          {loading ? 'Ingresando...' : 'Iniciar Sesión'}
+          {loading ? 'Ingresando...' : role === 'driver' ? 'Ingresar a Cabina' : 'Ingresar como Pasajero'}
         </button>
       </form>
 

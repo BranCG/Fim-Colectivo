@@ -148,7 +148,7 @@ export default function Home() {
           }}
         >
           <Link
-            href="/passenger"
+            href="/login?role=passenger"
             style={{
               flex: '1 1 240px',
               padding: '16px 20px',
@@ -171,7 +171,7 @@ export default function Home() {
           </Link>
 
           <Link
-            href="/driver"
+            href="/login?role=driver"
             style={{
               flex: '1 1 240px',
               padding: '16px 20px',
@@ -922,7 +922,7 @@ export default function Home() {
             }}
           >
             <Link
-              href="/passenger"
+              href="/login?role=passenger"
               style={{
                 padding: '14px 28px',
                 borderRadius: '10px',
@@ -942,7 +942,7 @@ export default function Home() {
             </Link>
 
             <Link
-              href="/driver"
+              href="/login?role=driver"
               style={{
                 padding: '14px 28px',
                 borderRadius: '10px',

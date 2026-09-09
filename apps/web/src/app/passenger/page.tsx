@@ -127,7 +127,7 @@ export default function PaginaPasajeroColectivo() {
   useEffect(() => {
     const sesion = getSession();
     if (!sesion) {
-      router.push('/login');
+      router.push('/login?role=passenger');
       return;
     }
     setUsuarioSesion(sesion.user);
@@ -515,7 +515,7 @@ export default function PaginaPasajeroColectivo() {
   // Cerrar sesión
   const cerrarSesionUsuario = () => {
     clearSession();
-    router.push('/login');
+    router.push('/login?role=passenger');
   };
 
   return (

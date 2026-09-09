@@ -112,47 +112,41 @@ function generarSvgColectivoHtml({
   idUnico,
   iconoBadge = 'ninguno',
 }: OpcionesColectivoSvg): string {
-  const escala = esDestacado ? 'scale(1.15)' : 'scale(1)';
   const zIndex = esDestacado ? '90' : '40';
 
   let svgIconoHtml = '';
   if (iconoBadge === 'auto') {
-    svgIconoHtml = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 3c-.1.2-.1.5-.1.8v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>`;
+    svgIconoHtml = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 3c-.1.2-.1.5-.1.8v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>`;
   } else if (iconoBadge === 'reloj') {
-    svgIconoHtml = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>`;
+    svgIconoHtml = `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>`;
   }
 
   return `
-    <div class="fim-colectivo-pin" style="display: flex; flex-direction: column; align-items: center; cursor: pointer; user-select: none; transform: ${escala}; transition: transform 0.2s; z-index: ${zIndex};">
+    <div class="fim-colectivo-pin" style="display: flex; flex-direction: column; align-items: center; cursor: pointer; user-select: none; z-index: ${zIndex}; pointer-events: auto;">
       <!-- Badge superior con tiempo o texto de identificación -->
       <div style="
         background: ${colorBadge};
-        color: #FFFFFF;
-        font-size: 10.5px;
-        font-weight: 900;
-        padding: 2.5px 9px;
-        border-radius: 12px;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.55);
+        color: #000000;
+        font-size: 9px;
+        font-weight: 800;
+        padding: 1.5px 6px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.5);
         white-space: nowrap;
         margin-bottom: 2px;
-        letter-spacing: 0.3px;
-        border: ${esDestacado ? '1.5px solid #FFFFFF' : '1px solid rgba(255,255,255,0.2)'};
+        letter-spacing: 0.2px;
+        border: ${esDestacado ? '1.5px solid #FFFFFF' : '1px solid rgba(0,0,0,0.3)'};
         display: flex;
         align-items: center;
-        gap: 5px;
+        gap: 4px;
       ">
         ${svgIconoHtml}
         <span>${textoBadge}</span>
       </div>
 
-      <!-- Automóvil SVG tipo colectivo chileno con letrero de techo y luces -->
-      <div style="position: relative; width: 44px; height: 56px; display: flex; align-items: center; justify-content: center;">
-        ${esDestacado ? `
-          <!-- Pulso GPS de alta visibilidad -->
-          <div style="position: absolute; width: 52px; height: 52px; border-radius: 50%; background: ${colorAuto}; opacity: 0.3; animation: fimPulse 2s infinite ease-out;"></div>
-        ` : ''}
-
-        <svg width="42" height="54" viewBox="0 0 44 56" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 4px 10px rgba(0,0,0,0.65)); position: relative; z-index: 2;">
+      <!-- Automóvil SVG tipo colectivo chileno compacto de tamaño fijo -->
+      <div style="position: relative; width: 24px; height: 30px; display: flex; align-items: center; justify-content: center;">
+        <svg width="22" height="28" viewBox="0 0 44 56" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 5px rgba(0,0,0,0.7)); position: relative; z-index: 2;">
           <defs>
             <linearGradient id="bodyGrad_${idUnico}" x1="6" y1="8" x2="38" y2="48" gradientUnits="userSpaceOnUse">
               <stop offset="0%" stop-color="#1E293B" />
@@ -162,19 +156,10 @@ function generarSvgColectivoHtml({
             </linearGradient>
 
             <linearGradient id="glassGrad_${idUnico}" x1="14" y1="16" x2="30" y2="24" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.85" />
-              <stop offset="100%" stop-color="#0284C7" stop-opacity="0.4" />
-            </linearGradient>
-
-            <linearGradient id="beamGrad_${idUnico}" x1="0" y1="1" x2="0" y2="0">
-              <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.6" />
-              <stop offset="100%" stop-color="#FEF08A" stop-opacity="0.05" />
+              <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9" />
+              <stop offset="100%" stop-color="#A3A3A3" stop-opacity="0.5" />
             </linearGradient>
           </defs>
-
-          <!-- Haces de Luces LED proyectados hacia adelante -->
-          <polygon points="12,8 4,-1 17,-1" fill="url(#beamGrad_${idUnico})" />
-          <polygon points="32,8 27,-1 40,-1" fill="url(#beamGrad_${idUnico})" />
 
           <!-- Sombra del automóvil en el asfalto -->
           <ellipse cx="22" cy="30" rx="16" ry="21" fill="#000000" fill-opacity="0.45" />
@@ -186,56 +171,52 @@ function generarSvgColectivoHtml({
           <rect x="36.5" y="34" width="3.5" height="9" rx="1.5" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
 
           <!-- Espejos retrovisores -->
-          <path d="M5 19 C3.5 19 3 21 4.5 22.5 L7 22 Z" fill="#1E293B" stroke="${colorAuto}" stroke-width="1" />
-          <path d="M39 19 C40.5 19 41 21 39.5 22.5 L37 22 Z" fill="#1E293B" stroke="${colorAuto}" stroke-width="1" />
+          <path d="M5 19 C3.5 19 3 21 4.5 22.5 L7 22 Z" fill="#1E293B" stroke="${colorLetrero}" stroke-width="1.2" />
+          <path d="M39 19 C40.5 19 41 21 39.5 22.5 L37 22 Z" fill="#1E293B" stroke="${colorLetrero}" stroke-width="1.2" />
 
-          <!-- Carrocería sedán moderna con borde luminoso de línea -->
+          <!-- Carrocería sedán moderna con borde amarillo colectivo -->
           <path d="M12 10 C12 6.5 16 5 22 5 C28 5 32 6.5 32 10 L34 20 L35 43 C35 48 31 51 22 51 C13 51 9 48 9 43 L10 20 Z"
-                fill="url(#bodyGrad_${idUnico})" stroke="${colorAuto}" stroke-width="2.2" stroke-linejoin="round" />
+                fill="url(#bodyGrad_${idUnico})" stroke="${colorLetrero}" stroke-width="2.5" stroke-linejoin="round" />
 
-          <!-- Nervaduras del capot delantero -->
-          <path d="M14 11 L22 13 L30 11" stroke="rgba(255,255,255,0.3)" stroke-width="1" stroke-linecap="round" />
-
-          <!-- Parabrisas con curvatura y brillo -->
+          <!-- Parabrisas con curvatura -->
           <path d="M13.5 17.5 C13.5 15.5 16.5 14.5 22 14.5 C27.5 14.5 30.5 15.5 30.5 17.5 L29 23 C29 24.5 26.5 25 22 25 C17.5 25 15 24.5 15 23 Z"
                 fill="url(#glassGrad_${idUnico})" stroke="rgba(255,255,255,0.4)" stroke-width="0.8" />
-          <path d="M16 17 L19 22" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" stroke-linecap="round" />
 
           <!-- Techo del Colectivo -->
           <rect x="14" y="25" width="16" height="12" rx="2" fill="#0A0F1D" stroke="rgba(255,255,255,0.15)" stroke-width="0.8" />
 
-          <!-- Letrero de Colectivo en el Techo (Glowing Roof Sign) -->
-          <rect x="15" y="27.5" width="14" height="7" rx="2" fill="${colorLetrero}" filter="drop-shadow(0 0 5px ${colorLetrero})" />
-          <rect x="16.5" y="29" width="11" height="4" rx="1" fill="#0F172A" />
-          <text x="22" y="32.2" font-size="3" font-family="system-ui, -apple-system, sans-serif" font-weight="900" fill="${colorLetrero}" text-anchor="middle" letter-spacing="0.2">COLECTIVO</text>
+          <!-- Letrero de Colectivo en el Techo (Amarillo chileno) -->
+          <rect x="14" y="27.5" width="16" height="7" rx="2" fill="${colorLetrero}" />
+          <rect x="15.5" y="29" width="13" height="4" rx="1" fill="#000000" />
+          <text x="22" y="32.2" font-size="2.8" font-family="system-ui, -apple-system, sans-serif" font-weight="900" fill="${colorLetrero}" text-anchor="middle" letter-spacing="0.2">COLECTIVO</text>
 
           <!-- Luneta Trasera -->
           <path d="M15 39 C15 38 17.5 37.5 22 37.5 C26.5 37.5 29 38 29 39 L28 42 C28 42.5 26 43 22 43 C18 43 16 42.5 16 42 Z"
                 fill="url(#glassGrad_${idUnico})" stroke="rgba(255,255,255,0.25)" stroke-width="0.8" />
 
-          <!-- Focos Delanteros LED (Blancos ultra-brillantes) -->
-          <ellipse cx="13.5" cy="9.5" rx="2.2" ry="1.5" fill="#FFFFFF" filter="drop-shadow(0 0 4px #FFFFFF)" />
-          <ellipse cx="30.5" cy="9.5" rx="2.2" ry="1.5" fill="#FFFFFF" filter="drop-shadow(0 0 4px #FFFFFF)" />
+          <!-- Focos Delanteros LED -->
+          <ellipse cx="13.5" cy="9.5" rx="2.2" ry="1.5" fill="#FFFFFF" />
+          <ellipse cx="30.5" cy="9.5" rx="2.2" ry="1.5" fill="#FFFFFF" />
 
-          <!-- Luces Traseras / Freno (Rojo rubí) -->
-          <rect x="11.5" y="48.5" width="4.5" height="2" rx="1" fill="#EF4444" filter="drop-shadow(0 0 4px #EF4444)" />
-          <rect x="28" y="48.5" width="4.5" height="2" rx="1" fill="#EF4444" filter="drop-shadow(0 0 4px #EF4444)" />
+          <!-- Luces Traseras / Freno -->
+          <rect x="11.5" y="48.5" width="4.5" height="2" rx="1" fill="#EF4444" />
+          <rect x="28" y="48.5" width="4.5" height="2" rx="1" fill="#EF4444" />
         </svg>
       </div>
 
-      <!-- Placa Patente con estilo oficial chileno -->
+      <!-- Placa Patente micro-formato -->
       <div style="
-        margin-top: -3px;
+        margin-top: -2px;
         background: #FFFFFF;
-        color: #0F172A;
-        border: 1.5px solid #0F172A;
-        border-radius: 4px;
-        padding: 1px 6px;
-        font-size: 9.5px;
+        color: #000000;
+        border: 1px solid #000000;
+        border-radius: 3px;
+        padding: 0.5px 4px;
+        font-size: 7.5px;
         font-weight: 900;
         font-family: 'Courier New', Courier, monospace;
-        letter-spacing: 0.5px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        letter-spacing: 0.4px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.5);
         z-index: 3;
         white-space: nowrap;
       ">
@@ -773,10 +754,6 @@ export default function ColectivoMap({
             transform: scale(0.95);
             opacity: 0;
           }
-        }
-        .fim-colectivo-pin:hover {
-          transform: scale(1.2) !important;
-          z-index: 999 !important;
         }
       `}</style>
     </div>
