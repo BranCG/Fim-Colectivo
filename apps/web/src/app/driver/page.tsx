@@ -187,22 +187,30 @@ export default function PaginaConductorColectivo() {
 
     const socket = connectSocket();
 
-    // Unirse a la sala individual del conductor para recibir solicitudes y avisos de pago
-    socket.emit('conductor:unirse', { conductorId: choferSesion.id });
-    socket.emit('driver:online', {
-      driverId: choferSesion.id,
-      lat: ubicacionChoferRef.current?.latitud || -33.4489,
-      lng: ubicacionChoferRef.current?.longitud || -70.6693,
-    });
+    // Función idempotente para unirse a salas del chofer y línea
+    const suscribirSalas = () => {
+      if (choferSesion?.id) {
+        socket.emit('conductor:unirse', { conductorId: choferSesion.id });
+        socket.emit('driver:online', {
+          driverId: choferSesion.id,
+          lat: ubicacionChoferRef.current?.latitud || -33.4489,
+          lng: ubicacionChoferRef.current?.longitud || -70.6693,
+        });
+      }
+      if (lineaActual?.id) {
+        socket.emit('colectivo:unirse-linea', { lineaId: lineaActual.id });
+      }
+    };
 
-    // Unirse al canal de la línea actual para ver otros colectivos
-    if (lineaActual?.id) {
-      socket.emit('colectivo:unirse-linea', { lineaId: lineaActual.id });
-    }
+    suscribirSalas();
+    socket.on('connect', suscribirSalas);
 
     // Evento al recibir una nueva reserva de asiento (actualiza lista visual y estado de asientos)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const manejarNuevaReserva = (datos: { reserva: any; asientosOcupados?: number }) => {
+    const manejarNuevaReserva = (datos: { reserva: any; asientosOcupados?: number; conductorId?: string }) => {
+      if (datos.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
+        return;
+      }
       setReservasPendientes((prev) => {
         const existe = prev.some((r) => r.id === datos.reserva?.id);
         if (existe) return prev;
@@ -226,7 +234,10 @@ export default function PaginaConductorColectivo() {
     };
 
     // Evento de solicitud dirigida al móvil en tránsito (Dispara lectura TTS y modal gigante con deduplicación)
-    const manejarSolicitudAsignada = (datos: DatosSolicitudDirigida) => {
+    const manejarSolicitudAsignada = (datos: DatosSolicitudDirigida & { conductorId?: string }) => {
+      if (datos.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
+        return;
+      }
       if (
         ultimaSolicitudNotificadaRef.current &&
         ultimaSolicitudNotificadaRef.current.id === datos.reservaId &&
@@ -260,23 +271,29 @@ export default function PaginaConductorColectivo() {
     };
 
     // Evento: Pasajero solicita pagar y descender
-    const manejarPasajeroQuierePagar = (datos: SolicitudPagoActiva) => {
+    const manejarPasajeroQuierePagar = (datos: SolicitudPagoActiva & { conductorId?: string }) => {
+      if (datos.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
+        return;
+      }
       setPagoPendiente(datos);
       reproducirSonido('alerta');
       const primerNombre = datos.pasajeroNombre.split(' ')[0];
       const mensajeVoz = `Pasajero ${primerNombre} quiere pagar. Di SÍ para confirmar el pago.`;
-      hablarTexto(mensajeVoz, () => {
-        if (escuchaPagoRef.current) {
-          try {
-            escuchaPagoRef.current.detener();
-          } catch {}
-        }
-        escuchaPagoRef.current = iniciarEscuchaVoz({
-          onSi: () => {
-            confirmarPagoPasajero(datos.reservaId);
-          },
-        });
+
+      // Activar escucha de inmediato para capturar "SÍ" sin demora
+      if (escuchaPagoRef.current) {
+        try {
+          escuchaPagoRef.current.detener();
+        } catch {}
+      }
+      escuchaPagoRef.current = iniciarEscuchaVoz({
+        id: 'escucha-pago-conductor',
+        onSi: () => {
+          confirmarPagoPasajero(datos.reservaId);
+        },
       });
+
+      hablarTexto(mensajeVoz);
     };
 
     // Evento: Pago confirmado
@@ -384,6 +401,7 @@ export default function PaginaConductorColectivo() {
       socket.off('colectivo:pasajero-quiere-pagar', manejarPasajeroQuierePagar);
       socket.off('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
       socket.off('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
+      socket.off('connect', suscribirSalas);
       if (lineaActual?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaActual.id });
       }
@@ -393,6 +411,15 @@ export default function PaginaConductorColectivo() {
       }
     };
   }, [enServicio, choferSesion?.id, lineaActual?.id]);
+
+  // Sincronización de respaldo periódica (cada 7s) en servicio
+  useEffect(() => {
+    if (!enServicio) return;
+    const intervalo = setInterval(() => {
+      cargarDatosChofer();
+    }, 7000);
+    return () => clearInterval(intervalo);
+  }, [enServicio, cargarDatosChofer]);
 
   // Alternar estado En Servicio / Fuera de Servicio
   const alternarServicio = async () => {

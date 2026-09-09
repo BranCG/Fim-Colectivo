@@ -149,17 +149,29 @@ export default function PaginaPasajeroColectivo() {
     cargarLineasYReservas();
   }, [cargarLineasYReservas]);
 
+  const conductorElegidoRef = useRef<ConductorColectivo | null>(null);
+  useEffect(() => {
+    conductorElegidoRef.current = conductorElegido;
+  }, [conductorElegido]);
+
   // 4. Conexión WebSocket en tiempo real
   useEffect(() => {
     const socket = connectSocket();
 
-    if (usuarioSesion?.id) {
-      socket.emit('pasajero:unirse', { pasajeroId: usuarioSesion.id });
-    }
+    // Re-suscribir salas automáticamente al conectar y ante cualquier reconexión de red
+    const suscribirSalasPasajero = () => {
+      if (usuarioSesion?.id) {
+        socket.emit('pasajero:unirse', { pasajeroId: usuarioSesion.id });
+      }
+      if (lineaSeleccionada?.id) {
+        socket.emit('colectivo:unirse-linea', { lineaId: lineaSeleccionada.id });
+      }
+    };
+
+    suscribirSalasPasajero();
+    socket.on('connect', suscribirSalasPasajero);
 
     if (lineaSeleccionada?.id) {
-      socket.emit('colectivo:unirse-linea', { lineaId: lineaSeleccionada.id });
-
       // Cargar los conductores iniciales de la línea
       api.get(`/colectivos/lineas/${lineaSeleccionada.id}`).then((res) => {
         const conductores = res.data.linea?.conductores || [];
@@ -211,7 +223,7 @@ export default function PaginaPasajeroColectivo() {
             : chofer
         )
       );
-      if (conductorElegido?.conductorId === datos.conductorId) {
+      if (conductorElegidoRef.current?.conductorId === datos.conductorId) {
         setConductorElegido((prev) =>
           prev ? { ...prev, asientosOcupados: datos.asientosOcupados } : null
         );
@@ -219,13 +231,19 @@ export default function PaginaPasajeroColectivo() {
     };
 
     // Evento: Pasajero abordó el colectivo
-    const manejarReservaAbordada = () => {
+    const manejarReservaAbordada = (datos?: any) => {
+      if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
+        return;
+      }
       setMensajeAlerta('¡Has abordado el colectivo! El chofer confirmó tu asiento.');
       setReservaActiva((prev) => (prev ? { ...prev, estado: 'abordado' } : null));
     };
 
     // Evento: Reserva cancelada
-    const manejarReservaCancelada = () => {
+    const manejarReservaCancelada = (datos?: any) => {
+      if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
+        return;
+      }
       setMensajeAlerta('La reserva de asiento fue cancelada.');
       setReservaActiva(null);
       setConductorElegido(null);
@@ -235,6 +253,9 @@ export default function PaginaPasajeroColectivo() {
     // Evento: Conductor confirmó el pago y liberó el asiento
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarPagoConfirmado = (datos: any) => {
+      if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
+        return;
+      }
       setMensajeAlerta(datos.mensaje || '¡Pago confirmado por el conductor! Asiento liberado. Gracias por viajar.');
       setReservaActiva(null);
       setConductorElegido(null);
@@ -250,11 +271,18 @@ export default function PaginaPasajeroColectivo() {
     // Eventos de asignación dirigida al primer móvil en camino
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarAsignandoAChofer = (datos: any) => {
+      if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
+        return;
+      }
       setMovilAsignadoPreview(datos.conductor);
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarReservaAceptada = (datos: any) => {
+      const pasajeroDestinoId = datos.reserva?.pasajeroId || datos.pasajeroId;
+      if (usuarioSesion?.id && pasajeroDestinoId && pasajeroDestinoId !== usuarioSesion.id) {
+        return;
+      }
       setReservaActiva(datos.reserva);
       setBuscandoMovil(false);
       setMovilAsignadoPreview(null);
@@ -263,6 +291,9 @@ export default function PaginaPasajeroColectivo() {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarSinConductores = (datos: any) => {
+      if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
+        return;
+      }
       setBuscandoMovil(false);
       setMovilAsignadoPreview(null);
       setMensajeError(datos.mensaje || 'Todos los colectivos en tránsito vienen completos.');
@@ -273,6 +304,7 @@ export default function PaginaPasajeroColectivo() {
     socket.on('colectivo:sin-conductores-disponibles', manejarSinConductores);
 
     return () => {
+      socket.off('connect', suscribirSalasPasajero);
       if (lineaSeleccionada?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaSeleccionada.id });
       }
@@ -285,7 +317,39 @@ export default function PaginaPasajeroColectivo() {
       socket.off('colectivo:reserva-aceptada', manejarReservaAceptada);
       socket.off('colectivo:sin-conductores-disponibles', manejarSinConductores);
     };
-  }, [lineaSeleccionada, usuarioSesion, conductorElegido]);
+  }, [lineaSeleccionada?.id, usuarioSesion?.id]);
+
+  // 5. Polling inteligente de respaldo para que la pantalla del pasajero siempre sincronice
+  useEffect(() => {
+    const requiereSondeo = buscandoMovil || reservaActiva?.estado === 'pendiente_chofer' || reservaActiva?.estado === 'pagando';
+    if (!requiereSondeo) return;
+
+    const intervalo = setInterval(async () => {
+      try {
+        const res = await api.get('/colectivos/reservas/mis-reservas');
+        const reservas = res.data?.reservas || [];
+        if (reservas.length > 0) {
+          const actual = reservas[0];
+          setReservaActiva(actual);
+          if (actual.estado === 'reservado' && buscandoMovil) {
+            setBuscandoMovil(false);
+            setMovilAsignadoPreview(null);
+            setMensajeAlerta('¡Móvil confirmado! El chofer aceptó tu solicitud y viene en camino.');
+          } else if (actual.estado === 'abordado') {
+            setBuscandoMovil(false);
+          }
+        } else if (reservaActiva?.estado === 'pagando') {
+          setReservaActiva(null);
+          setConductorElegido(null);
+          setMostrarModalPago(false);
+        }
+      } catch (e) {
+        console.warn('[Pasajero] Error en sondeo de respaldo:', e);
+      }
+    }, 2500);
+
+    return () => clearInterval(intervalo);
+  }, [buscandoMovil, reservaActiva?.estado]);
 
   // Manejar cambio de línea
   const seleccionarLinea = (linea: Linea) => {

@@ -276,6 +276,7 @@ function ejecutarLecturaSintesis(texto: string, alFinalizar?: () => void) {
 }
 
 interface OpcionesEscucha {
+  id?: string;
   onSi?: () => void;
   onNo?: () => void;
   onAbordo?: () => void;
@@ -283,163 +284,226 @@ interface OpcionesEscucha {
   onError?: (error: string) => void;
 }
 
+class GestorReconocimientoVoz {
+  private static instancia: GestorReconocimientoVoz | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private reconocimiento: any = null;
+  private escuchandoDeseado = false;
+  private estaCorriendo = false;
+  private suscriptores: Map<string, OpcionesEscucha> = new Map();
+  private ultimoDisparoComando = 0;
+  private timerReintento: NodeJS.Timeout | null = null;
+
+  static obtener(): GestorReconocimientoVoz {
+    if (!GestorReconocimientoVoz.instancia) {
+      GestorReconocimientoVoz.instancia = new GestorReconocimientoVoz();
+    }
+    return GestorReconocimientoVoz.instancia;
+  }
+
+  private constructor() {
+    if (typeof window === 'undefined') return;
+    this.inicializarReconocimiento();
+  }
+
+  private inicializarReconocimiento() {
+    if (typeof window === 'undefined') return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const windowAny = window as any;
+    const SpeechRecognition = windowAny.SpeechRecognition || windowAny.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      console.info('[Voz Chofer] SpeechRecognition no soportado en este navegador');
+      return;
+    }
+
+    try {
+      this.reconocimiento = new SpeechRecognition();
+      this.reconocimiento.lang = 'es-CL';
+      this.reconocimiento.continuous = true;
+      this.reconocimiento.interimResults = true;
+      this.reconocimiento.maxAlternatives = 3;
+
+      this.reconocimiento.onstart = () => {
+        this.estaCorriendo = true;
+        this.notificarEstadoEscucha(true);
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.reconocimiento.onresult = (evento: any) => {
+        const ahora = Date.now();
+        const resultados = evento.results;
+
+        for (let i = evento.resultIndex; i < resultados.length; i++) {
+          const item = resultados[i];
+          const transcripcion = (item[0]?.transcript || '').trim().toLowerCase();
+          if (!transcripcion) continue;
+
+          console.log('[Voz Chofer] Audio detectado:', transcripcion, item.isFinal ? '(final)' : '(interim)');
+
+          // Normalizar quitando tildes y caracteres extra
+          const normalizado = transcripcion
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+
+          // Evitar eco del propio audio TTS que lee la solicitud
+          if (
+            normalizado.includes('si o no') ||
+            normalizado.includes('aceptar si') ||
+            normalizado.includes('reserva de') ||
+            normalizado.includes('asiento')
+          ) {
+            continue;
+          }
+
+          // Antirrebote de comandos (1.2 segundos entre ejecuciones)
+          if (ahora - this.ultimoDisparoComando < 1200) {
+            continue;
+          }
+
+          // 1. Comando: A BORDO (sube pasajero)
+          const regexAbordo = /\b(a bordo|abordo|subio|sube|subieron|ya subio|arriba|pasajero a bordo|listo|aborde)\b/i;
+          if (regexAbordo.test(normalizado)) {
+            const ejecutado = this.despacharComando('onAbordo');
+            if (ejecutado) {
+              this.ultimoDisparoComando = ahora;
+              return;
+            }
+          }
+
+          // 2. Comando: SÍ (confirmar/aceptar)
+          const regexSi = /\b(si|sí|dale|bueno|ok|acepto|aceptar|tomar|vamos|confirma|confirmar|cobrar|pagar|sipo|si po|ya)\b/i;
+          if (regexSi.test(normalizado)) {
+            const ejecutado = this.despacharComando('onSi');
+            if (ejecutado) {
+              this.ultimoDisparoComando = ahora;
+              return;
+            }
+          }
+
+          // 3. Comando: NO (rechazar/pasar)
+          const regexNo = /\b(no|paso|pasar|rechazo|rechazar|rechaza|deja|dejalo|no puedo|cancelar)\b/i;
+          if (regexNo.test(normalizado)) {
+            const ejecutado = this.despacharComando('onNo');
+            if (ejecutado) {
+              this.ultimoDisparoComando = ahora;
+              return;
+            }
+          }
+        }
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.reconocimiento.onerror = (err: any) => {
+        console.warn('[Voz Chofer] Evento onerror SpeechRecognition:', err?.error);
+        if (err?.error === 'not-allowed' || err?.error === 'service-not-allowed') {
+          this.escuchandoDeseado = false;
+          this.notificarError('Permiso de micrófono denegado');
+          return;
+        }
+        // no-speech, network, audio-capture son transitorios y se auto-recuperan
+      };
+
+      this.reconocimiento.onend = () => {
+        this.estaCorriendo = false;
+        this.notificarEstadoEscucha(false);
+
+        // Si el conductor tiene oyentes activos (ruta o modal), reiniciar de inmediato sin límite de 3
+        if (this.escuchandoDeseado && this.suscriptores.size > 0) {
+          if (this.timerReintento) clearTimeout(this.timerReintento);
+          this.timerReintento = setTimeout(() => {
+            this.iniciarCiclo();
+          }, 200);
+        }
+      };
+    } catch (e) {
+      console.warn('[Voz Chofer] No se pudo instanciar SpeechRecognition:', e);
+    }
+  }
+
+  private despacharComando(tipo: 'onSi' | 'onNo' | 'onAbordo'): boolean {
+    const lista = Array.from(this.suscriptores.values()).reverse();
+    for (const suscriptor of lista) {
+      if (tipo === 'onSi' && suscriptor.onSi) {
+        suscriptor.onSi();
+        return true;
+      }
+      if (tipo === 'onNo' && suscriptor.onNo) {
+        suscriptor.onNo();
+        return true;
+      }
+      if (tipo === 'onAbordo' && suscriptor.onAbordo) {
+        suscriptor.onAbordo();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private notificarEstadoEscucha(activo: boolean) {
+    this.suscriptores.forEach((s) => {
+      if (s.onEscuchando) s.onEscuchando(activo);
+    });
+  }
+
+  private notificarError(msg: string) {
+    this.suscriptores.forEach((s) => {
+      if (s.onError) s.onError(msg);
+    });
+  }
+
+  private iniciarCiclo() {
+    if (!this.reconocimiento) {
+      this.inicializarReconocimiento();
+    }
+    if (!this.reconocimiento || this.estaCorriendo) return;
+
+    try {
+      this.reconocimiento.start();
+    } catch (e: any) {
+      if (e?.name === 'InvalidStateError') {
+        this.estaCorriendo = true;
+      } else {
+        console.warn('[Voz Chofer] Error al ejecutar start():', e);
+      }
+    }
+  }
+
+  suscribir(opciones: OpcionesEscucha): { detener: () => void } {
+    const id = opciones.id || Math.random().toString(36).slice(2);
+    this.suscriptores.set(id, opciones);
+    this.escuchandoDeseado = true;
+
+    if (!this.estaCorriendo) {
+      this.iniciarCiclo();
+    } else {
+      if (opciones.onEscuchando) opciones.onEscuchando(true);
+    }
+
+    return {
+      detener: () => {
+        this.suscriptores.delete(id);
+        if (this.suscriptores.size === 0) {
+          this.escuchandoDeseado = false;
+          if (this.timerReintento) clearTimeout(this.timerReintento);
+          try {
+            if (this.reconocimiento && this.estaCorriendo) {
+              this.reconocimiento.stop();
+            }
+          } catch {}
+        }
+      },
+    };
+  }
+}
+
 /**
- * Inicia la escucha por micrófono de comandos rápidos ("SÍ", "NO", "A BORDO") manos libres
+ * Inicia o registra la escucha por micrófono de comandos rápidos ("SÍ", "NO", "A BORDO") manos libres
  */
 export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => void } {
   if (typeof window === 'undefined') {
     return { detener: () => {} };
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const windowAny = window as any;
-  const SpeechRecognition = windowAny.SpeechRecognition || windowAny.webkitSpeechRecognition;
-
-  if (!SpeechRecognition) {
-    console.info('Reconocimiento de voz SpeechRecognition no disponible en este navegador');
-    if (opciones.onError) opciones.onError('No soportado');
-    return { detener: () => {} };
-  }
-
-  let finalizado = false;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let reconocimiento: any = null;
-
-  try {
-    reconocimiento = new SpeechRecognition();
-    reconocimiento.lang = 'es-CL';
-    reconocimiento.continuous = true;
-    reconocimiento.interimResults = false;
-    reconocimiento.maxAlternatives = 3;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    reconocimiento.onstart = () => {
-      if (opciones.onEscuchando) opciones.onEscuchando(true);
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    reconocimiento.onresult = (evento: any) => {
-      if (finalizado) return;
-
-      const resultados = evento.results;
-      for (let i = evento.resultIndex; i < resultados.length; i++) {
-        const transcripcion = resultados[i][0].transcript.trim().toLowerCase();
-        console.log('[Voz Chofer] Detectado:', transcripcion);
-
-        // Normalizar texto quitando tildes
-        const normalizado = transcripcion
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '');
-
-        // Patrón: Pasajero a bordo / Abordo
-        if (
-          opciones.onAbordo &&
-          (normalizado.includes('a bordo') ||
-            normalizado.includes('abordo') ||
-            normalizado.includes('subio') ||
-            normalizado.includes('sube') ||
-            normalizado.includes('pasajero a bordo') ||
-            normalizado.includes('ya subio'))
-        ) {
-          finalizado = true;
-          detener();
-          opciones.onAbordo();
-          return;
-        }
-
-        // Patrones afirmativos: "SÍ"
-        if (
-          opciones.onSi &&
-          (normalizado.includes('si') ||
-            normalizado.includes('dale') ||
-            normalizado.includes('tomar') ||
-            normalizado.includes('bueno') ||
-            normalizado.includes('aceptar') ||
-            normalizado.includes('ok') ||
-            normalizado.includes('vamos') ||
-            normalizado.includes('confirma') ||
-            normalizado.includes('cobrar') ||
-            normalizado.includes('pagar'))
-        ) {
-          finalizado = true;
-          detener();
-          opciones.onSi();
-          return;
-        }
-
-        // Patrones negativos: "NO"
-        if (
-          opciones.onNo &&
-          (normalizado.includes('no') ||
-            normalizado.includes('pasar') ||
-            normalizado.includes('paso') ||
-            normalizado.includes('rechazar') ||
-            normalizado.includes('deja') ||
-            normalizado.includes('no puedo'))
-        ) {
-          finalizado = true;
-          detener();
-          opciones.onNo();
-          return;
-        }
-      }
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    reconocimiento.onerror = (err: any) => {
-      console.warn('[Voz Chofer] Reconocimiento error:', err?.error);
-      if (
-        err?.error === 'not-allowed' ||
-        err?.error === 'service-not-allowed' ||
-        err?.error === 'audio-capture' ||
-        err?.error === 'security'
-      ) {
-        finalizado = true;
-      }
-      if (opciones.onError) opciones.onError(err?.error || 'error');
-    };
-
-    let reintentos = 0;
-    reconocimiento.onend = () => {
-      if (opciones.onEscuchando) opciones.onEscuchando(false);
-      if (!finalizado && reintentos < 3) {
-        reintentos++;
-        setTimeout(() => {
-          if (!finalizado && reconocimiento) {
-            try {
-              reconocimiento.start();
-            } catch (e) {
-              console.warn('[Voz Chofer] No se pudo reanudar escucha:', e);
-              finalizado = true;
-            }
-          }
-        }, 600);
-      }
-    };
-
-    try {
-      reconocimiento.start();
-    } catch (e) {
-      console.warn('[Voz Chofer] Error al ejecutar reconocimiento.start():', e);
-      finalizado = true;
-      if (opciones.onEscuchando) opciones.onEscuchando(false);
-    }
-  } catch (err) {
-    console.warn('Error al iniciar SpeechRecognition:', err);
-    finalizado = true;
-    if (opciones.onEscuchando) opciones.onEscuchando(false);
-  }
-
-  const detener = () => {
-    finalizado = true;
-    if (reconocimiento) {
-      try {
-        reconocimiento.stop();
-      } catch {}
-      reconocimiento = null;
-    }
-    if (opciones.onEscuchando) opciones.onEscuchando(false);
-  };
-
-  return { detener };
+  return GestorReconocimientoVoz.obtener().suscribir(opciones);
 }

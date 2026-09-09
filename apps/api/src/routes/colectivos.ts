@@ -194,10 +194,16 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       },
     });
 
-    // Notificar al conductor por WebSocket en tiempo real
+    // Notificar al conductor por WebSocket en tiempo real (canal privado y canal de línea)
     io.to(`driver:${conductorId}`).emit('colectivo:nueva-reserva', {
       reserva: nuevaReserva,
     });
+    if (lineaId) {
+      io.to(`linea:${lineaId}`).emit('colectivo:nueva-reserva', {
+        conductorId,
+        reserva: nuevaReserva,
+      });
+    }
 
     // Emitir también solicitud con voz al conductor
     const distKm = chofer.lastLat && chofer.lastLng && latitudSubida && longitudSubida
@@ -213,6 +219,17 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       tiempoLimiteSegundos: 20,
       direccionSubida: nuevaReserva.direccionSubida,
     });
+    if (lineaId) {
+      io.to(`linea:${lineaId}`).emit('colectivo:solicitud-asignada', {
+        conductorId,
+        reservaId: nuevaReserva.id,
+        nombrePasajero: nuevaReserva.pasajero.name,
+        cantidadAsientos: nuevaReserva.cantidadAsientos,
+        distanciaMetros,
+        tiempoLimiteSegundos: 20,
+        direccionSubida: nuevaReserva.direccionSubida,
+      });
+    }
 
     respuesta.status(201).json({ reserva: nuevaReserva });
   } catch (error) {
@@ -421,7 +438,13 @@ router.post('/reservas/:id/abordar', requireAuth, requireRole('driver', 'admin')
       });
     }
 
-    io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-abordada', { reservaId: id });
+    io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-abordada', { reservaId: id, pasajeroId: reserva.pasajeroId });
+    if (choferActualizado.lineaId) {
+      io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:reserva-abordada', {
+        reservaId: id,
+        pasajeroId: reserva.pasajeroId,
+      });
+    }
 
     respuesta.json({ reserva: reservaActualizada, chofer: choferActualizado });
   } catch (error) {
@@ -459,11 +482,21 @@ router.post('/reservas/:id/solicitar-pago', requireAuth, async (peticion: Reques
 
     // Notificar al conductor con alerta por voz y pantalla
     io.to(`driver:${reserva.conductorId}`).emit('colectivo:pasajero-quiere-pagar', {
+      conductorId: reserva.conductorId,
       reservaId: id,
       pasajeroNombre: reserva.pasajero.name,
       cantidadAsientos: reserva.cantidadAsientos,
       metodoPago: reserva.metodoPago,
     });
+    if (reserva.lineaId) {
+      io.to(`linea:${reserva.lineaId}`).emit('colectivo:pasajero-quiere-pagar', {
+        conductorId: reserva.conductorId,
+        reservaId: id,
+        pasajeroNombre: reserva.pasajero.name,
+        cantidadAsientos: reserva.cantidadAsientos,
+        metodoPago: reserva.metodoPago,
+      });
+    }
 
     io.to(`pasajero:${pasajeroId}`).emit('colectivo:pago-solicitado', {
       reservaId: id,
@@ -524,8 +557,16 @@ router.post('/reservas/:id/confirmar-pago', requireAuth, requireRole('driver', '
     // Notificar al pasajero que el pago fue recibido y el viaje culminó (liberando su pantalla)
     io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:pago-confirmado', {
       reservaId: id,
+      pasajeroId: reserva.pasajeroId,
       mensaje: '¡Pago confirmado por el conductor! Gracias por viajar.',
     });
+    if (choferActualizado.lineaId) {
+      io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:pago-confirmado', {
+        reservaId: id,
+        pasajeroId: reserva.pasajeroId,
+        mensaje: '¡Pago confirmado por el conductor! Gracias por viajar.',
+      });
+    }
 
     // Notificar al conductor confirmación
     io.to(`driver:${conductorId}`).emit('colectivo:pago-confirmado-chofer', {
@@ -698,6 +739,7 @@ export function despacharASiguienteConductor(reservaId: string) {
 
     // Emitir al chofer para activar TTS ("Nombre a X metros, X asientos, ¿lo tomamos?") y modal manos libres
     io.to(`driver:${driverId}`).emit('colectivo:solicitud-asignada', {
+      conductorId: driverId,
       reservaId,
       nombrePasajero: solicitud.nombrePasajero,
       cantidadAsientos: solicitud.cantidadAsientos,
@@ -705,9 +747,21 @@ export function despacharASiguienteConductor(reservaId: string) {
       tiempoLimiteSegundos: 15,
       direccionSubida: solicitud.direccionSubida,
     });
+    if (solicitud.lineaId) {
+      io.to(`linea:${solicitud.lineaId}`).emit('colectivo:solicitud-asignada', {
+        conductorId: driverId,
+        reservaId,
+        nombrePasajero: solicitud.nombrePasajero,
+        cantidadAsientos: solicitud.cantidadAsientos,
+        distanciaMetros,
+        tiempoLimiteSegundos: 15,
+        direccionSubida: solicitud.direccionSubida,
+      });
+    }
 
     // Notificar al pasajero qué móvil en camino está evaluando
     io.to(`pasajero:${solicitud.pasajeroId}`).emit('colectivo:asignando-a-chofer', {
+      pasajeroId: solicitud.pasajeroId,
       reservaId,
       conductor: {
         id: chofer.id,
@@ -716,6 +770,18 @@ export function despacharASiguienteConductor(reservaId: string) {
         distanciaMetros,
       },
     });
+    if (solicitud.lineaId) {
+      io.to(`linea:${solicitud.lineaId}`).emit('colectivo:asignando-a-chofer', {
+        pasajeroId: solicitud.pasajeroId,
+        reservaId,
+        conductor: {
+          id: chofer.id,
+          nombre: chofer.name,
+          patente: chofer.vehiclePlate,
+          distanciaMetros,
+        },
+      });
+    }
 
     // Temporizador de 15 segundos antes de cascada automática
     solicitud.timer = setTimeout(() => {
@@ -967,10 +1033,17 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
         asientosTotales: choferActualizado.asientosTotales,
       });
 
-      // Notificar al pasajero confirmación inmediata
+      // Notificar al pasajero confirmación inmediata (sala directa y sala de línea)
       io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-aceptada', {
         reserva: reservaActualizada,
       });
+      if (choferActualizado.lineaId || reserva.lineaId) {
+        const idLinea = choferActualizado.lineaId || reserva.lineaId;
+        io.to(`linea:${idLinea}`).emit('colectivo:reserva-aceptada', {
+          reserva: reservaActualizada,
+          pasajeroId: reserva.pasajeroId,
+        });
+      }
 
       // Confirmar al conductor
       io.to(`driver:${conductorId}`).emit('colectivo:reserva-confirmada-chofer', {
@@ -996,6 +1069,12 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
           data: { estado: 'rechazado' },
         });
         io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-cancelada', { reservaId: id });
+        if (reserva.lineaId) {
+          io.to(`linea:${reserva.lineaId}`).emit('colectivo:reserva-cancelada', {
+            reservaId: id,
+            pasajeroId: reserva.pasajeroId,
+          });
+        }
       }
 
       return respuesta.json({ ok: true, mensaje: 'Solicitud rechazada, asignada al siguiente móvil en tránsito' });

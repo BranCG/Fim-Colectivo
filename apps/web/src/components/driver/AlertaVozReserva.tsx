@@ -43,21 +43,21 @@ export default function AlertaVozReserva({
     const asientos = solicitud.cantidadAsientos;
     const textoVoz = `Reserva de ${nombre}, ${asientos} ${asientos > 1 ? 'asientos' : 'asiento'}. ¿Aceptar, SÍ o NO?`;
 
-    // Hablar inmediatamente con voz neuronal streaming y al terminar activar reconocimiento de voz
-    hablarTexto(textoVoz, () => {
-      // Iniciar reconocimiento de comandos por voz ("SÍ" o "NO")
-      escuchaRef.current = iniciarEscuchaVoz({
-        onSi: () => {
-          manejarAceptar();
-        },
-        onNo: () => {
-          manejarRechazar();
-        },
-        onEscuchando: (activo) => {
-          setEscuchandoVoz(activo);
-        },
-      });
+    // Iniciar reconocimiento de comandos por voz ("SÍ" o "NO") de forma inmediata
+    escuchaRef.current = iniciarEscuchaVoz({
+      onSi: () => {
+        manejarAceptar();
+      },
+      onNo: () => {
+        manejarRechazar();
+      },
+      onEscuchando: (activo) => {
+        setEscuchandoVoz(activo);
+      },
     });
+
+    // Hablar inmediatamente con voz neuronal streaming
+    hablarTexto(textoVoz);
 
     return () => {
       if (!respondido) {
