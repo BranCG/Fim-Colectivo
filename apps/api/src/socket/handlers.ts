@@ -4,7 +4,7 @@ import { calculateDistance } from '../utils/pricing';
 
 // ─── Mapa de conductores online ───────────────────────────────────────────
 // driverId -> { socketId, lat, lng }
-const onlineDrivers = new Map<string, { socketId: string; lat: number; lng: number }>();
+export const onlineDrivers = new Map<string, { socketId: string; lat: number; lng: number }>();
 
 // ─── Mapa de viajes activos con búsqueda ─────────────────────────────────
 // tripId -> { passengerId, passengerSocketId, driversNotified: Set<driverId> }
@@ -311,15 +311,44 @@ export function setupSocketHandlers(io: Server) {
       }
     });
 
+    // ─── CONDUCTOR: Pasa a fuera de servicio voluntariamente ───────────────
+    socket.on('driver:offline', async ({ driverId }: { driverId?: string }) => {
+      const dId = driverId || socket.data.driverId;
+      if (dId) {
+        onlineDrivers.delete(dId);
+        const chofer = await prisma.driver.update({
+          where: { id: dId },
+          data: { isOnline: false },
+          select: { id: true, lineaId: true },
+        }).catch(console.error);
+
+        if (chofer && chofer.lineaId) {
+          io.to(`linea:${chofer.lineaId}`).emit('colectivo:conductor-offline', {
+            conductorId: chofer.id,
+            lineaId: chofer.lineaId,
+          });
+        }
+        console.log(`[Socket] Conductor ${dId} fuera de servicio`);
+      }
+    });
+
     // ─── DESCONEXIÓN ──────────────────────────────────────────────────────
     socket.on('disconnect', async () => {
       const driverId = socket.data.driverId;
       if (driverId) {
         onlineDrivers.delete(driverId);
-        await prisma.driver.update({
+        const chofer = await prisma.driver.update({
           where: { id: driverId },
           data: { isOnline: false },
+          select: { id: true, lineaId: true },
         }).catch(console.error);
+
+        if (chofer && chofer.lineaId) {
+          io.to(`linea:${chofer.lineaId}`).emit('colectivo:conductor-offline', {
+            conductorId: chofer.id,
+            lineaId: chofer.lineaId,
+          });
+        }
         console.log(`[Socket] Conductor ${driverId} desconectado`);
       }
     });

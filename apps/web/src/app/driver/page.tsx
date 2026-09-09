@@ -281,7 +281,7 @@ export default function PaginaConductorColectivo() {
       setPagoPendiente(datos);
       reproducirSonido('alerta');
       const primerNombre = datos.pasajeroNombre.split(' ')[0];
-      const mensajeVoz = `Pasajero ${primerNombre} quiere pagar. Di SÍ para confirmar el pago.`;
+      const mensajeVoz = `Pasajero ${primerNombre} va a descender. ¿Confirmas recepción?`;
 
       // Activar escucha de inmediato para capturar "SÍ" sin demora
       if (escuchaPagoRef.current) {
@@ -358,9 +358,15 @@ export default function PaginaConductorColectivo() {
       }
     };
 
+    // Evento si otro colectivo de la línea se desconecta o pasa a fuera de servicio
+    const manejarConductorOffline = (datos: { conductorId: string }) => {
+      setConductoresEnVivo((prev) => prev.filter((c) => c.conductorId !== datos.conductorId));
+    };
+
     socket.on('colectivo:nueva-reserva', manejarNuevaReserva);
     socket.on('colectivo:reserva-cancelada', manejarReservaCancelada);
     socket.on('colectivo:actualizacion-ubicacion', manejarUbicacionFlota);
+    socket.on('colectivo:conductor-offline', manejarConductorOffline);
     socket.on('colectivo:solicitud-asignada', manejarSolicitudAsignada);
     socket.on('colectivo:solicitud-expirada', manejarSolicitudExpirada);
     socket.on('colectivo:solicitud-cancelada', manejarSolicitudCancelada);
@@ -397,6 +403,7 @@ export default function PaginaConductorColectivo() {
       socket.off('colectivo:reserva-cancelada', manejarReservaCancelada);
       socket.off('colectivo:actualizacion-ubicacion', manejarUbicacionFlota);
       socket.off('colectivo:location-update', manejarUbicacionFlota);
+      socket.off('colectivo:conductor-offline', manejarConductorOffline);
       socket.off('colectivo:solicitud-asignada', manejarSolicitudAsignada);
       socket.off('colectivo:solicitud-expirada', manejarSolicitudExpirada);
       socket.off('colectivo:solicitud-cancelada', manejarSolicitudCancelada);
@@ -429,25 +436,42 @@ export default function PaginaConductorColectivo() {
     const nuevoEstado = !enServicio;
     setEnServicio(nuevoEstado);
 
-    // Desbloquear audio al iniciar turno
-    if (nuevoEstado) {
-      desbloquearAudioYVoz('Servicio iniciado. Audio y voz conectados.', () => {
-        setAudioDesbloqueado(true);
-      });
+    try {
+      // Persistir inmediatamente en base de datos para que el polling de 7s y el backend no se desincronicen
+      await api.post('/colectivos/conductor/servicio', { enServicio: nuevoEstado });
+    } catch (error) {
+      console.error('Error al actualizar estado de servicio en backend:', error);
     }
 
     const socket = connectSocket();
-    if (nuevoEstado && typeof window !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        setUbicacionChofer({ latitud: lat, longitud: lng });
-        socket.emit('driver:online', {
-          driverId: choferSesion.id,
-          lat,
-          lng,
-        });
+
+    if (nuevoEstado) {
+      // Desbloquear audio al iniciar turno
+      desbloquearAudioYVoz('Servicio iniciado. Audio y voz conectados.', () => {
+        setAudioDesbloqueado(true);
       });
+
+      if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setUbicacionChofer({ latitud: lat, longitud: lng });
+          socket.emit('driver:online', {
+            driverId: choferSesion?.id,
+            lat,
+            lng,
+          });
+        });
+      }
+    } else {
+      // Si pasa a Fuera de Servicio: emitir driver:offline y detener rastreo GPS inmediatamente
+      if (choferSesion?.id) {
+        socket.emit('driver:offline', { driverId: choferSesion.id });
+      }
+      if (watchIdRef.current !== null && typeof window !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
     }
 
     setMensajeExito(nuevoEstado ? 'Turno iniciado: En servicio transmitiendo GPS' : 'Turno finalizado: Fuera de servicio');

@@ -3,6 +3,7 @@ import prisma from '../utils/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { io } from '../index';
 import { calculateDistance } from '../utils/pricing';
+import { onlineDrivers } from '../socket/handlers';
 
 // Mapa de solicitudes dirigidas en tránsito con cascada automática
 export interface SolicitudDirigidaActiva {
@@ -398,6 +399,70 @@ router.post('/conductor/sentido', requireAuth, requireRole('driver', 'admin'), a
     respuesta.status(500).json({ error: 'Error al cambiar sentido' });
   }
 });
+
+// ─── CONDUCTOR: Cambiar estado de servicio (En servicio / Fuera de servicio) ─
+router.post('/conductor/servicio', requireAuth, requireRole('driver', 'admin'), async (peticion: Request, respuesta: Response) => {
+  try {
+    const conductorId = peticion.user!.id;
+    const { enServicio } = peticion.body;
+
+    const isOnline = Boolean(enServicio);
+
+    const choferActualizado = await prisma.driver.update({
+      where: { id: conductorId },
+      data: { isOnline },
+      select: {
+        id: true,
+        lineaId: true,
+        isOnline: true,
+        asientosTotales: true,
+        asientosOcupados: true,
+        sentidoRuta: true,
+        lastLat: true,
+        lastLng: true,
+        vehiclePlate: true,
+        name: true,
+      },
+    });
+
+    if (!isOnline) {
+      onlineDrivers.delete(conductorId);
+    }
+
+    if (choferActualizado.lineaId) {
+      if (!isOnline) {
+        // Notificar a todos los pasajeros de la línea que el móvil se retiró del servicio
+        io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:conductor-offline', {
+          conductorId: choferActualizado.id,
+          lineaId: choferActualizado.lineaId,
+        });
+      } else {
+        // Notificar a la línea que el móvil entró en servicio
+        io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:conductor-online', {
+          conductorId: choferActualizado.id,
+          lineaId: choferActualizado.lineaId,
+          asientosOcupados: choferActualizado.asientosOcupados,
+          asientosTotales: choferActualizado.asientosTotales,
+          sentidoRuta: choferActualizado.sentidoRuta,
+          patente: choferActualizado.vehiclePlate,
+          nombre: choferActualizado.name,
+          latitud: choferActualizado.lastLat,
+          longitud: choferActualizado.lastLng,
+        });
+      }
+    }
+
+    respuesta.json({
+      ok: true,
+      chofer: choferActualizado,
+      mensaje: isOnline ? 'Conductor en servicio' : 'Conductor fuera de servicio',
+    });
+  } catch (error) {
+    console.error('Error al cambiar estado de servicio:', error);
+    respuesta.status(500).json({ error: 'Error al cambiar estado de servicio' });
+  }
+});
+
 
 // ─── CONDUCTOR: Marcar pasajero reservado como abordado ───────────────────
 router.post('/reservas/:id/abordar', requireAuth, requireRole('driver', 'admin'), async (peticion: Request, respuesta: Response) => {

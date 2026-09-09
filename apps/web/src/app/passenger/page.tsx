@@ -295,7 +295,39 @@ export default function PaginaPasajeroColectivo() {
       setMostrarModalPago(false);
     };
 
+    // Evento: Conductor pasa a fuera de servicio o se desconecta
+    const manejarConductorOffline = (datos: { conductorId: string }) => {
+      setConductoresEnVivo((prev) => prev.filter((c) => c.conductorId !== datos.conductorId));
+      if (conductorElegidoRef.current?.conductorId === datos.conductorId) {
+        setConductorElegido(null);
+        setMensajeAlerta('El colectivo seleccionado se ha puesto fuera de servicio.');
+      }
+    };
+
+    // Evento: Conductor entra en servicio
+    const manejarConductorOnline = (datos: any) => {
+      setConductoresEnVivo((prev) => {
+        const existe = prev.some((c) => c.conductorId === datos.conductorId);
+        const nuevo: ConductorColectivo = {
+          conductorId: datos.conductorId,
+          nombre: datos.nombre,
+          patente: datos.patente,
+          latitud: datos.latitud,
+          longitud: datos.longitud,
+          asientosOcupados: datos.asientosOcupados || 0,
+          asientosTotales: datos.asientosTotales || 4,
+          sentidoRuta: datos.sentidoRuta || 'ida',
+        };
+        if (existe) {
+          return prev.map((c) => (c.conductorId === datos.conductorId ? { ...c, ...nuevo } : c));
+        }
+        return [...prev, nuevo];
+      });
+    };
+
     socket.on('colectivo:actualizacion-ubicacion', manejarActualizacionUbicacion);
+    socket.on('colectivo:conductor-offline', manejarConductorOffline);
+    socket.on('colectivo:conductor-online', manejarConductorOnline);
     socket.on('colectivo:cambio-asientos', manejarCambioAsientos);
     socket.on('colectivo:reserva-abordada', manejarReservaAbordada);
     socket.on('colectivo:reserva-cancelada', manejarReservaCancelada);
@@ -342,6 +374,8 @@ export default function PaginaPasajeroColectivo() {
         socket.emit('colectivo:salir-linea', { lineaId: lineaSeleccionada.id });
       }
       socket.off('colectivo:actualizacion-ubicacion', manejarActualizacionUbicacion);
+      socket.off('colectivo:conductor-offline', manejarConductorOffline);
+      socket.off('colectivo:conductor-online', manejarConductorOnline);
       socket.off('colectivo:cambio-asientos', manejarCambioAsientos);
       socket.off('colectivo:reserva-abordada', manejarReservaAbordada);
       socket.off('colectivo:reserva-cancelada', manejarReservaCancelada);

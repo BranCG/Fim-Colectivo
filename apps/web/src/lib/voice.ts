@@ -334,61 +334,55 @@ class GestorReconocimientoVoz {
         const ahora = Date.now();
         const resultados = evento.results;
 
+        // Antirrebote de comandos (1.2 segundos entre ejecuciones)
+        if (ahora - this.ultimoDisparoComando < 1200) {
+          return;
+        }
+
         for (let i = evento.resultIndex; i < resultados.length; i++) {
           const item = resultados[i];
-          const transcripcion = (item[0]?.transcript || '').trim().toLowerCase();
-          if (!transcripcion) continue;
+          const numAlternativas = item.length || 1;
 
-          console.log('[Voz Chofer] Audio detectado:', transcripcion, item.isFinal ? '(final)' : '(interim)');
+          for (let altIdx = 0; altIdx < numAlternativas; altIdx++) {
+            const transcripcion = (item[altIdx]?.transcript || '').trim().toLowerCase();
+            if (!transcripcion) continue;
 
-          // Normalizar quitando tildes y caracteres extra
-          const normalizado = transcripcion
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase();
+            console.log('[Voz Chofer] Audio detectado (alt ' + altIdx + '):', transcripcion, item.isFinal ? '(final)' : '(interim)');
 
-          // Evitar eco del propio audio TTS que lee la solicitud
-          if (
-            normalizado.includes('si o no') ||
-            normalizado.includes('aceptar si') ||
-            normalizado.includes('reserva de') ||
-            normalizado.includes('asiento')
-          ) {
-            continue;
-          }
+            // Normalizar quitando tildes y caracteres extra
+            const normalizado = transcripcion
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .toLowerCase();
 
-          // Antirrebote de comandos (1.2 segundos entre ejecuciones)
-          if (ahora - this.ultimoDisparoComando < 1200) {
-            continue;
-          }
-
-          // 1. Comando: A BORDO (sube pasajero)
-          const regexAbordo = /\b(a bordo|abordo|subio|sube|subieron|ya subio|arriba|pasajero a bordo|listo|aborde)\b/i;
-          if (regexAbordo.test(normalizado)) {
-            const ejecutado = this.despacharComando('onAbordo');
-            if (ejecutado) {
-              this.ultimoDisparoComando = ahora;
-              return;
+            // 1. Comando: A BORDO (sube pasajero)
+            const regexAbordo = /\b(a bordo|abordo|subio|sube|subieron|ya subio|arriba|pasajero a bordo|listo|aborde)\b/i;
+            if (regexAbordo.test(normalizado)) {
+              const ejecutado = this.despacharComando('onAbordo');
+              if (ejecutado) {
+                this.ultimoDisparoComando = ahora;
+                return;
+              }
             }
-          }
 
-          // 2. Comando: SÍ (confirmar/aceptar)
-          const regexSi = /\b(si|sí|dale|bueno|ok|acepto|aceptar|tomar|vamos|confirma|confirmar|cobrar|pagar|sipo|si po|ya)\b/i;
-          if (regexSi.test(normalizado)) {
-            const ejecutado = this.despacharComando('onSi');
-            if (ejecutado) {
-              this.ultimoDisparoComando = ahora;
-              return;
+            // 2. Comando: SÍ (confirmar/aceptar) - Palabras afirmativas exclusivas del conductor
+            const regexSi = /\b(si|sí|dale|bueno|ok|acepto|sipo|si po)\b/i;
+            if (regexSi.test(normalizado)) {
+              const ejecutado = this.despacharComando('onSi');
+              if (ejecutado) {
+                this.ultimoDisparoComando = ahora;
+                return;
+              }
             }
-          }
 
-          // 3. Comando: NO (rechazar/pasar)
-          const regexNo = /\b(no|paso|pasar|rechazo|rechazar|rechaza|deja|dejalo|no puedo|cancelar)\b/i;
-          if (regexNo.test(normalizado)) {
-            const ejecutado = this.despacharComando('onNo');
-            if (ejecutado) {
-              this.ultimoDisparoComando = ahora;
-              return;
+            // 3. Comando: NO (rechazar/pasar)
+            const regexNo = /\b(no|paso|rechazo|rechazar|dejalo|no puedo|cancelar)\b/i;
+            if (regexNo.test(normalizado)) {
+              const ejecutado = this.despacharComando('onNo');
+              if (ejecutado) {
+                this.ultimoDisparoComando = ahora;
+                return;
+              }
             }
           }
         }
@@ -426,14 +420,17 @@ class GestorReconocimientoVoz {
     const lista = Array.from(this.suscriptores.values()).reverse();
     for (const suscriptor of lista) {
       if (tipo === 'onSi' && suscriptor.onSi) {
+        detenerVoz();
         suscriptor.onSi();
         return true;
       }
       if (tipo === 'onNo' && suscriptor.onNo) {
+        detenerVoz();
         suscriptor.onNo();
         return true;
       }
       if (tipo === 'onAbordo' && suscriptor.onAbordo) {
+        detenerVoz();
         suscriptor.onAbordo();
         return true;
       }

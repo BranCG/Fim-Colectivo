@@ -44,10 +44,10 @@ export default function AlertaVozReserva({
     // Sonido de alerta
     reproducirSonido('alerta');
 
-    // Construir texto en lenguaje natural claro y conciso cuantitativo con tiempo en minutos
+    // Construir texto en lenguaje natural conciso cuantitativo (sin decir 'SÍ' ni 'NO' para evitar eco con el parlante)
     const nombre = solicitud.nombrePasajero.split(' ')[0];
     const asientos = solicitud.cantidadAsientos;
-    const textoVoz = `Reserva de ${nombre}, ${asientos} ${asientos > 1 ? 'asientos' : 'asiento'}, a ${minutosLlegada} ${minutosLlegada === 1 ? 'minuto' : 'minutos'}. ¿Aceptar, SÍ o NO?`;
+    const textoVoz = `Reserva de ${nombre}, ${asientos} ${asientos > 1 ? 'asientos' : 'asiento'}, a ${minutosLlegada} min. ¿Tomamos?`;
 
     // Iniciar reconocimiento de comandos por voz ("SÍ" o "NO") de forma inmediata
     escuchaRef.current = iniciarEscuchaVoz({
