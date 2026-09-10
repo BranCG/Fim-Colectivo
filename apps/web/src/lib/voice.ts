@@ -69,6 +69,15 @@ export function reproducirSonido(tipo: 'alerta' | 'exito' | 'rechazo') {
 
 // Cache de voces disponibles
 let vocesPrecargadas: SpeechSynthesisVoice[] = [];
+let audioActual: HTMLAudioElement | null = null;
+
+function getBaseApiUrl(): string {
+  if (typeof window === 'undefined') return 'https://colectivo.fimchile.cl';
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') return `http://${host}:3011`;
+  return 'https://colectivo.fimchile.cl';
+}
 
 function precargarVoces() {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -80,8 +89,27 @@ function precargarVoces() {
   }
 }
 
+// Desbloqueo pasivo al primer toque en la pantalla para WebView y navegadores móviles
 if (typeof window !== 'undefined') {
   precargarVoces();
+  const desbloquearPasivo = () => {
+    try {
+      const ctx = obtenerAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.resume();
+      }
+      const dummyAudio = new Audio();
+      dummyAudio.volume = 0.01;
+      dummyAudio.play().catch(() => {});
+    } catch {}
+    window.removeEventListener('touchstart', desbloquearPasivo);
+    window.removeEventListener('click', desbloquearPasivo);
+  };
+  window.addEventListener('touchstart', desbloquearPasivo, { passive: true, once: true });
+  window.addEventListener('click', desbloquearPasivo, { passive: true, once: true });
 }
 
 function buscarVozEspanol(): SpeechSynthesisVoice | undefined {
@@ -90,6 +118,7 @@ function buscarVozEspanol(): SpeechSynthesisVoice | undefined {
   return (
     voces.find((v) => v.lang === 'es-CL') ||
     voces.find((v) => v.lang === 'es-419') ||
+    voces.find((v) => v.lang === 'es-US') ||
     voces.find((v) => v.lang === 'es-MX') ||
     voces.find((v) => v.lang === 'es-ES') ||
     voces.find((v) => v.lang.startsWith('es'))
@@ -97,9 +126,12 @@ function buscarVozEspanol(): SpeechSynthesisVoice | undefined {
 }
 
 /**
- * Desbloquea de forma explícita el AudioContext y SpeechSynthesis tras un toque o click del usuario
+ * Desbloquea de forma explícita el AudioContext y sintetizador tras un toque o click del usuario
  */
-export function desbloquearAudioYVoz(mensajeTest = 'Audio y voz activados', alCompletar?: () => void) {
+export function desbloquearAudioYVoz(
+  mensajeTest = 'Audio y voz activados para el servicio de colectivos',
+  alCompletar?: () => void
+) {
   try {
     const ctx = obtenerAudioContext();
     if (ctx && ctx.state === 'suspended') {
@@ -111,27 +143,9 @@ export function desbloquearAudioYVoz(mensajeTest = 'Audio y voz activados', alCo
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.resume();
       precargarVoces();
-
-      const locucionTest = new SpeechSynthesisUtterance(mensajeTest);
-      locucionTest.lang = 'es-CL';
-      locucionTest.rate = 1.0;
-      locucionTest.pitch = 1.0;
-      locucionTest.volume = 1.0;
-
-      const voz = buscarVozEspanol();
-      if (voz) locucionTest.voice = voz;
-
-      locucionTest.onend = () => {
-        if (alCompletar) alCompletar();
-      };
-      locucionTest.onerror = () => {
-        if (alCompletar) alCompletar();
-      };
-
-      window.speechSynthesis.speak(locucionTest);
-    } else {
-      if (alCompletar) alCompletar();
     }
+
+    hablarTexto(mensajeTest, alCompletar);
   } catch (e) {
     console.warn('Error al desbloquear audio y voz:', e);
     if (alCompletar) alCompletar();
@@ -139,203 +153,347 @@ export function desbloquearAudioYVoz(mensajeTest = 'Audio y voz activados', alCo
 }
 
 /**
- * Lee texto en voz alta en español utilizando la API nativa SpeechSynthesis de forma robusta
+ * Detiene inmediatamente cualquier locución en curso (audio streaming o síntesis nativa)
+ */
+export function detenerVoz() {
+  if (audioActual) {
+    try {
+      audioActual.pause();
+      audioActual.currentTime = 0;
+    } catch {}
+    audioActual = null;
+  }
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {}
+  }
+}
+
+/**
+ * Lee texto en voz alta utilizando el motor nativo de síntesis de voz (SpeechSynthesis)
+ * de alta fluidez y sin retrasos de red, con fallback a audio streaming.
  */
 export function hablarTexto(texto: string, alFinalizar?: () => void) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+  if (typeof window === 'undefined') {
     if (alFinalizar) alFinalizar();
     return;
   }
 
-  try {
-    window.speechSynthesis.resume();
+  detenerVoz();
 
-    // En Chromium, llamar a speak() sincrónicamente tras cancel() anula la locución nueva.
-    // Si está hablando, cancelamos y damos 40ms para que la cola se desaloje limpiamente.
-    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+  let finalizado = false;
+  const invocarFinal = () => {
+    if (!finalizado) {
+      finalizado = true;
+      if (alFinalizar) alFinalizar();
+    }
+  };
+
+  // 1. Prioridad: Síntesis nativa del dispositivo (0ms de latencia, audio fluido sin cortes)
+  if ('speechSynthesis' in window) {
+    try {
       window.speechSynthesis.cancel();
-      setTimeout(() => {
-        ejecutarLectura(texto, alFinalizar);
-      }, 40);
-    } else {
-      ejecutarLectura(texto, alFinalizar);
-    }
-  } catch (err) {
-    console.warn('Error al preparar hablarTexto:', err);
-    if (alFinalizar) alFinalizar();
-  }
-}
+      window.speechSynthesis.resume();
 
-function ejecutarLectura(texto: string, alFinalizar?: () => void) {
-  try {
-    window.speechSynthesis.resume();
+      const locucion = new SpeechSynthesisUtterance(texto);
+      locucion.lang = 'es-CL';
+      locucion.rate = 1.08;
+      locucion.pitch = 1.0;
+      locucion.volume = 1.0;
 
-    const locucion = new SpeechSynthesisUtterance(texto);
-    locucion.lang = 'es-CL';
-    locucion.rate = 1.02; // Ritmo ágil y comprensible
-    locucion.pitch = 1.0;
-    locucion.volume = 1.0;
-
-    const vozEspanol = buscarVozEspanol();
-    if (vozEspanol) {
-      locucion.voice = vozEspanol;
-    }
-
-    let completado = false;
-    const invocarFinal = () => {
-      if (!completado) {
-        completado = true;
-        if (alFinalizar) alFinalizar();
+      const vozEspanol = buscarVozEspanol();
+      if (vozEspanol) {
+        locucion.voice = vozEspanol;
       }
-    };
 
-    locucion.onend = invocarFinal;
-    locucion.onerror = (err) => {
-      console.warn('SpeechSynthesis error en ejecución:', err);
+      const timerSeguridad = setTimeout(invocarFinal, 7000);
+
+      locucion.onend = () => {
+        clearTimeout(timerSeguridad);
+        invocarFinal();
+      };
+
+      locucion.onerror = (err) => {
+        clearTimeout(timerSeguridad);
+        console.warn('[TTS] SpeechSynthesis error:', err);
+        invocarFinal();
+      };
+
+      window.speechSynthesis.speak(locucion);
+      return;
+    } catch (e) {
+      console.warn('[TTS] Error en SpeechSynthesis nativo, probando fallback:', e);
+    }
+  }
+
+  // 2. Fallback: Stream de audio si el navegador no cuenta con speechSynthesis
+  try {
+    const textoCodificado = encodeURIComponent(texto.trim().slice(0, 250));
+    const urlProxy = `${getBaseApiUrl()}/api/colectivos/tts?texto=${textoCodificado}&lang=es`;
+
+    const audio = new Audio();
+    audioActual = audio;
+
+    const timerSeguridad = setTimeout(invocarFinal, 7000);
+
+    audio.onended = () => {
+      clearTimeout(timerSeguridad);
+      audioActual = null;
       invocarFinal();
     };
 
-    // Timeout de seguridad en caso de que el navegador no dispare onend
-    setTimeout(invocarFinal, 12000);
+    audio.onerror = () => {
+      clearTimeout(timerSeguridad);
+      audioActual = null;
+      invocarFinal();
+    };
 
-    window.speechSynthesis.speak(locucion);
-  } catch (err) {
-    console.warn('Error al ejecutar speak:', err);
-    if (alFinalizar) alFinalizar();
-  }
-}
-
-/**
- * Detiene inmediatamente cualquier lectura de voz en curso
- */
-export function detenerVoz() {
-  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
+    audio.src = urlProxy;
+    audio.play().catch(() => {
+      clearTimeout(timerSeguridad);
+      audioActual = null;
+      invocarFinal();
+    });
+  } catch (e) {
+    console.warn('[TTS Audio] Error en audio fallback:', e);
+    invocarFinal();
   }
 }
 
 interface OpcionesEscucha {
-  onSi: () => void;
-  onNo: () => void;
+  id?: string;
+  onSi?: () => void;
+  onNo?: () => void;
+  onAbordo?: () => void;
   onEscuchando?: (estado: boolean) => void;
   onError?: (error: string) => void;
 }
 
+class GestorReconocimientoVoz {
+  private static instancia: GestorReconocimientoVoz | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private reconocimiento: any = null;
+  private escuchandoDeseado = false;
+  private estaCorriendo = false;
+  private suscriptores: Map<string, OpcionesEscucha> = new Map();
+  private ultimoDisparoComando = 0;
+  private timerReintento: NodeJS.Timeout | null = null;
+
+  static obtener(): GestorReconocimientoVoz {
+    if (!GestorReconocimientoVoz.instancia) {
+      GestorReconocimientoVoz.instancia = new GestorReconocimientoVoz();
+    }
+    return GestorReconocimientoVoz.instancia;
+  }
+
+  private constructor() {
+    if (typeof window === 'undefined') return;
+    this.inicializarReconocimiento();
+  }
+
+  private inicializarReconocimiento() {
+    if (typeof window === 'undefined') return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const windowAny = window as any;
+    const SpeechRecognition = windowAny.SpeechRecognition || windowAny.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      console.info('[Voz Chofer] SpeechRecognition no soportado en este navegador');
+      return;
+    }
+
+    try {
+      this.reconocimiento = new SpeechRecognition();
+      this.reconocimiento.lang = 'es-CL';
+      this.reconocimiento.continuous = true;
+      this.reconocimiento.interimResults = true;
+      this.reconocimiento.maxAlternatives = 5;
+
+      this.reconocimiento.onstart = () => {
+        this.estaCorriendo = true;
+        this.notificarEstadoEscucha(true);
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.reconocimiento.onresult = (evento: any) => {
+        const ahora = Date.now();
+        const resultados = evento.results;
+
+        // Antirrebote mínimo de 500ms entre comandos aceptados
+        if (ahora - this.ultimoDisparoComando < 500) {
+          return;
+        }
+
+        for (let i = evento.resultIndex; i < resultados.length; i++) {
+          const item = resultados[i];
+          const numAlternativas = item.length || 1;
+
+          for (let altIdx = 0; altIdx < numAlternativas; altIdx++) {
+            const rawTranscript = (item[altIdx]?.transcript || '').trim();
+            if (!rawTranscript) continue;
+
+            // Normalizar quitando tildes, signos y puntuaciones
+            const normalizado = rawTranscript
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            if (!normalizado) continue;
+
+            console.log('[Voz Chofer] Detectado (alt ' + altIdx + '):', normalizado, item.isFinal ? '(final)' : '(interim)');
+
+            // 1. Comando: A BORDO (sube pasajero)
+            const regexAbordo = /\b(a bordo|abordo|subio|sube|subieron|ya subio|arriba|pasajero a bordo|listo|aborde|adentro)\b/i;
+            if (regexAbordo.test(normalizado)) {
+              this.ultimoDisparoComando = ahora;
+              detenerVoz();
+              const ejecutado = this.despacharComando('onAbordo');
+              if (ejecutado) return;
+            }
+
+            // 2. Comando: SÍ (confirmar/aceptar)
+            // Alta sensibilidad fonética para dialecto chileno y ASR en cabina:
+            // "si", "sii", "siii", "sip", "sipo", "si po", "se", "dale", "ya", "yapo", "ya po",
+            // "bueno", "ok", "oka", "okay", "toma", "tomar", "tomalo", "tomala", "tomamos",
+            // "claro", "confirmo", "confirmar", "afirmativo", "positivo", "acepto", "aceptar"
+            const regexSi = /\b(s+i+|s+i+p+o*|se|dale|ya|yapo|ya po|bueno|ok|oka|okay|acepto|aceptar|toma|tomar|tomalo|tomala|tomamos|claro|confirmo|confirmar|afirmativo|positivo)\b/i;
+            if (regexSi.test(normalizado)) {
+              this.ultimoDisparoComando = ahora;
+              detenerVoz();
+              const ejecutado = this.despacharComando('onSi');
+              if (ejecutado) return;
+            }
+
+            // 3. Comando: NO (rechazar/pasar)
+            const regexNo = /\b(n+o+|nop|nopo|no po|paso|rechazo|rechazar|dejalo|dejala|no puedo|cancelar|negativo)\b/i;
+            if (regexNo.test(normalizado)) {
+              this.ultimoDisparoComando = ahora;
+              detenerVoz();
+              const ejecutado = this.despacharComando('onNo');
+              if (ejecutado) return;
+            }
+          }
+        }
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.reconocimiento.onerror = (err: any) => {
+        console.warn('[Voz Chofer] Evento onerror SpeechRecognition:', err?.error);
+        if (err?.error === 'not-allowed' || err?.error === 'service-not-allowed') {
+          this.escuchandoDeseado = false;
+          this.notificarError('Permiso de micrófono denegado');
+          return;
+        }
+        // no-speech, network, audio-capture son transitorios y se auto-recuperan
+      };
+
+      this.reconocimiento.onend = () => {
+        this.estaCorriendo = false;
+        this.notificarEstadoEscucha(false);
+
+        // Si el conductor tiene oyentes activos (ruta o modal), reiniciar de inmediato en 50ms
+        if (this.escuchandoDeseado && this.suscriptores.size > 0) {
+          if (this.timerReintento) clearTimeout(this.timerReintento);
+          this.timerReintento = setTimeout(() => {
+            this.iniciarCiclo();
+          }, 50);
+        }
+      };
+    } catch (e) {
+      console.warn('[Voz Chofer] No se pudo instanciar SpeechRecognition:', e);
+    }
+  }
+
+  private despacharComando(tipo: 'onSi' | 'onNo' | 'onAbordo'): boolean {
+    const lista = Array.from(this.suscriptores.values()).reverse();
+    for (const suscriptor of lista) {
+      if (tipo === 'onSi' && suscriptor.onSi) {
+        detenerVoz();
+        suscriptor.onSi();
+        return true;
+      }
+      if (tipo === 'onNo' && suscriptor.onNo) {
+        detenerVoz();
+        suscriptor.onNo();
+        return true;
+      }
+      if (tipo === 'onAbordo' && suscriptor.onAbordo) {
+        detenerVoz();
+        suscriptor.onAbordo();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private notificarEstadoEscucha(activo: boolean) {
+    this.suscriptores.forEach((s) => {
+      if (s.onEscuchando) s.onEscuchando(activo);
+    });
+  }
+
+  private notificarError(msg: string) {
+    this.suscriptores.forEach((s) => {
+      if (s.onError) s.onError(msg);
+    });
+  }
+
+  private iniciarCiclo() {
+    if (!this.reconocimiento) {
+      this.inicializarReconocimiento();
+    }
+    if (!this.reconocimiento || this.estaCorriendo) return;
+
+    try {
+      this.reconocimiento.start();
+    } catch (e: any) {
+      if (e?.name === 'InvalidStateError') {
+        this.estaCorriendo = true;
+      } else {
+        console.warn('[Voz Chofer] Error al ejecutar start():', e);
+      }
+    }
+  }
+
+  suscribir(opciones: OpcionesEscucha): { detener: () => void } {
+    const id = opciones.id || Math.random().toString(36).slice(2);
+    this.suscriptores.set(id, opciones);
+    this.escuchandoDeseado = true;
+    this.ultimoDisparoComando = 0; // Permitir que la primera respuesta del chofer se procese de inmediato
+
+    if (!this.estaCorriendo) {
+      this.iniciarCiclo();
+    } else {
+      if (opciones.onEscuchando) opciones.onEscuchando(true);
+    }
+
+    return {
+      detener: () => {
+        this.suscriptores.delete(id);
+        if (this.suscriptores.size === 0) {
+          this.escuchandoDeseado = false;
+          if (this.timerReintento) clearTimeout(this.timerReintento);
+          try {
+            if (this.reconocimiento && this.estaCorriendo) {
+              this.reconocimiento.stop();
+            }
+          } catch {}
+        }
+      },
+    };
+  }
+}
+
 /**
- * Inicia la escucha por micrófono de comandos rápidos "SÍ" o "NO" manos libres
+ * Inicia o registra la escucha por micrófono de comandos rápidos ("SÍ", "NO", "A BORDO") manos libres
  */
 export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => void } {
   if (typeof window === 'undefined') {
     return { detener: () => {} };
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const windowAny = window as any;
-  const SpeechRecognition = windowAny.SpeechRecognition || windowAny.webkitSpeechRecognition;
-
-  if (!SpeechRecognition) {
-    console.info('Reconocimiento de voz SpeechRecognition no disponible en este navegador');
-    if (opciones.onError) opciones.onError('No soportado');
-    return { detener: () => {} };
-  }
-
-  let finalizado = false;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let reconocimiento: any = null;
-
-  try {
-    reconocimiento = new SpeechRecognition();
-    reconocimiento.lang = 'es-CL';
-    reconocimiento.continuous = true;
-    reconocimiento.interimResults = false;
-    reconocimiento.maxAlternatives = 3;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    reconocimiento.onstart = () => {
-      if (opciones.onEscuchando) opciones.onEscuchando(true);
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    reconocimiento.onresult = (evento: any) => {
-      if (finalizado) return;
-
-      const resultados = evento.results;
-      for (let i = evento.resultIndex; i < resultados.length; i++) {
-        const transcripcion = resultados[i][0].transcript.trim().toLowerCase();
-        console.log('[Voz Chofer] Detectado:', transcripcion);
-
-        // Normalizar texto quitando tildes
-        const normalizado = transcripcion
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '');
-
-        // Patrones afirmativos
-        if (
-          normalizado.includes('si') ||
-          normalizado.includes('dale') ||
-          normalizado.includes('tomar') ||
-          normalizado.includes('bueno') ||
-          normalizado.includes('aceptar') ||
-          normalizado.includes('ok') ||
-          normalizado.includes('vamos') ||
-          normalizado.includes('sube')
-        ) {
-          finalizado = true;
-          detener();
-          opciones.onSi();
-          return;
-        }
-
-        // Patrones negativos
-        if (
-          normalizado.includes('no') ||
-          normalizado.includes('pasar') ||
-          normalizado.includes('paso') ||
-          normalizado.includes('rechazar') ||
-          normalizado.includes('deja') ||
-          normalizado.includes('no puedo')
-        ) {
-          finalizado = true;
-          detener();
-          opciones.onNo();
-          return;
-        }
-      }
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    reconocimiento.onerror = (err: any) => {
-      console.warn('[Voz Chofer] Reconocimiento error:', err.error);
-      if (opciones.onError) opciones.onError(err.error);
-    };
-
-    reconocimiento.onend = () => {
-      if (opciones.onEscuchando) opciones.onEscuchando(false);
-      // Reiniciar si aún no se ha recibido respuesta y no se ha detenido manualmente
-      if (!finalizado) {
-        try {
-          reconocimiento.start();
-        } catch {
-          // Ignorar error al reiniciar
-        }
-      }
-    };
-
-    reconocimiento.start();
-  } catch (err) {
-    console.warn('Error al iniciar SpeechRecognition:', err);
-  }
-
-  const detener = () => {
-    finalizado = true;
-    if (reconocimiento) {
-      try {
-        reconocimiento.stop();
-      } catch {}
-      reconocimiento = null;
-    }
-    if (opciones.onEscuchando) opciones.onEscuchando(false);
-  };
-
-  return { detener };
+  return GestorReconocimientoVoz.obtener().suscribir(opciones);
 }

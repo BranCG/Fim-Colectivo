@@ -3,6 +3,7 @@ import prisma from '../utils/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { io } from '../index';
 import { calculateDistance } from '../utils/pricing';
+import { onlineDrivers } from '../socket/handlers';
 
 // Mapa de solicitudes dirigidas en tránsito con cascada automática
 export interface SolicitudDirigidaActiva {
@@ -122,6 +123,20 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       return respuesta.status(400).json({ error: 'Debe especificar el conductor y la línea' });
     }
 
+    // Verificar si el pasajero ya tiene una reserva activa
+    const reservaExistente = await prisma.reservaAsiento.findFirst({
+      where: {
+        pasajeroId,
+        estado: { in: ['pendiente_chofer', 'reservado', 'abordado', 'pagando'] },
+      },
+    });
+    if (reservaExistente) {
+      return respuesta.status(400).json({
+        error: 'Ya tienes una solicitud de asiento activa en curso.',
+        reserva: reservaExistente,
+      });
+    }
+
     // Verificar conductor y disponibilidad de asientos
     const chofer = await prisma.driver.findUnique({
       where: { id: conductorId },
@@ -141,7 +156,7 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
 
     const valorTarifa = chofer.linea ? chofer.linea.tarifa * cantidadAsientos : 800 * cantidadAsientos;
 
-    // Crear la reserva de asiento
+    // Crear la reserva de asiento en estado pendiente_chofer (sin ocupar asientos hasta que el chofer acepte)
     const nuevaReserva = await prisma.reservaAsiento.create({
       data: {
         pasajeroId,
@@ -154,7 +169,7 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
         tarifa: valorTarifa,
         metodoPago,
         notas,
-        estado: 'reservado',
+        estado: 'pendiente_chofer',
       },
       include: {
         linea: true,
@@ -180,8 +195,16 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       },
     });
 
-    // Notificar al conductor por WebSocket en tiempo real
-    io.to(`driver:${conductorId}`).emit('colectivo:nueva-reserva', { reserva: nuevaReserva });
+    // Notificar al conductor por WebSocket en tiempo real (canal privado y canal de línea)
+    io.to(`driver:${conductorId}`).emit('colectivo:nueva-reserva', {
+      reserva: nuevaReserva,
+    });
+    if (lineaId) {
+      io.to(`linea:${lineaId}`).emit('colectivo:nueva-reserva', {
+        conductorId,
+        reserva: nuevaReserva,
+      });
+    }
 
     // Emitir también solicitud con voz al conductor
     const distKm = chofer.lastLat && chofer.lastLng && latitudSubida && longitudSubida
@@ -197,6 +220,17 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       tiempoLimiteSegundos: 20,
       direccionSubida: nuevaReserva.direccionSubida,
     });
+    if (lineaId) {
+      io.to(`linea:${lineaId}`).emit('colectivo:solicitud-asignada', {
+        conductorId,
+        reservaId: nuevaReserva.id,
+        nombrePasajero: nuevaReserva.pasajero.name,
+        cantidadAsientos: nuevaReserva.cantidadAsientos,
+        distanciaMetros,
+        tiempoLimiteSegundos: 20,
+        direccionSubida: nuevaReserva.direccionSubida,
+      });
+    }
 
     respuesta.status(201).json({ reserva: nuevaReserva });
   } catch (error) {
@@ -366,6 +400,70 @@ router.post('/conductor/sentido', requireAuth, requireRole('driver', 'admin'), a
   }
 });
 
+// ─── CONDUCTOR: Cambiar estado de servicio (En servicio / Fuera de servicio) ─
+router.post('/conductor/servicio', requireAuth, requireRole('driver', 'admin'), async (peticion: Request, respuesta: Response) => {
+  try {
+    const conductorId = peticion.user!.id;
+    const { enServicio } = peticion.body;
+
+    const isOnline = Boolean(enServicio);
+
+    const choferActualizado = await prisma.driver.update({
+      where: { id: conductorId },
+      data: { isOnline },
+      select: {
+        id: true,
+        lineaId: true,
+        isOnline: true,
+        asientosTotales: true,
+        asientosOcupados: true,
+        sentidoRuta: true,
+        lastLat: true,
+        lastLng: true,
+        vehiclePlate: true,
+        name: true,
+      },
+    });
+
+    if (!isOnline) {
+      onlineDrivers.delete(conductorId);
+    }
+
+    if (choferActualizado.lineaId) {
+      if (!isOnline) {
+        // Notificar a todos los pasajeros de la línea que el móvil se retiró del servicio
+        io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:conductor-offline', {
+          conductorId: choferActualizado.id,
+          lineaId: choferActualizado.lineaId,
+        });
+      } else {
+        // Notificar a la línea que el móvil entró en servicio
+        io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:conductor-online', {
+          conductorId: choferActualizado.id,
+          lineaId: choferActualizado.lineaId,
+          asientosOcupados: choferActualizado.asientosOcupados,
+          asientosTotales: choferActualizado.asientosTotales,
+          sentidoRuta: choferActualizado.sentidoRuta,
+          patente: choferActualizado.vehiclePlate,
+          nombre: choferActualizado.name,
+          latitud: choferActualizado.lastLat,
+          longitud: choferActualizado.lastLng,
+        });
+      }
+    }
+
+    respuesta.json({
+      ok: true,
+      chofer: choferActualizado,
+      mensaje: isOnline ? 'Conductor en servicio' : 'Conductor fuera de servicio',
+    });
+  } catch (error) {
+    console.error('Error al cambiar estado de servicio:', error);
+    respuesta.status(500).json({ error: 'Error al cambiar estado de servicio' });
+  }
+});
+
+
 // ─── CONDUCTOR: Marcar pasajero reservado como abordado ───────────────────
 router.post('/reservas/:id/abordar', requireAuth, requireRole('driver', 'admin'), async (peticion: Request, respuesta: Response) => {
   try {
@@ -381,7 +479,10 @@ router.post('/reservas/:id/abordar', requireAuth, requireRole('driver', 'admin')
     }
 
     const choferActual = await prisma.driver.findUnique({ where: { id: conductorId } });
-    const nuevosOcupados = Math.min(4, (choferActual?.asientosOcupados || 0) + reserva.cantidadAsientos);
+    const yaOcupabaAsiento = reserva.estado === 'reservado';
+    const nuevosOcupados = yaOcupabaAsiento
+      ? (choferActual?.asientosOcupados || 0)
+      : Math.min(choferActual?.asientosTotales || 4, (choferActual?.asientosOcupados || 0) + reserva.cantidadAsientos);
 
     const [reservaActualizada, choferActualizado] = await prisma.$transaction([
       prisma.reservaAsiento.update({
@@ -402,7 +503,13 @@ router.post('/reservas/:id/abordar', requireAuth, requireRole('driver', 'admin')
       });
     }
 
-    io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-abordada', { reservaId: id });
+    io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-abordada', { reservaId: id, pasajeroId: reserva.pasajeroId });
+    if (choferActualizado.lineaId) {
+      io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:reserva-abordada', {
+        reservaId: id,
+        pasajeroId: reserva.pasajeroId,
+      });
+    }
 
     respuesta.json({ reserva: reservaActualizada, chofer: choferActualizado });
   } catch (error) {
@@ -440,11 +547,21 @@ router.post('/reservas/:id/solicitar-pago', requireAuth, async (peticion: Reques
 
     // Notificar al conductor con alerta por voz y pantalla
     io.to(`driver:${reserva.conductorId}`).emit('colectivo:pasajero-quiere-pagar', {
+      conductorId: reserva.conductorId,
       reservaId: id,
       pasajeroNombre: reserva.pasajero.name,
       cantidadAsientos: reserva.cantidadAsientos,
       metodoPago: reserva.metodoPago,
     });
+    if (reserva.lineaId) {
+      io.to(`linea:${reserva.lineaId}`).emit('colectivo:pasajero-quiere-pagar', {
+        conductorId: reserva.conductorId,
+        reservaId: id,
+        pasajeroNombre: reserva.pasajero.name,
+        cantidadAsientos: reserva.cantidadAsientos,
+        metodoPago: reserva.metodoPago,
+      });
+    }
 
     io.to(`pasajero:${pasajeroId}`).emit('colectivo:pago-solicitado', {
       reservaId: id,
@@ -505,8 +622,16 @@ router.post('/reservas/:id/confirmar-pago', requireAuth, requireRole('driver', '
     // Notificar al pasajero que el pago fue recibido y el viaje culminó (liberando su pantalla)
     io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:pago-confirmado', {
       reservaId: id,
+      pasajeroId: reserva.pasajeroId,
       mensaje: '¡Pago confirmado por el conductor! Gracias por viajar.',
     });
+    if (choferActualizado.lineaId) {
+      io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:pago-confirmado', {
+        reservaId: id,
+        pasajeroId: reserva.pasajeroId,
+        mensaje: '¡Pago confirmado por el conductor! Gracias por viajar.',
+      });
+    }
 
     // Notificar al conductor confirmación
     io.to(`driver:${conductorId}`).emit('colectivo:pago-confirmado-chofer', {
@@ -544,16 +669,29 @@ router.post('/reservas/:id/cancelar', requireAuth, async (peticion: Request, res
       data: { estado: 'cancelado' },
     });
 
-    // Si ya había abordado y se cancela, liberar el asiento
-    if (reserva.estado === 'abordado') {
-      await prisma.driver.update({
-        where: { id: reserva.conductorId },
-        data: {
-          asientosOcupados: {
-            set: Math.max(0, reserva.conductor.asientosOcupados - reserva.cantidadAsientos),
-          },
-        },
-      });
+    // Si ya había reservado, abordado o estaba pagando y se cancela, liberar el asiento
+    if (['reservado', 'abordado', 'pagando'].includes(reserva.estado) && reserva.conductorId) {
+      const choferActual = await prisma.driver.findUnique({ where: { id: reserva.conductorId } });
+      if (choferActual) {
+        const nuevosOcupados = Math.max(0, choferActual.asientosOcupados - reserva.cantidadAsientos);
+        const choferActualizado = await prisma.driver.update({
+          where: { id: reserva.conductorId },
+          data: { asientosOcupados: nuevosOcupados },
+        });
+
+        if (choferActualizado.lineaId) {
+          io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:cambio-asientos', {
+            conductorId: choferActualizado.id,
+            asientosOcupados: choferActualizado.asientosOcupados,
+            asientosTotales: choferActualizado.asientosTotales,
+          });
+        }
+        io.to(`driver:${reserva.conductorId}`).emit('colectivo:cambio-asientos', {
+          conductorId: choferActualizado.id,
+          asientosOcupados: choferActualizado.asientosOcupados,
+          asientosTotales: choferActualizado.asientosTotales,
+        });
+      }
     }
 
     // Si la reserva estaba en proceso de despacho dirigido, cancelar el timer
@@ -666,6 +804,7 @@ export function despacharASiguienteConductor(reservaId: string) {
 
     // Emitir al chofer para activar TTS ("Nombre a X metros, X asientos, ¿lo tomamos?") y modal manos libres
     io.to(`driver:${driverId}`).emit('colectivo:solicitud-asignada', {
+      conductorId: driverId,
       reservaId,
       nombrePasajero: solicitud.nombrePasajero,
       cantidadAsientos: solicitud.cantidadAsientos,
@@ -673,9 +812,21 @@ export function despacharASiguienteConductor(reservaId: string) {
       tiempoLimiteSegundos: 15,
       direccionSubida: solicitud.direccionSubida,
     });
+    if (solicitud.lineaId) {
+      io.to(`linea:${solicitud.lineaId}`).emit('colectivo:solicitud-asignada', {
+        conductorId: driverId,
+        reservaId,
+        nombrePasajero: solicitud.nombrePasajero,
+        cantidadAsientos: solicitud.cantidadAsientos,
+        distanciaMetros,
+        tiempoLimiteSegundos: 15,
+        direccionSubida: solicitud.direccionSubida,
+      });
+    }
 
     // Notificar al pasajero qué móvil en camino está evaluando
     io.to(`pasajero:${solicitud.pasajeroId}`).emit('colectivo:asignando-a-chofer', {
+      pasajeroId: solicitud.pasajeroId,
       reservaId,
       conductor: {
         id: chofer.id,
@@ -684,6 +835,18 @@ export function despacharASiguienteConductor(reservaId: string) {
         distanciaMetros,
       },
     });
+    if (solicitud.lineaId) {
+      io.to(`linea:${solicitud.lineaId}`).emit('colectivo:asignando-a-chofer', {
+        pasajeroId: solicitud.pasajeroId,
+        reservaId,
+        conductor: {
+          id: chofer.id,
+          nombre: chofer.name,
+          patente: chofer.vehiclePlate,
+          distanciaMetros,
+        },
+      });
+    }
 
     // Temporizador de 15 segundos antes de cascada automática
     solicitud.timer = setTimeout(() => {
@@ -716,6 +879,20 @@ router.post('/solicitar-dirigido', requireAuth, async (peticion: Request, respue
 
     if (!lineaId || latitudSubida == null || longitudSubida == null) {
       return respuesta.status(400).json({ error: 'Debe indicar la línea y su ubicación de recogida' });
+    }
+
+    // Verificar si el pasajero ya tiene una reserva activa
+    const reservaActiva = await prisma.reservaAsiento.findFirst({
+      where: {
+        pasajeroId,
+        estado: { in: ['pendiente_chofer', 'reservado', 'abordado', 'pagando'] },
+      },
+    });
+    if (reservaActiva) {
+      return respuesta.status(400).json({
+        error: 'Ya tienes una solicitud de asiento activa en curso.',
+        reserva: reservaActiva,
+      });
     }
 
     const pasajero = await prisma.user.findUnique({
@@ -869,27 +1046,81 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
       if (solicitud?.timer) clearTimeout(solicitud.timer);
       solicitudesDirigidasActivas.delete(id);
 
-      const reservaActualizada = await prisma.reservaAsiento.update({
-        where: { id },
-        data: { estado: 'reservado' },
-        include: {
-          conductor: { select: { id: true, name: true, vehiclePlate: true, phone: true, lastLat: true, lastLng: true, telefonoRutPay: true, mercadoPagoLink: true } },
-          pasajero: { select: { id: true, name: true, phone: true } },
-          linea: true,
+      const choferActual = await prisma.driver.findUnique({ where: { id: conductorId } });
+      const yaOcupaba = reserva.estado === 'reservado' || reserva.estado === 'abordado';
+      const nuevosOcupados = yaOcupaba
+        ? (choferActual?.asientosOcupados || 0)
+        : Math.min(
+            choferActual?.asientosTotales || 4,
+            (choferActual?.asientosOcupados || 0) + reserva.cantidadAsientos
+          );
+
+      const [reservaActualizada, choferActualizado] = await prisma.$transaction([
+        prisma.reservaAsiento.update({
+          where: { id },
+          data: {
+            conductorId,
+            estado: 'reservado',
+          },
+          include: {
+            conductor: { select: { id: true, name: true, vehiclePlate: true, phone: true, lastLat: true, lastLng: true, telefonoRutPay: true, mercadoPagoLink: true } },
+            pasajero: { select: { id: true, name: true, phone: true } },
+            linea: true,
+          },
+        }),
+        prisma.driver.update({
+          where: { id: conductorId },
+          data: { asientosOcupados: nuevosOcupados },
+        }),
+      ]);
+
+      // Limpiar cualquier otra reserva previa que haya quedado pendiente del mismo pasajero
+      await prisma.reservaAsiento.updateMany({
+        where: {
+          pasajeroId: reserva.pasajeroId,
+          id: { not: id },
+          estado: 'pendiente_chofer',
         },
+        data: { estado: 'cancelado' },
       });
 
-      // Notificar al pasajero confirmación inmediata
+      // Emitir cambio de asientos a la flota de la línea y al conductor
+      if (choferActualizado.lineaId) {
+        io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:cambio-asientos', {
+          conductorId: choferActualizado.id,
+          asientosOcupados: choferActualizado.asientosOcupados,
+          asientosTotales: choferActualizado.asientosTotales,
+        });
+      }
+      io.to(`driver:${conductorId}`).emit('colectivo:cambio-asientos', {
+        conductorId: choferActualizado.id,
+        asientosOcupados: choferActualizado.asientosOcupados,
+        asientosTotales: choferActualizado.asientosTotales,
+      });
+
+      // Notificar al pasajero confirmación inmediata (sala directa y sala de línea)
       io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-aceptada', {
         reserva: reservaActualizada,
       });
+      if (choferActualizado.lineaId || reserva.lineaId) {
+        const idLinea = choferActualizado.lineaId || reserva.lineaId;
+        io.to(`linea:${idLinea}`).emit('colectivo:reserva-aceptada', {
+          reserva: reservaActualizada,
+          pasajeroId: reserva.pasajeroId,
+        });
+      }
 
       // Confirmar al conductor
       io.to(`driver:${conductorId}`).emit('colectivo:reserva-confirmada-chofer', {
         reserva: reservaActualizada,
+        asientosOcupados: choferActualizado.asientosOcupados,
       });
 
-      return respuesta.json({ ok: true, reserva: reservaActualizada });
+      return respuesta.json({
+        ok: true,
+        reserva: reservaActualizada,
+        asientosOcupados: choferActualizado.asientosOcupados,
+      });
     } else {
       // Chofer rechazó ("NO" o botón rojo)
       if (solicitud?.timer) clearTimeout(solicitud.timer);
@@ -903,6 +1134,12 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
           data: { estado: 'rechazado' },
         });
         io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-cancelada', { reservaId: id });
+        if (reserva.lineaId) {
+          io.to(`linea:${reserva.lineaId}`).emit('colectivo:reserva-cancelada', {
+            reservaId: id,
+            pasajeroId: reserva.pasajeroId,
+          });
+        }
       }
 
       return respuesta.json({ ok: true, mensaje: 'Solicitud rechazada, asignada al siguiente móvil en tránsito' });
@@ -910,6 +1147,40 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
   } catch (error) {
     console.error('Error al responder a la reserva:', error);
     respuesta.status(500).json({ error: 'Error al procesar respuesta del conductor' });
+  }
+});
+
+// ─── ENDPOINT STREAMING TTS EN ESPAÑOL / CHILENO (MANOS LIBRES LEY 21.377) ──
+router.get('/tts', async (req: Request, res: Response) => {
+  try {
+    const texto = String(req.query.texto || '').trim();
+    if (!texto) {
+      return res.status(400).json({ error: 'El parámetro texto es obligatorio' });
+    }
+
+    const textoSeguro = encodeURIComponent(texto.slice(0, 250));
+    const lang = String(req.query.lang || 'es');
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${textoSeguro}&tl=${lang}&client=tw-ob`;
+
+    const respuestaTTS = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Accept: 'audio/mpeg, audio/*;q=0.9',
+      },
+    });
+
+    if (!respuestaTTS.ok) {
+      return res.status(respuestaTTS.status).json({ error: 'Error al consultar servicio TTS externo' });
+    }
+
+    const arrayBuffer = await respuestaTTS.arrayBuffer();
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Accept-Ranges', 'bytes');
+    return res.send(Buffer.from(arrayBuffer));
+  } catch (error) {
+    console.error('Error en /tts:', error);
+    return res.status(500).json({ error: 'Error interno al generar audio TTS' });
   }
 });
 

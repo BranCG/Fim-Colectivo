@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { calcularInfoLlegada } from '@/lib/geo';
 
 export interface Parada {
   id: string;
@@ -44,6 +45,8 @@ export interface PasajeroEnEspera {
   asientos: number;
   paradaNombre?: string;
   metodoPago?: string;
+  minutosLlegada?: number;
+  distanciaTexto?: string;
 }
 
 interface Props {
@@ -55,6 +58,7 @@ interface Props {
   disparadorCentrado?: number;
   esModoConductor?: boolean;
   miConductorId?: string;
+  miPatente?: string;
   pasajerosEnEspera?: PasajeroEnEspera[];
   altura?: string;
 }
@@ -86,6 +90,142 @@ const ESTILO_MAPLIBRE: any = {
   ],
 };
 
+// ─── Generador de Pin SVG de Colectivo Chileno Ultra-Visible ───
+interface OpcionesColectivoSvg {
+  patente: string;
+  textoBadge: string;
+  colorBadge: string;
+  colorAuto: string;
+  colorLetrero: string;
+  esDestacado: boolean;
+  idUnico: string;
+  iconoBadge?: 'auto' | 'reloj' | 'ninguno';
+}
+
+function generarSvgColectivoHtml({
+  patente,
+  textoBadge,
+  colorBadge,
+  colorAuto,
+  colorLetrero,
+  esDestacado,
+  idUnico,
+  iconoBadge = 'ninguno',
+}: OpcionesColectivoSvg): string {
+  const zIndex = esDestacado ? '90' : '40';
+
+  let svgIconoHtml = '';
+  if (iconoBadge === 'auto') {
+    svgIconoHtml = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 3c-.1.2-.1.5-.1.8v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>`;
+  } else if (iconoBadge === 'reloj') {
+    svgIconoHtml = `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>`;
+  }
+
+  return `
+    <div class="fim-colectivo-pin" style="display: flex; flex-direction: column; align-items: center; cursor: pointer; user-select: none; z-index: ${zIndex}; pointer-events: auto;">
+      <!-- Badge superior con tiempo o texto de identificación -->
+      <div style="
+        background: ${colorBadge};
+        color: #000000;
+        font-size: 9px;
+        font-weight: 800;
+        padding: 1.5px 6px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+        white-space: nowrap;
+        margin-bottom: 2px;
+        letter-spacing: 0.2px;
+        border: ${esDestacado ? '1.5px solid #FFFFFF' : '1px solid rgba(0,0,0,0.3)'};
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      ">
+        ${svgIconoHtml}
+        <span>${textoBadge}</span>
+      </div>
+
+      <!-- Automóvil SVG tipo colectivo chileno compacto de tamaño fijo -->
+      <div style="position: relative; width: 24px; height: 30px; display: flex; align-items: center; justify-content: center;">
+        <svg width="22" height="28" viewBox="0 0 44 56" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 5px rgba(0,0,0,0.7)); position: relative; z-index: 2;">
+          <defs>
+            <linearGradient id="bodyGrad_${idUnico}" x1="6" y1="8" x2="38" y2="48" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#1E293B" />
+              <stop offset="25%" stop-color="#0F172A" />
+              <stop offset="65%" stop-color="#090D16" />
+              <stop offset="100%" stop-color="#020617" />
+            </linearGradient>
+
+            <linearGradient id="glassGrad_${idUnico}" x1="14" y1="16" x2="30" y2="24" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9" />
+              <stop offset="100%" stop-color="#A3A3A3" stop-opacity="0.5" />
+            </linearGradient>
+          </defs>
+
+          <!-- Sombra del automóvil en el asfalto -->
+          <ellipse cx="22" cy="30" rx="16" ry="21" fill="#000000" fill-opacity="0.45" />
+
+          <!-- Neumáticos laterales -->
+          <rect x="4" y="12" width="3.5" height="9" rx="1.5" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
+          <rect x="36.5" y="12" width="3.5" height="9" rx="1.5" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
+          <rect x="4" y="34" width="3.5" height="9" rx="1.5" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
+          <rect x="36.5" y="34" width="3.5" height="9" rx="1.5" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
+
+          <!-- Espejos retrovisores -->
+          <path d="M5 19 C3.5 19 3 21 4.5 22.5 L7 22 Z" fill="#1E293B" stroke="${colorLetrero}" stroke-width="1.2" />
+          <path d="M39 19 C40.5 19 41 21 39.5 22.5 L37 22 Z" fill="#1E293B" stroke="${colorLetrero}" stroke-width="1.2" />
+
+          <!-- Carrocería sedán moderna con borde amarillo colectivo -->
+          <path d="M12 10 C12 6.5 16 5 22 5 C28 5 32 6.5 32 10 L34 20 L35 43 C35 48 31 51 22 51 C13 51 9 48 9 43 L10 20 Z"
+                fill="url(#bodyGrad_${idUnico})" stroke="${colorLetrero}" stroke-width="2.5" stroke-linejoin="round" />
+
+          <!-- Parabrisas con curvatura -->
+          <path d="M13.5 17.5 C13.5 15.5 16.5 14.5 22 14.5 C27.5 14.5 30.5 15.5 30.5 17.5 L29 23 C29 24.5 26.5 25 22 25 C17.5 25 15 24.5 15 23 Z"
+                fill="url(#glassGrad_${idUnico})" stroke="rgba(255,255,255,0.4)" stroke-width="0.8" />
+
+          <!-- Techo del Colectivo -->
+          <rect x="14" y="25" width="16" height="12" rx="2" fill="#0A0F1D" stroke="rgba(255,255,255,0.15)" stroke-width="0.8" />
+
+          <!-- Letrero de Colectivo en el Techo (Amarillo chileno) -->
+          <rect x="14" y="27.5" width="16" height="7" rx="2" fill="${colorLetrero}" />
+          <rect x="15.5" y="29" width="13" height="4" rx="1" fill="#000000" />
+          <text x="22" y="32.2" font-size="2.8" font-family="system-ui, -apple-system, sans-serif" font-weight="900" fill="${colorLetrero}" text-anchor="middle" letter-spacing="0.2">COLECTIVO</text>
+
+          <!-- Luneta Trasera -->
+          <path d="M15 39 C15 38 17.5 37.5 22 37.5 C26.5 37.5 29 38 29 39 L28 42 C28 42.5 26 43 22 43 C18 43 16 42.5 16 42 Z"
+                fill="url(#glassGrad_${idUnico})" stroke="rgba(255,255,255,0.25)" stroke-width="0.8" />
+
+          <!-- Focos Delanteros LED -->
+          <ellipse cx="13.5" cy="9.5" rx="2.2" ry="1.5" fill="#FFFFFF" />
+          <ellipse cx="30.5" cy="9.5" rx="2.2" ry="1.5" fill="#FFFFFF" />
+
+          <!-- Luces Traseras / Freno -->
+          <rect x="11.5" y="48.5" width="4.5" height="2" rx="1" fill="#EF4444" />
+          <rect x="28" y="48.5" width="4.5" height="2" rx="1" fill="#EF4444" />
+        </svg>
+      </div>
+
+      <!-- Placa Patente micro-formato -->
+      <div style="
+        margin-top: -2px;
+        background: #FFFFFF;
+        color: #000000;
+        border: 1px solid #000000;
+        border-radius: 3px;
+        padding: 0.5px 4px;
+        font-size: 7.5px;
+        font-weight: 900;
+        font-family: 'Courier New', Courier, monospace;
+        letter-spacing: 0.4px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+        z-index: 3;
+        white-space: nowrap;
+      ">
+        ${patente}
+      </div>
+    </div>
+  `;
+}
+
 export default function ColectivoMap({
   ubicacionUsuario,
   lineaSeleccionada,
@@ -95,6 +235,7 @@ export default function ColectivoMap({
   disparadorCentrado = 0,
   esModoConductor = false,
   miConductorId,
+  miPatente,
   pasajerosEnEspera = [],
   altura = '100%',
 }: Props) {
@@ -214,7 +355,7 @@ export default function ColectivoMap({
             },
           };
 
-          const colorRuta = lineaSeleccionada.color || '#2563EB';
+          const colorRuta = '#FACC15';
 
           if (mapa.getSource(idFuenteRuta)) {
             mapa.getSource(idFuenteRuta).setData(geojsonData);
@@ -224,7 +365,7 @@ export default function ColectivoMap({
               data: geojsonData,
             });
 
-            // Capa exterior de resalte (glow)
+            // Capa exterior negra de contraste
             mapa.addLayer({
               id: idCapaRutaGlow,
               type: 'line',
@@ -234,13 +375,13 @@ export default function ColectivoMap({
                 'line-cap': 'round',
               },
               paint: {
-                'line-color': '#0F172A',
-                'line-width': 8,
-                'line-opacity': 0.35,
+                'line-color': '#000000',
+                'line-width': 9,
+                'line-opacity': 0.8,
               },
             });
 
-            // Capa principal con el color de la línea
+            // Capa principal en amarillo colectivo
             mapa.addLayer({
               id: idCapaRutaLinea,
               type: 'line',
@@ -270,25 +411,26 @@ export default function ColectivoMap({
     // C. Marcador: Ubicación del usuario o Mi Colectivo
     if (ubicacionUsuario) {
       if (esModoConductor) {
-        // Modo Conductor: "TU COLECTIVO"
+        // Modo Conductor: "TU COLECTIVO" con automóvil SVG detallado
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = 'display: flex; flex-direction: column; align-items: center; z-index: 100; cursor: pointer;';
-        el.innerHTML = `
-          <div style="background: #F59E0B; color: #0F172A; font-size: 10px; font-weight: 900; padding: 2px 8px; border-radius: 12px; box-shadow: 0 0 14px rgba(245,158,11,0.9); white-space: nowrap; margin-bottom: 2px; letter-spacing: 0.3px;">
-            TU COLECTIVO
-          </div>
-          <div style="position: relative; background: #0F172A; border: 2.5px solid #F59E0B; border-radius: 10px; padding: 4px 8px; display: flex; align-items: center; gap: 5px; box-shadow: 0 4px 16px rgba(245,158,11,0.6); animation: fimPulse 2s infinite;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 3c-.1.2-.1.5-.1.8v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
-            <span style="color: #FBBF24; font-size: 11px; font-weight: bold; font-family: monospace;">MI AUTO</span>
-          </div>
-        `;
+        el.innerHTML = generarSvgColectivoHtml({
+          patente: miPatente || 'MI AUTO',
+          textoBadge: 'TU COLECTIVO',
+          colorBadge: '#FACC15',
+          colorAuto: '#000000',
+          colorLetrero: '#FACC15',
+          esDestacado: true,
+          idUnico: 'chofer_propio',
+          iconoBadge: 'auto',
+        });
 
         const marcador = new Marker({ element: el, anchor: 'bottom' })
           .setLngLat([ubicacionUsuario.longitud, ubicacionUsuario.latitud])
           .setPopup(
-            new Popup({ offset: 20, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              '<b>Tu posición GPS en tiempo real</b>'
+            new Popup({ offset: 22, closeButton: false, className: 'fim-map-popup' }).setHTML(
+              '<b>Tu Colectivo en tiempo real</b><br/><span style="color: #FACC15; font-size: 10.5px;">GPS activo y en servicio</span>'
             )
           )
           .addTo(mapa);
@@ -300,8 +442,8 @@ export default function ColectivoMap({
         el.className = 'fim-marker-container';
         el.style.cssText = 'position: relative; width: 28px; height: 28px; cursor: pointer;';
         el.innerHTML = `
-          <div style="position: absolute; inset: 0; background: #3B82F6; border-radius: 50%; opacity: 0.4; animation: fimPulse 1.8s ease-out infinite;"></div>
-          <div style="position: absolute; inset: 4px; background: #2563EB; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 14px rgba(37,99,235,0.9);"></div>
+          <div style="position: absolute; inset: 0; background: #FACC15; border-radius: 50%; opacity: 0.45; animation: fimPulse 1.8s ease-out infinite;"></div>
+          <div style="position: absolute; inset: 4px; background: #000000; border-radius: 50%; border: 2.5px solid #FFFFFF; box-shadow: 0 0 14px rgba(250,204,21,0.95);"></div>
         `;
 
         const marcador = new Marker({ element: el, anchor: 'center' })
@@ -319,24 +461,22 @@ export default function ColectivoMap({
 
     // D. Marcador: Paradas de la línea
     if (lineaSeleccionada?.paradas && lineaSeleccionada.paradas.length > 0) {
-      const colorLinea = lineaSeleccionada.color || '#2563EB';
-
       lineaSeleccionada.paradas.forEach((parada) => {
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = `
-          background: #FFFFFF;
-          border: 2.5px solid ${colorLinea};
+          background: #000000;
+          border: 2.5px solid #FACC15;
           border-radius: 50%;
           width: 22px;
           height: 22px;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+          box-shadow: 0 3px 8px rgba(0,0,0,0.7);
           font-size: 11px;
-          font-weight: 800;
-          color: ${colorLinea};
+          font-weight: 900;
+          color: #FFFFFF;
           cursor: pointer;
         `;
         el.innerText = String(parada.orden);
@@ -345,7 +485,7 @@ export default function ColectivoMap({
           .setLngLat([parada.longitud, parada.latitud])
           .setPopup(
             new Popup({ offset: 14, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              `<b>Parada ${parada.orden}: ${parada.nombre}</b><br/><span style="font-size: 10px; color: #94A3B8;">Sentido: ${parada.sentido.toUpperCase()}</span>`
+              `<b>Parada ${parada.orden}: ${parada.nombre}</b><br/><span style="font-size: 10px; color: #A3A3A3;">Sentido: ${parada.sentido.toUpperCase()}</span>`
             )
           )
           .addTo(mapa);
@@ -362,17 +502,29 @@ export default function ColectivoMap({
         const estaLleno = asientosDisponibles <= 0;
         const esSeleccionado = conductorSeleccionadoId === chofer.conductorId;
 
-        let colorAsientos = '#10B981'; // Verde
+        // Calcular tiempo y distancia de aproximación
+        const eta = ubicacionUsuario
+          ? calcularInfoLlegada(chofer.latitud, chofer.longitud, ubicacionUsuario.latitud, ubicacionUsuario.longitud)
+          : null;
+
+        let colorAsientos = '#FACC15'; // Amarillo colectivo
         let textoAsientos = `${asientosDisponibles} libres`;
         if (estaLleno) {
-          colorAsientos = '#EF4444'; // Rojo
+          colorAsientos = '#171717'; // Lleno en negro/gris
           textoAsientos = 'Lleno';
         } else if (asientosDisponibles === 1) {
-          colorAsientos = '#F59E0B'; // Ámbar
+          colorAsientos = '#FACC15';
           textoAsientos = '1 libre';
         }
 
-        const colorBorde = esSeleccionado ? '#F59E0B' : '#1E293B';
+        const textoPill = eta ? `${eta.textoTiempo} • ${textoAsientos}` : textoAsientos;
+        const textoBadge = esSeleccionado
+          ? (eta ? `TU COLECTIVO • ${eta.textoTiempo}` : 'TU COLECTIVO')
+          : textoPill;
+
+        const colorBadge = esSeleccionado ? '#FACC15' : colorAsientos;
+        const colorAuto = '#000000';
+        const colorLetrero = '#FACC15';
 
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
@@ -381,18 +533,18 @@ export default function ColectivoMap({
           flex-direction: column;
           align-items: center;
           cursor: pointer;
-          transform: ${esSeleccionado ? 'scale(1.15)' : 'scale(1)'};
-          transition: transform 0.2s;
+          z-index: ${esSeleccionado ? 90 : 40};
         `;
-        el.innerHTML = `
-          <div style="background: ${colorAsientos}; color: white; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.35); white-space: nowrap; margin-bottom: 2px; letter-spacing: 0.2px;">
-            ${textoAsientos}
-          </div>
-          <div style="position: relative; background: #0F172A; border: 2.5px solid ${colorBorde}; border-radius: 10px; padding: 4px 6px; display: flex; align-items: center; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.45);">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F1F5F9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 3c-.1.2-.1.5-.1.8v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
-            <span style="color: #F1F5F9; font-size: 10px; font-weight: bold; font-family: monospace;">${chofer.patente}</span>
-          </div>
-        `;
+        el.innerHTML = generarSvgColectivoHtml({
+          patente: chofer.patente,
+          textoBadge,
+          colorBadge,
+          colorAuto,
+          colorLetrero,
+          esDestacado: esSeleccionado,
+          idUnico: `flota_${chofer.conductorId.replace(/[^a-zA-Z0-9]/g, '_')}`,
+          iconoBadge: esSeleccionado ? 'auto' : (eta ? 'reloj' : 'ninguno'),
+        });
 
         el.addEventListener('click', () => {
           if (alSeleccionarConductor) {
@@ -400,11 +552,19 @@ export default function ColectivoMap({
           }
         });
 
+        const infoEtaHtml = eta
+          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-weight: 800;">Llega en ${eta.textoTiempo} (${eta.textoDistancia})</div>`
+          : '';
+
+        const tituloPopup = esSeleccionado
+          ? `<b>Tu Colectivo Asignado</b> (${chofer.patente})`
+          : `<b>${chofer.nombre}</b> (${chofer.patente})`;
+
         const marcador = new Marker({ element: el, anchor: 'bottom' })
           .setLngLat([chofer.longitud, chofer.latitud])
           .setPopup(
-            new Popup({ offset: 18, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              `<b>${chofer.nombre}</b><br/>Sentido: ${chofer.sentidoRuta.toUpperCase()}<br/>Disponibles: ${asientosDisponibles}/4`
+            new Popup({ offset: 22, closeButton: false, className: 'fim-map-popup' }).setHTML(
+              `${tituloPopup}<br/>Sentido: ${chofer.sentidoRuta.toUpperCase()}<br/>Disponibles: ${asientosDisponibles}/4${infoEtaHtml}`
             )
           )
           .addTo(mapa);
@@ -417,23 +577,34 @@ export default function ColectivoMap({
       pasajerosEnEspera.forEach((p) => {
         if (!p.latitud || !p.longitud) return;
 
+        // Calcular tiempo de llegada del chofer a este pasajero
+        const eta = ubicacionUsuario
+          ? calcularInfoLlegada(ubicacionUsuario.latitud, ubicacionUsuario.longitud, p.latitud, p.longitud)
+          : null;
+
+        const textoTiempoPasajero = eta ? eta.textoTiempo : (p.minutosLlegada ? `~${p.minutosLlegada} min` : '');
+
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
-        el.style.cssText = 'display: flex; flex-direction: column; align-items: center; cursor: pointer;';
+        el.style.cssText = 'display: flex; flex-direction: column; align-items: center; cursor: pointer; z-index: 90;';
         el.innerHTML = `
-          <div style="background: #7C3AED; color: white; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 12px; box-shadow: 0 2px 8px rgba(124,58,237,0.6); margin-bottom: 2px; white-space: nowrap;">
-            ${p.nombre.split(' ')[0]} (${p.asientos} as.)
+          <div style="background: #000000; color: #FACC15; border: 1.5px solid #FACC15; font-size: 10px; font-weight: 900; padding: 2.5px 8px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.8); margin-bottom: 2px; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+            ${textoTiempoPasajero ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FACC15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg> ${textoTiempoPasajero} • ` : ''}${p.nombre.split(' ')[0]} (${p.asientos} as.)
           </div>
-          <div style="background: #6D28D9; border: 2px solid #DDD6FE; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(109,40,217,0.6);">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <div style="background: #FACC15; border: 2px solid #000000; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(250,204,21,0.5);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
         `;
+
+        const infoLlegadaChoferHtml = eta
+          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-weight: 800;">Llegas a recogerlo en: ${eta.textoTiempo} (${eta.textoDistancia})</div>`
+          : '';
 
         const marcador = new Marker({ element: el, anchor: 'bottom' })
           .setLngLat([p.longitud, p.latitud])
           .setPopup(
             new Popup({ offset: 18, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              `<b>Reserva de Pasajero</b><br/>Pasajero: ${p.nombre}<br/>Asientos: ${p.asientos}<br/>Pago: ${p.metodoPago?.toUpperCase() || 'EFECTIVO'}${p.paradaNombre ? '<br/>En: ' + p.paradaNombre : ''}`
+              `<b>Reserva de Pasajero</b><br/>Pasajero: ${p.nombre}<br/>Asientos: ${p.asientos}<br/>Pago: ${p.metodoPago?.toUpperCase() || 'EFECTIVO'}${p.paradaNombre ? '<br/>En: ' + p.paradaNombre : ''}${infoLlegadaChoferHtml}`
             )
           )
           .addTo(mapa);
@@ -453,6 +624,50 @@ export default function ColectivoMap({
     pasajerosEnEspera,
   ]);
 
+  // ETA destacado para mostrar en el HUD flotante superior del mapa
+  const etaDestacado = useMemo(() => {
+    if (!ubicacionUsuario) return null;
+
+    if (esModoConductor) {
+      if (pasajerosEnEspera.length === 0) return null;
+      const primerPasajero = pasajerosEnEspera[0];
+      if (!primerPasajero.latitud || !primerPasajero.longitud) return null;
+      const eta = calcularInfoLlegada(
+        ubicacionUsuario.latitud,
+        ubicacionUsuario.longitud,
+        primerPasajero.latitud,
+        primerPasajero.longitud
+      );
+      if (!eta) return null;
+      return {
+        tipo: 'conductor',
+        titulo: `Llegas a buscar a ${primerPasajero.nombre.split(' ')[0]}`,
+        textoTiempo: eta.textoTiempo,
+        textoDistancia: eta.textoDistancia,
+        color: '#FACC15',
+      };
+    } else {
+      // Modo pasajero: si hay conductor seleccionado o asignado
+      if (!conductorSeleccionadoId) return null;
+      const chofer = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
+      if (!chofer) return null;
+      const eta = calcularInfoLlegada(
+        chofer.latitud,
+        chofer.longitud,
+        ubicacionUsuario.latitud,
+        ubicacionUsuario.longitud
+      );
+      if (!eta) return null;
+      return {
+        tipo: 'pasajero',
+        titulo: `Colectivo ${chofer.patente}`,
+        textoTiempo: eta.textoTiempo,
+        textoDistancia: eta.textoDistancia,
+        color: '#FACC15',
+      };
+    }
+  }, [ubicacionUsuario, esModoConductor, pasajerosEnEspera, conductorSeleccionadoId, conductoresEnVivo]);
+
   return (
     <div
       style={{
@@ -468,24 +683,63 @@ export default function ColectivoMap({
         overflow: 'hidden',
       }}
     >
+      {/* HUD flotante superior con tiempo estimado (ETA) completamente responsive */}
+      {etaDestacado && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '12px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10,
+            background: 'rgba(0, 0, 0, 0.95)',
+            backdropFilter: 'blur(10px)',
+            border: `1.5px solid ${etaDestacado.color}`,
+            borderRadius: '24px',
+            padding: '6px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.75)',
+            pointerEvents: 'none',
+            maxWidth: 'calc(100% - 24px)',
+            boxSizing: 'border-box',
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={etaDestacado.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#FFFFFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {etaDestacado.titulo}:{' '}
+            <span style={{ color: '#FACC15', fontWeight: '900' }}>
+              {etaDestacado.tipo === 'conductor' ? 'en ' : 'llega en '}{etaDestacado.textoTiempo}
+            </span>{' '}
+            <span style={{ color: '#A3A3A3', fontWeight: '600', fontSize: '11px' }}>
+              ({etaDestacado.textoDistancia})
+            </span>
+          </span>
+        </div>
+      )}
+
       <div ref={contenedorRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
       <style jsx global>{`
         .maplibregl-canvas {
           outline: none;
         }
         .fim-map-popup .maplibregl-popup-content {
-          background: rgba(15, 23, 42, 0.95) !important;
-          color: #f8fafc !important;
-          border: 1px solid rgba(255, 255, 255, 0.15) !important;
+          background: #0A0A0A !important;
+          color: #FFFFFF !important;
+          border: 1px solid rgba(250, 204, 21, 0.4) !important;
           border-radius: 10px !important;
           font-size: 11px !important;
-          font-weight: 500 !important;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+          font-weight: 600 !important;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7) !important;
           padding: 8px 12px !important;
           backdrop-filter: blur(8px);
         }
         .fim-map-popup .maplibregl-popup-tip {
-          border-top-color: rgba(15, 23, 42, 0.95) !important;
+          border-top-color: #0A0A0A !important;
         }
         @keyframes fimPulse {
           0% {

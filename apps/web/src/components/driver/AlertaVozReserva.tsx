@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { hablarTexto, iniciarEscuchaVoz, reproducirSonido, detenerVoz } from '@/lib/voice';
-import { IconoCheck, IconoCruz, IconoAsiento } from '@/components/icons/Iconos';
+import { IconoCheck, IconoCruz, IconoAsiento, IconoReloj } from '@/components/icons/Iconos';
 
 export interface DatosSolicitudDirigida {
   reservaId: string;
@@ -33,20 +33,27 @@ export default function AlertaVozReserva({
 
   const escuchaRef = useRef<{ detener: () => void } | null>(null);
 
-  // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS)
+  // Estimación cuantitativa de llegada a recoger al pasajero
+  const minutosLlegada = Math.max(1, Math.round((solicitud.distanciaMetros * 1.25) / 400));
+  const textoDistancia = solicitud.distanciaMetros >= 1000
+    ? `${(solicitud.distanciaMetros / 1000).toFixed(1)} km`
+    : `${solicitud.distanciaMetros} m`;
+
+  // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS), luego activar micrófono
   useEffect(() => {
-    // Sonido de alerta
+    // Sonido de alerta chime inicial
     reproducirSonido('alerta');
 
-    // Construir texto en lenguaje natural claro y conciso
-    const nombre = solicitud.nombrePasajero.split(' ')[0];
-    const distancia = solicitud.distanciaMetros;
-    const asientos = solicitud.cantidadAsientos;
-    const textoVoz = `${nombre} a ${distancia} metros, ${asientos} ${asientos > 1 ? 'asientos' : 'asiento'}. ¿Lo tomamos?`;
+    // Locución ultra-concisa de 1 segundo ("JUAN, UN ASIENTO. ¿TOMAMOS?")
+    const nombre = (solicitud.nombrePasajero || 'Pasajero').split(' ')[0];
+    const asientos = solicitud.cantidadAsientos || 1;
+    const textoAsientos = asientos === 1 ? 'un asiento' : `${asientos} asientos`;
+    const textoVoz = `${nombre}, ${textoAsientos}. ¿Tomamos?`;
 
-    // Hablar inmediatamente y al terminar activar reconocimiento de voz
-    hablarTexto(textoVoz, () => {
-      // Iniciar reconocimiento de comandos por voz ("SÍ" o "NO")
+    let microfonoIniciado = false;
+    const activarMicrofono = () => {
+      if (microfonoIniciado || respondido) return;
+      microfonoIniciado = true;
       escuchaRef.current = iniciarEscuchaVoz({
         onSi: () => {
           manejarAceptar();
@@ -58,12 +65,24 @@ export default function AlertaVozReserva({
           setEscuchandoVoz(activo);
         },
       });
+    };
+
+    // Hablar inmediatamente; al terminar la frase (o a los 1.3s), se enciende el micrófono
+    hablarTexto(textoVoz, () => {
+      activarMicrofono();
     });
 
+    const timerSeguridadMic = setTimeout(() => {
+      activarMicrofono();
+    }, 1300);
+
     return () => {
+      clearTimeout(timerSeguridadMic);
       detenerVoz();
       if (escuchaRef.current) {
-        escuchaRef.current.detener();
+        try {
+          escuchaRef.current.detener();
+        } catch {}
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,33 +112,64 @@ export default function AlertaVozReserva({
     if (respondido) return;
     setRespondido(true);
     detenerVoz();
-    if (escuchaRef.current) escuchaRef.current.detener();
+    if (escuchaRef.current) {
+      try {
+        escuchaRef.current.detener();
+      } catch {}
+    }
 
-    reproducirSonido('exito');
-    hablarTexto('Reserva aceptada. Te espera.');
-    alAceptar(solicitud.reservaId);
+    try {
+      reproducirSonido('exito');
+      hablarTexto('Reserva aceptada');
+    } catch {}
+
+    try {
+      alAceptar(solicitud.reservaId);
+    } catch (err) {
+      console.error('Error en alAceptar:', err);
+    }
   };
 
   const manejarRechazar = () => {
     if (respondido) return;
     setRespondido(true);
     detenerVoz();
-    if (escuchaRef.current) escuchaRef.current.detener();
+    if (escuchaRef.current) {
+      try {
+        escuchaRef.current.detener();
+      } catch {}
+    }
 
-    reproducirSonido('rechazo');
-    hablarTexto('Pasado al siguiente móvil.');
-    alRechazar(solicitud.reservaId);
+    try {
+      reproducirSonido('rechazo');
+    } catch {}
+
+    try {
+      alRechazar(solicitud.reservaId);
+    } catch (err) {
+      console.error('Error en alRechazar:', err);
+    }
   };
 
   const manejarExpiracion = () => {
     if (respondido) return;
     setRespondido(true);
     detenerVoz();
-    if (escuchaRef.current) escuchaRef.current.detener();
+    if (escuchaRef.current) {
+      try {
+        escuchaRef.current.detener();
+      } catch {}
+    }
 
-    reproducirSonido('rechazo');
-    hablarTexto('Tiempo expirado. Pasando al siguiente móvil.');
-    alExpirar(solicitud.reservaId);
+    try {
+      reproducirSonido('rechazo');
+    } catch {}
+
+    try {
+      alExpirar(solicitud.reservaId);
+    } catch (err) {
+      console.error('Error en alExpirar:', err);
+    }
   };
 
   const porcentajeTiempo = (segundosRestantes / tiempoTotal) * 100;
@@ -130,7 +180,7 @@ export default function AlertaVozReserva({
         position: 'fixed',
         inset: 0,
         zIndex: 99999,
-        background: '#090D16',
+        background: '#000000',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -146,7 +196,7 @@ export default function AlertaVozReserva({
           right: 0,
           zIndex: 10,
           padding: '12px 16px',
-          background: 'rgba(15, 23, 42, 0.92)',
+          background: 'rgba(10, 10, 10, 0.95)',
           backdropFilter: 'blur(10px)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
           display: 'flex',
@@ -160,16 +210,16 @@ export default function AlertaVozReserva({
               width: '12px',
               height: '12px',
               borderRadius: '50%',
-              background: '#38BDF8',
-              boxShadow: '0 0 12px #38BDF8',
+              background: '#FACC15',
+              boxShadow: '0 0 12px #FACC15',
               animation: 'fimPulse 1.2s infinite ease-out',
             }}
           />
           <div>
-            <div style={{ fontSize: '13px', fontWeight: '800', color: '#F8FAFC', letterSpacing: '-0.2px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF', letterSpacing: '-0.2px' }}>
               NUEVO PASAJERO EN RUTA
             </div>
-            <div style={{ fontSize: '11px', color: '#94A3B8' }}>
+            <div style={{ fontSize: '11px', color: '#A3A3A3' }}>
               {solicitud.direccionSubida || 'En tu trayectoria'}
             </div>
           </div>
@@ -181,34 +231,33 @@ export default function AlertaVozReserva({
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            background: escuchandoVoz ? 'rgba(16, 185, 129, 0.25)' : 'rgba(148, 163, 184, 0.15)',
-            border: escuchandoVoz ? '1px solid #10B981' : '1px solid rgba(255, 255, 255, 0.1)',
+            background: escuchandoVoz ? 'rgba(250, 204, 21, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+            border: escuchandoVoz ? '1px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.1)',
             padding: '4px 10px',
             borderRadius: '20px',
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={escuchandoVoz ? '#34D399' : '#94A3B8'} strokeWidth="2.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={escuchandoVoz ? '#FACC15' : '#A3A3A3'} strokeWidth="2.5">
             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
             <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
             <line x1="12" y1="19" x2="12" y2="22" />
           </svg>
-          <span style={{ fontSize: '11px', fontWeight: '700', color: escuchandoVoz ? '#34D399' : '#94A3B8' }}>
+          <span style={{ fontSize: '11px', fontWeight: '700', color: escuchandoVoz ? '#FACC15' : '#A3A3A3' }}>
             {escuchandoVoz ? 'DI "SÍ" O "NO"' : 'AUDIO ACTIVO'}
           </span>
         </div>
       </div>
 
-      {/* ── BOTÓN GIGANTE SUPERIOR: SÍ (ACEPTAR / TOMAR) ── */}
+      {/* ── BOTÓN GIGANTE SUPERIOR: SÍ (ACEPTAR / TOMAR) EN AMARILLO COLECTIVO ── */}
       <button
         type="button"
         onClick={manejarAceptar}
         style={{
           flex: 1.2,
           width: '100%',
-          background: 'linear-gradient(180deg, #059669 0%, #047857 100%)',
+          background: '#FACC15',
           border: 'none',
-          borderBottom: '4px solid #064E3B',
-          color: '#FFFFFF',
+          color: '#000000',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -217,12 +266,12 @@ export default function AlertaVozReserva({
           cursor: 'pointer',
           touchAction: 'manipulation',
           transition: 'all 0.1s ease',
-          boxShadow: 'inset 0 4px 20px rgba(255,255,255,0.2)',
+          boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.15)',
         }}
       >
         <div
           style={{
-            background: 'rgba(255, 255, 255, 0.2)',
+            background: 'rgba(0, 0, 0, 0.15)',
             borderRadius: '50%',
             width: '80px',
             height: '80px',
@@ -230,10 +279,10 @@ export default function AlertaVozReserva({
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: '12px',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
           }}
         >
-          <IconoCheck size={48} color="#FFFFFF" />
+          <IconoCheck size={48} color="#000000" />
         </div>
 
         <div style={{ fontSize: '38px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase' }}>
@@ -243,27 +292,35 @@ export default function AlertaVozReserva({
         <div
           style={{
             marginTop: '8px',
-            fontSize: '18px',
+            fontSize: '15px',
             fontWeight: '700',
-            background: 'rgba(0, 0, 0, 0.25)',
-            padding: '6px 18px',
+            background: 'rgba(0, 0, 0, 0.15)',
+            color: '#000000',
+            padding: '6px 14px',
             borderRadius: '24px',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            gap: '6px',
+            maxWidth: '92%',
+            textAlign: 'center',
           }}
         >
           <span>{solicitud.nombrePasajero.split(' ')[0]}</span>
           <span>•</span>
-          <span style={{ color: '#FDE047' }}>A {solicitud.distanciaMetros} METROS</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <IconoReloj size={15} color="#000000" />
+            <span>LLEGAS EN ~{minutosLlegada} MIN ({textoDistancia})</span>
+          </span>
           <span>•</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <IconoAsiento size={18} color="#FFFFFF" />
+            <IconoAsiento size={16} color="#000000" />
             {solicitud.cantidadAsientos} as.
           </span>
         </div>
 
-        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', marginTop: '8px', fontWeight: '600' }}>
+        <div style={{ fontSize: '13px', color: 'rgba(0,0,0,0.7)', marginTop: '8px', fontWeight: '700' }}>
           Toca cualquier parte superior o di en voz alta: "SÍ"
         </div>
       </button>
@@ -271,7 +328,7 @@ export default function AlertaVozReserva({
       {/* ── FRANJA CENTRAL DE CUENTA REGRESIVA ── */}
       <div
         style={{
-          background: '#0B132B',
+          background: '#000000',
           padding: '8px 20px',
           display: 'flex',
           alignItems: 'center',
@@ -285,7 +342,7 @@ export default function AlertaVozReserva({
             style={{
               height: '8px',
               borderRadius: '4px',
-              background: 'rgba(255, 255, 255, 0.1)',
+              background: 'rgba(255, 255, 255, 0.15)',
               overflow: 'hidden',
             }}
           >
@@ -293,7 +350,7 @@ export default function AlertaVozReserva({
               style={{
                 height: '100%',
                 width: `${porcentajeTiempo}%`,
-                background: segundosRestantes <= 5 ? '#EF4444' : '#F59E0B',
+                background: '#FACC15',
                 transition: 'width 1s linear',
               }}
             />
@@ -303,7 +360,7 @@ export default function AlertaVozReserva({
           style={{
             fontSize: '16px',
             fontWeight: '900',
-            color: segundosRestantes <= 5 ? '#EF4444' : '#F59E0B',
+            color: '#FACC15',
             minWidth: '45px',
             textAlign: 'right',
           }}
@@ -319,7 +376,7 @@ export default function AlertaVozReserva({
         style={{
           flex: 0.9,
           width: '100%',
-          background: 'linear-gradient(180deg, #DC2626 0%, #B91C1C 100%)',
+          background: '#121212',
           border: 'none',
           color: '#FFFFFF',
           display: 'flex',
@@ -330,12 +387,12 @@ export default function AlertaVozReserva({
           cursor: 'pointer',
           touchAction: 'manipulation',
           transition: 'all 0.1s ease',
-          boxShadow: 'inset 0 -4px 20px rgba(0,0,0,0.3)',
+          boxShadow: 'inset 0 -4px 20px rgba(0,0,0,0.5)',
         }}
       >
         <div
           style={{
-            background: 'rgba(255, 255, 255, 0.2)',
+            background: 'rgba(255, 255, 255, 0.1)',
             borderRadius: '50%',
             width: '64px',
             height: '64px',
@@ -343,7 +400,7 @@ export default function AlertaVozReserva({
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: '10px',
-            boxShadow: '0 6px 18px rgba(0, 0, 0, 0.3)',
+            boxShadow: '0 6px 18px rgba(0, 0, 0, 0.4)',
           }}
         >
           <IconoCruz size={36} color="#FFFFFF" />
@@ -353,7 +410,7 @@ export default function AlertaVozReserva({
           NO — PASAR AL SIGUIENTE
         </div>
 
-        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', marginTop: '6px', fontWeight: '600' }}>
+        <div style={{ fontSize: '13px', color: '#A3A3A3', marginTop: '6px', fontWeight: '600' }}>
           Toca cualquier parte inferior o di en voz alta: "NO"
         </div>
       </button>

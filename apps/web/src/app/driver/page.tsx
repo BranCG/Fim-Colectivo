@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo, PasajeroEnEspera } from '@/components/map/ColectivoMap';
+import { calcularInfoLlegada } from '@/lib/geo';
 import {
   IconoColectivo,
   IconoAsiento,
@@ -23,12 +24,14 @@ import {
   IconoParada,
   IconoSalir,
   IconoGuardar,
+  IconoReloj,
+  IconoMicrofono,
 } from '@/components/icons/Iconos';
 
 // Cargar mapa dinámico sin SSR para Leaflet
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
 import AlertaVozReserva, { DatosSolicitudDirigida } from '@/components/driver/AlertaVozReserva';
-import { reproducirSonido, hablarTexto, desbloquearAudioYVoz } from '@/lib/voice';
+import { reproducirSonido, hablarTexto, desbloquearAudioYVoz, iniciarEscuchaVoz, detenerVoz } from '@/lib/voice';
 
 interface SolicitudPagoActiva {
   reservaId: string;
@@ -94,14 +97,22 @@ export default function PaginaConductorColectivo() {
   const [mensajeExito, setMensajeExito] = useState<string>('');
   const [mensajeError, setMensajeError] = useState<string>('');
 
-  // Referencia a rastreo GPS
+  // Referencia a rastreo GPS y deduplicación de eventos
   const watchIdRef = useRef<number | null>(null);
+  const ubicacionChoferRef = useRef(ubicacionChofer);
+  const ultimaSolicitudNotificadaRef = useRef<{ id: string; timestamp: number } | null>(null);
+  const escuchaPagoRef = useRef<{ detener: () => void } | null>(null);
+  const escuchaAbordajeRef = useRef<{ detener: () => void } | null>(null);
+
+  useEffect(() => {
+    ubicacionChoferRef.current = ubicacionChofer;
+  }, [ubicacionChofer]);
 
   // 1. Validar autenticación de chofer
   useEffect(() => {
     const sesion = getSession();
     if (!sesion) {
-      router.push('/login');
+      router.push('/login?role=driver');
       return;
     }
     setChoferSesion(sesion.user);
@@ -179,33 +190,48 @@ export default function PaginaConductorColectivo() {
 
     const socket = connectSocket();
 
-    // Unirse a la sala individual del conductor para recibir solicitudes y avisos de pago
-    socket.emit('conductor:unirse', { conductorId: choferSesion.id });
-    socket.emit('driver:online', {
-      driverId: choferSesion.id,
-      lat: ubicacionChofer?.latitud || -33.4489,
-      lng: ubicacionChofer?.longitud || -70.6693,
-    });
+    // Función idempotente para unirse a salas del chofer y línea
+    const suscribirSalas = () => {
+      if (choferSesion?.id) {
+        socket.emit('conductor:unirse', { conductorId: choferSesion.id });
+        if (enServicio) {
+          socket.emit('driver:online', {
+            driverId: choferSesion.id,
+            lat: ubicacionChoferRef.current?.latitud || -33.4489,
+            lng: ubicacionChoferRef.current?.longitud || -70.6693,
+          });
+        } else {
+          socket.emit('driver:offline', {
+            driverId: choferSesion.id,
+          });
+        }
+      }
+      if (lineaActual?.id) {
+        socket.emit('colectivo:unirse-linea', { lineaId: lineaActual.id });
+      }
+    };
 
-    // Unirse al canal de la línea actual para ver otros colectivos
-    if (lineaActual?.id) {
-      socket.emit('colectivo:unirse-linea', { lineaId: lineaActual.id });
-    }
+    suscribirSalas();
+    socket.on('connect', suscribirSalas);
 
-    // Evento al recibir una nueva reserva de asiento (abre modal con voz si no hay otro activo)
+    // Evento al recibir una nueva reserva de asiento (actualiza lista visual y estado de asientos)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const manejarNuevaReserva = (datos: { reserva: any }) => {
-      setReservasPendientes((prev) => [datos.reserva, ...prev]);
-      setMensajeExito(`Nueva reserva de asiento: Pasajero ${datos.reserva.pasajero?.name || 'en ruta'}`);
-
-      setSolicitudActiva({
-        reservaId: datos.reserva.id,
-        nombrePasajero: datos.reserva.pasajero?.name || 'Pasajero',
-        cantidadAsientos: datos.reserva.cantidadAsientos || 1,
-        distanciaMetros: 250,
-        tiempoLimiteSegundos: 20,
-        direccionSubida: datos.reserva.direccionSubida,
+    const manejarNuevaReserva = (datos: { reserva: any; asientosOcupados?: number; conductorId?: string }) => {
+      if (datos.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
+        return;
+      }
+      setReservasPendientes((prev) => {
+        const existe = prev.some((r) => r.id === datos.reserva?.id);
+        if (existe) return prev;
+        return [datos.reserva, ...prev];
       });
+      if (datos.asientosOcupados !== undefined) {
+        setAsientosOcupados(datos.asientosOcupados);
+        setChoferSesion((prev: any) =>
+          prev ? { ...prev, asientosOcupados: datos.asientosOcupados } : null
+        );
+      }
+      setMensajeExito(`Nueva reserva: Pasajero ${datos.reserva?.pasajero?.name || 'en ruta'}`);
     };
 
     // Evento si el pasajero cancela
@@ -216,8 +242,20 @@ export default function PaginaConductorColectivo() {
       setMensajeExito('Una reserva fue cancelada por el pasajero.');
     };
 
-    // Evento de solicitud dirigida al móvil en tránsito (Dispara lectura TTS y modal gigante)
-    const manejarSolicitudAsignada = (datos: DatosSolicitudDirigida) => {
+    // Evento de solicitud dirigida al móvil en tránsito (Dispara lectura TTS y modal gigante con deduplicación)
+    const manejarSolicitudAsignada = (datos: DatosSolicitudDirigida & { conductorId?: string }) => {
+      if (datos.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
+        return;
+      }
+      if (
+        ultimaSolicitudNotificadaRef.current &&
+        ultimaSolicitudNotificadaRef.current.id === datos.reservaId &&
+        Date.now() - ultimaSolicitudNotificadaRef.current.timestamp < 15000
+      ) {
+        console.log('[Driver] Ignorando evento duplicado de solicitud:', datos.reservaId);
+        return;
+      }
+      ultimaSolicitudNotificadaRef.current = { id: datos.reservaId, timestamp: Date.now() };
       setSolicitudActiva(datos);
     };
 
@@ -231,12 +269,39 @@ export default function PaginaConductorColectivo() {
       setSolicitudActiva((prev) => (prev?.reservaId === datos.reservaId ? null : prev));
     };
 
+    // Evento: Cambio en asientos ocupados de la línea o propio móvil
+    const manejarCambioAsientos = (datos: { conductorId: string; asientosOcupados: number; asientosTotales: number }) => {
+      if (datos.conductorId === choferSesion.id) {
+        setAsientosOcupados(datos.asientosOcupados);
+        setChoferSesion((prev: any) =>
+          prev ? { ...prev, asientosOcupados: datos.asientosOcupados } : null
+        );
+      }
+    };
+
     // Evento: Pasajero solicita pagar y descender
-    const manejarPasajeroQuierePagar = (datos: SolicitudPagoActiva) => {
+    const manejarPasajeroQuierePagar = (datos: SolicitudPagoActiva & { conductorId?: string }) => {
+      if (datos.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
+        return;
+      }
       setPagoPendiente(datos);
       reproducirSonido('alerta');
-      const primerNombre = datos.pasajeroNombre.split(' ')[0];
-      const mensajeVoz = `Pasajero ${primerNombre}, quiere pagar, acepta el pago aquí`;
+      const primerNombre = (datos.pasajeroNombre || 'Pasajero').split(' ')[0];
+      const mensajeVoz = `${primerNombre} desciende. ¿Confirmas pago?`;
+
+      // Activar escucha de inmediato para capturar "SÍ" sin demora
+      if (escuchaPagoRef.current) {
+        try {
+          escuchaPagoRef.current.detener();
+        } catch {}
+      }
+      escuchaPagoRef.current = iniciarEscuchaVoz({
+        id: 'escucha-pago-conductor',
+        onSi: () => {
+          confirmarPagoPasajero(datos.reservaId);
+        },
+      });
+
       hablarTexto(mensajeVoz);
     };
 
@@ -248,6 +313,29 @@ export default function PaginaConductorColectivo() {
       setChoferSesion((prev: any) =>
         prev ? { ...prev, asientosOcupados: datos.asientosOcupados } : null
       );
+    };
+
+    // Evento: Reserva confirmada al chofer
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const manejarReservaConfirmadaChofer = (datos: { reserva: any; asientosOcupados?: number }) => {
+      setSolicitudActiva((prev) => (prev?.reservaId === datos.reserva?.id ? null : prev));
+      if (datos.asientosOcupados !== undefined) {
+        setAsientosOcupados(datos.asientosOcupados);
+        setChoferSesion((prev: any) =>
+          prev ? { ...prev, asientosOcupados: datos.asientosOcupados } : null
+        );
+      }
+      if (datos.reserva) {
+        setReservasPendientes((prev) => {
+          const index = prev.findIndex((r) => r.id === datos.reserva.id);
+          if (index >= 0) {
+            const copia = [...prev];
+            copia[index] = { ...copia[index], ...datos.reserva, estado: 'reservado' };
+            return copia;
+          }
+          return [datos.reserva, ...prev];
+        });
+      }
     };
 
     // Evento de ubicación de otros colectivos de la misma línea
@@ -276,14 +364,22 @@ export default function PaginaConductorColectivo() {
       }
     };
 
+    // Evento si otro colectivo de la línea se desconecta o pasa a fuera de servicio
+    const manejarConductorOffline = (datos: { conductorId: string }) => {
+      setConductoresEnVivo((prev) => prev.filter((c) => c.conductorId !== datos.conductorId));
+    };
+
     socket.on('colectivo:nueva-reserva', manejarNuevaReserva);
     socket.on('colectivo:reserva-cancelada', manejarReservaCancelada);
     socket.on('colectivo:actualizacion-ubicacion', manejarUbicacionFlota);
+    socket.on('colectivo:conductor-offline', manejarConductorOffline);
     socket.on('colectivo:solicitud-asignada', manejarSolicitudAsignada);
     socket.on('colectivo:solicitud-expirada', manejarSolicitudExpirada);
     socket.on('colectivo:solicitud-cancelada', manejarSolicitudCancelada);
+    socket.on('colectivo:cambio-asientos', manejarCambioAsientos);
     socket.on('colectivo:pasajero-quiere-pagar', manejarPasajeroQuierePagar);
     socket.on('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
+    socket.on('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
 
     // Si está en servicio, transmitir ubicación GPS continua
     if (enServicio && typeof window !== 'undefined' && 'geolocation' in navigator) {
@@ -313,11 +409,15 @@ export default function PaginaConductorColectivo() {
       socket.off('colectivo:reserva-cancelada', manejarReservaCancelada);
       socket.off('colectivo:actualizacion-ubicacion', manejarUbicacionFlota);
       socket.off('colectivo:location-update', manejarUbicacionFlota);
+      socket.off('colectivo:conductor-offline', manejarConductorOffline);
       socket.off('colectivo:solicitud-asignada', manejarSolicitudAsignada);
       socket.off('colectivo:solicitud-expirada', manejarSolicitudExpirada);
       socket.off('colectivo:solicitud-cancelada', manejarSolicitudCancelada);
+      socket.off('colectivo:cambio-asientos', manejarCambioAsientos);
       socket.off('colectivo:pasajero-quiere-pagar', manejarPasajeroQuierePagar);
       socket.off('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
+      socket.off('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
+      socket.off('connect', suscribirSalas);
       if (lineaActual?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaActual.id });
       }
@@ -326,32 +426,58 @@ export default function PaginaConductorColectivo() {
         watchIdRef.current = null;
       }
     };
-  }, [enServicio, choferSesion, lineaActual, ubicacionChofer]);
+  }, [enServicio, choferSesion?.id, lineaActual?.id]);
+
+  // Sincronización de respaldo periódica (cada 7s) en servicio
+  useEffect(() => {
+    if (!enServicio) return;
+    const intervalo = setInterval(() => {
+      cargarDatosChofer();
+    }, 7000);
+    return () => clearInterval(intervalo);
+  }, [enServicio, cargarDatosChofer]);
 
   // Alternar estado En Servicio / Fuera de Servicio
   const alternarServicio = async () => {
     const nuevoEstado = !enServicio;
     setEnServicio(nuevoEstado);
 
-    // Desbloquear audio al iniciar turno
-    if (nuevoEstado) {
-      desbloquearAudioYVoz('Servicio iniciado. Audio y voz conectados.', () => {
-        setAudioDesbloqueado(true);
-      });
+    try {
+      // Persistir inmediatamente en base de datos para que el polling de 7s y el backend no se desincronicen
+      await api.post('/colectivos/conductor/servicio', { enServicio: nuevoEstado });
+    } catch (error) {
+      console.error('Error al actualizar estado de servicio en backend:', error);
     }
 
     const socket = connectSocket();
-    if (nuevoEstado && typeof window !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        setUbicacionChofer({ latitud: lat, longitud: lng });
-        socket.emit('driver:online', {
-          driverId: choferSesion.id,
-          lat,
-          lng,
-        });
+
+    if (nuevoEstado) {
+      // Desbloquear audio al iniciar turno
+      desbloquearAudioYVoz('Servicio iniciado. Audio y voz conectados.', () => {
+        setAudioDesbloqueado(true);
       });
+
+      if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setUbicacionChofer({ latitud: lat, longitud: lng });
+          socket.emit('driver:online', {
+            driverId: choferSesion?.id,
+            lat,
+            lng,
+          });
+        });
+      }
+    } else {
+      // Si pasa a Fuera de Servicio: emitir driver:offline y detener rastreo GPS inmediatamente
+      if (choferSesion?.id) {
+        socket.emit('driver:offline', { driverId: choferSesion.id });
+      }
+      if (watchIdRef.current !== null && typeof window !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
     }
 
     setMensajeExito(nuevoEstado ? 'Turno iniciado: En servicio transmitiendo GPS' : 'Turno finalizado: Fuera de servicio');
@@ -406,9 +532,60 @@ export default function PaginaConductorColectivo() {
     }
   };
 
+  // Responder a la solicitud dirigida de asiento (Aceptar / Rechazar)
+  const responderSolicitudDirigida = async (reservaId: string, accion: 'aceptar' | 'rechazar') => {
+    try {
+      setSolicitudActiva(null);
+      const res = await api.post(`/colectivos/reservas/${reservaId}/responder`, { accion });
+      if (accion === 'aceptar') {
+        setMensajeExito('Reserva aceptada. Pasajero confirmado en tu ruta.');
+        reproducirSonido('exito');
+
+        // Actualizar conteo de asientos inmediatamente en pantalla
+        if (res.data?.asientosOcupados !== undefined) {
+          setAsientosOcupados(res.data.asientosOcupados);
+          setChoferSesion((prev: any) =>
+            prev ? { ...prev, asientosOcupados: res.data.asientosOcupados } : null
+          );
+        } else {
+          setAsientosOcupados((prev) => Math.min(4, prev + 1));
+          setChoferSesion((prev: any) =>
+            prev ? { ...prev, asientosOcupados: Math.min(4, (prev.asientosOcupados || 0) + 1) } : null
+          );
+        }
+
+        // Actualizar la reserva en el listado local a estado 'reservado' y limpiar duplicados
+        const reservaConfirmada = res.data?.reserva;
+        if (reservaConfirmada) {
+          setReservasPendientes((prev) => {
+            const filtradas = prev.filter(
+              (r) => r.id === reservaId || r.pasajero?.id !== reservaConfirmada.pasajero?.id
+            );
+            const index = filtradas.findIndex((r) => r.id === reservaId);
+            if (index >= 0) {
+              const copia = [...filtradas];
+              copia[index] = { ...copia[index], ...reservaConfirmada, estado: 'reservado' };
+              return copia;
+            }
+            return [reservaConfirmada, ...filtradas];
+          });
+        }
+      } else {
+        setMensajeExito('Solicitud rechazada. Reasignada al siguiente colectivo.');
+        reproducirSonido('rechazo');
+        setReservasPendientes((prev) => prev.filter((r) => r.id !== reservaId));
+      }
+    } catch (error) {
+      console.error('Error al responder solicitud dirigida:', error);
+      setSolicitudActiva(null);
+      setMensajeError('No se pudo procesar la respuesta a la reserva.');
+    }
+  };
+
   // Marcar pasajero como abordado
   const confirmarAbordaje = async (reservaId: string) => {
     try {
+      setCargandoAccion(reservaId);
       const res = await api.post(`/colectivos/reservas/${reservaId}/abordar`);
       setReservasPendientes((prev) =>
         prev.map((r) => (r.id === reservaId ? { ...r, estado: 'abordado' } : r))
@@ -416,17 +593,57 @@ export default function PaginaConductorColectivo() {
       if (res.data?.chofer?.asientosOcupados !== undefined) {
         setAsientosOcupados(res.data.chofer.asientosOcupados);
       }
-      setMensajeExito('Pasajero abordó el colectivo exitosamente');
+      setMensajeExito('Pasajero a bordo. Asiento registrado en rojo.');
       reproducirSonido('exito');
+      hablarTexto('Pasajero a bordo');
     } catch (error) {
       console.error('Error al confirmar abordaje:', error);
       setMensajeError('No se pudo registrar el abordaje.');
+    } finally {
+      setCargandoAccion(null);
     }
   };
+
+  // Escuchar comando de voz "A bordo" cuando hay pasajeros con reserva aceptada esperando subir
+  useEffect(() => {
+    const hayReservados = reservasPendientes.some((r) => r.estado === 'reservado');
+    if (hayReservados && !solicitudActiva && !pagoPendiente) {
+      const primerReservado = reservasPendientes.find((r) => r.estado === 'reservado');
+      if (primerReservado) {
+        escuchaAbordajeRef.current = iniciarEscuchaVoz({
+          onAbordo: () => {
+            confirmarAbordaje(primerReservado.id);
+          },
+        });
+      }
+    } else {
+      if (escuchaAbordajeRef.current) {
+        try {
+          escuchaAbordajeRef.current.detener();
+        } catch {}
+        escuchaAbordajeRef.current = null;
+      }
+    }
+
+    return () => {
+      if (escuchaAbordajeRef.current) {
+        try {
+          escuchaAbordajeRef.current.detener();
+        } catch {}
+        escuchaAbordajeRef.current = null;
+      }
+    };
+  }, [reservasPendientes, solicitudActiva, pagoPendiente]);
 
   // Confirmar pago del pasajero y liberar asiento
   const confirmarPagoPasajero = async (reservaId: string) => {
     try {
+      if (escuchaPagoRef.current) {
+        try {
+          escuchaPagoRef.current.detener();
+        } catch {}
+        escuchaPagoRef.current = null;
+      }
       setCargandoAccion(reservaId);
       const res = await api.post(`/colectivos/reservas/${reservaId}/confirmar-pago`);
       setPagoPendiente((prev) => (prev?.reservaId === reservaId ? null : prev));
@@ -463,21 +680,7 @@ export default function PaginaConductorColectivo() {
     }
   };
 
-  // Responder a solicitud dirigida (SÍ o NO vía voz o botón gigante)
-  const responderSolicitudDirigida = async (reservaId: string, accion: 'aceptar' | 'rechazar') => {
-    setSolicitudActiva(null);
-    try {
-      const res = await api.post(`/colectivos/reservas/${reservaId}/responder`, { accion });
-      if (accion === 'aceptar' && res.data?.reserva) {
-        setReservasPendientes((prev) => [res.data.reserva, ...prev]);
-        setMensajeExito(`Reserva aceptada: ${res.data.reserva.pasajero.name}`);
-      } else if (accion === 'rechazar') {
-        setMensajeExito('Solicitud pasada al siguiente móvil en ruta.');
-      }
-    } catch (error) {
-      console.error('Error al responder solicitud dirigida:', error);
-    }
-  };
+
 
   // Guardar datos de cobro (RutPay y MercadoPago)
   const guardarDatosCobro = async (e: React.FormEvent) => {
@@ -500,10 +703,10 @@ export default function PaginaConductorColectivo() {
   // Cerrar sesión
   const cerrarSesionChofer = () => {
     clearSession();
-    router.push('/login');
+    router.push('/login?role=driver');
   };
 
-  // Pasajeros en espera formateados para marcadores en el mapa
+  // Pasajeros en espera formateados para marcadores en el mapa con cálculo de ETA cuantitativo
   const pasajerosEnEspera: PasajeroEnEspera[] = useMemo(() => {
     return reservasPendientes
       .filter((r) => r.estado === 'reservado')
@@ -520,6 +723,23 @@ export default function PaginaConductorColectivo() {
           }
         }
         if (!lat || !lng) return null;
+
+        let minutosLlegada: number | undefined;
+        let distanciaTexto: string | undefined;
+
+        if (ubicacionChofer?.latitud && ubicacionChofer?.longitud) {
+          const info = calcularInfoLlegada(
+            ubicacionChofer.latitud,
+            ubicacionChofer.longitud,
+            lat,
+            lng
+          );
+          if (info) {
+            minutosLlegada = info.minutos;
+            distanciaTexto = info.textoDistancia;
+          }
+        }
+
         return {
           id: r.id,
           nombre: r.pasajero.name,
@@ -528,49 +748,119 @@ export default function PaginaConductorColectivo() {
           asientos: r.cantidadAsientos,
           paradaNombre: r.direccionSubida,
           metodoPago: r.metodoPago,
+          minutosLlegada,
+          distanciaTexto,
         };
       })
       .filter(Boolean) as PasajeroEnEspera[];
-  }, [reservasPendientes, lineaActual]);
+  }, [reservasPendientes, lineaActual, ubicacionChofer]);
 
-  const asientosLibres = Math.max(0, 4 - asientosOcupados);
+  // ─── Desglose de Asientos por Estado (Libre: Verde, Reservado: Naranjo, A Bordo: Rojo) ───
+  const conteoAsientos = useMemo(() => {
+    // 1. Asientos de pasajeros ya a bordo o pagando
+    const abordados = reservasPendientes
+      .filter((r) => r.estado === 'abordado' || r.estado === 'pagando')
+      .reduce((sum, r) => sum + (r.cantidadAsientos || 1), 0);
+
+    // 2. Asientos con reserva aceptada esperando subir al colectivo
+    const reservados = reservasPendientes
+      .filter((r) => r.estado === 'reservado')
+      .reduce((sum, r) => sum + (r.cantidadAsientos || 1), 0);
+
+    // 3. Asientos ocupados manualmente fuera de reservas de app
+    const manuales = Math.max(0, asientosOcupados - (abordados + reservados));
+    const totalAbordados = Math.min(4, abordados + manuales);
+    const totalReservados = Math.min(Math.max(0, 4 - totalAbordados), reservados);
+    const totalLibres = Math.max(0, 4 - (totalAbordados + totalReservados));
+
+    return {
+      totalAbordados,
+      totalReservados,
+      totalLibres,
+    };
+  }, [reservasPendientes, asientosOcupados]);
+
+  const asientosLibres = conteoAsientos.totalLibres;
+
+  const obtenerEstadoAsiento = (numeroAsiento: number) => {
+    if (numeroAsiento <= conteoAsientos.totalAbordados) {
+      return {
+        estado: 'abordado' as const,
+        color: '#000000',
+        bgColor: '#FACC15',
+        borderColor: '#FACC15',
+        boxShadow: '0 2px 10px rgba(250, 204, 21, 0.4)',
+        texto: 'A Bordo',
+        subtexto: 'Ocupado',
+        textColor: '#000000',
+        icono: <IconoPasajero size={22} color="#000000" />,
+      };
+    }
+    if (numeroAsiento <= conteoAsientos.totalAbordados + conteoAsientos.totalReservados) {
+      return {
+        estado: 'reservado' as const,
+        color: '#FACC15',
+        bgColor: 'rgba(250, 204, 21, 0.15)',
+        borderColor: '#FACC15',
+        boxShadow: '0 2px 10px rgba(250, 204, 21, 0.25)',
+        texto: 'Reservado',
+        subtexto: 'Por subir',
+        textColor: '#FACC15',
+        icono: <IconoAsiento size={22} color="#FACC15" />,
+      };
+    }
+    return {
+      estado: 'libre' as const,
+      color: '#A3A3A3',
+      bgColor: '#171717',
+      borderColor: 'rgba(255, 255, 255, 0.15)',
+      boxShadow: 'none',
+      texto: 'Disponible',
+      subtexto: 'Libre',
+      textColor: '#D4D4D4',
+      icono: <IconoAsiento size={22} color="#D4D4D4" />,
+    };
+  };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#090D1A', color: '#F1F5F9', padding: '16px', maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', background: '#0A0A0A', color: '#FFFFFF', padding: '12px 10px', maxWidth: '800px', margin: '0 auto', width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
       {/* ── Encabezado Principal ── */}
       <header style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingBottom: '14px',
+        paddingBottom: '12px',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        marginBottom: '16px',
+        marginBottom: '14px',
+        flexWrap: 'wrap',
+        gap: '10px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '180px' }}>
           <div style={{
-            width: '42px',
-            height: '42px',
+            width: '40px',
+            height: '40px',
             borderRadius: '12px',
-            background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+            background: '#FACC15',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
+            boxShadow: '0 4px 12px rgba(250, 204, 21, 0.3)',
+            flexShrink: 0,
           }}>
-            <IconoColectivo size={22} color="#0B1329" />
+            <IconoColectivo size={22} color="#000000" />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800', letterSpacing: '-0.3px' }}>
-              Fim <span style={{ color: '#F59E0B' }}>Colectivo Chofer</span>
+            <h1 style={{ margin: 0, fontSize: '17px', fontWeight: '800', letterSpacing: '-0.3px' }}>
+              Fim <span style={{ color: '#FACC15' }}>Colectivo Chofer</span>
             </h1>
-            <p style={{ margin: 0, fontSize: '12px', color: '#94A3B8' }}>
+            <p style={{ margin: 0, fontSize: '11px', color: '#A3A3A3' }}>
               {choferSesion ? choferSesion.name : 'Conductor'} • {lineaActual ? lineaActual.nombre : 'Línea no asignada'}
             </p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={() => {
               desbloquearAudioYVoz('Audio y voz activados para el servicio de colectivos', () => {
@@ -579,21 +869,21 @@ export default function PaginaConductorColectivo() {
               });
             }}
             style={{
-              background: audioDesbloqueado ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.2)',
-              color: audioDesbloqueado ? '#34D399' : '#FBBF24',
-              border: audioDesbloqueado ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.5)',
+              background: audioDesbloqueado ? 'rgba(250, 204, 21, 0.15)' : '#171717',
+              color: audioDesbloqueado ? '#FACC15' : '#D4D4D4',
+              border: audioDesbloqueado ? '1px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.2)',
               borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '12px',
+              padding: '6px 10px',
+              fontSize: '11.5px',
               fontWeight: '700',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
             }}
             title="Toca para probar y asegurar que tu dispositivo reproduce la voz del pasajero"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
               <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
             </svg>
@@ -602,31 +892,31 @@ export default function PaginaConductorColectivo() {
           <button
             onClick={() => setMostrarConfigCobro(!mostrarConfigCobro)}
             style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              color: '#F8FAFC',
+              background: '#171717',
+              color: '#FFFFFF',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '12px',
+              padding: '6px 10px',
+              fontSize: '11.5px',
               fontWeight: '600',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
             }}
           >
-            <IconoTarjeta size={14} />
+            <IconoTarjeta size={13} color="#FACC15" />
             <span>Pagos</span>
           </button>
           <button
             onClick={cerrarSesionChofer}
             style={{
-              background: 'rgba(239, 68, 68, 0.15)',
-              color: '#F87171',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
+              background: '#171717',
+              color: '#D4D4D4',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
               borderRadius: '8px',
-              padding: '7px 12px',
-              fontSize: '12px',
+              padding: '6px 10px',
+              fontSize: '11.5px',
               fontWeight: '600',
               cursor: 'pointer',
             }}
@@ -638,21 +928,21 @@ export default function PaginaConductorColectivo() {
 
       {/* ── Alertas ── */}
       {mensajeExito && (
-        <div style={{ background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10B981', padding: '10px 14px', borderRadius: '10px', color: '#6EE7B7', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: 'rgba(250, 204, 21, 0.15)', border: '1px solid #FACC15', padding: '10px 14px', borderRadius: '10px', color: '#FACC15', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconoCheck size={16} color="#10B981" />
+            <IconoCheck size={16} color="#FACC15" />
             <span>{mensajeExito}</span>
           </div>
-          <button onClick={() => setMensajeExito('')} style={{ background: 'transparent', border: 'none', color: '#6EE7B7', cursor: 'pointer' }}><IconoCruz size={14} color="#6EE7B7" /></button>
+          <button onClick={() => setMensajeExito('')} style={{ background: 'transparent', border: 'none', color: '#FACC15', cursor: 'pointer' }}><IconoCruz size={14} color="#FACC15" /></button>
         </div>
       )}
       {mensajeError && (
-        <div style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #EF4444', padding: '10px 14px', borderRadius: '10px', color: '#FCA5A5', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: '#171717', border: '1px solid rgba(255, 255, 255, 0.3)', padding: '10px 14px', borderRadius: '10px', color: '#FFFFFF', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconoCruz size={16} color="#EF4444" />
+            <IconoCruz size={16} color="#FFFFFF" />
             <span>{mensajeError}</span>
           </div>
-          <button onClick={() => setMensajeError('')} style={{ background: 'transparent', border: 'none', color: '#FCA5A5', cursor: 'pointer' }}><IconoCruz size={14} color="#FCA5A5" /></button>
+          <button onClick={() => setMensajeError('')} style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer' }}><IconoCruz size={14} color="#FFFFFF" /></button>
         </div>
       )}
 
@@ -664,7 +954,7 @@ export default function PaginaConductorColectivo() {
         border: '1px solid rgba(255, 255, 255, 0.12)',
         marginBottom: '18px',
         boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
-        background: '#131D33',
+        background: '#121212',
       }}>
         {/* Badges superiores sobre el mapa */}
         <div style={{
@@ -678,31 +968,31 @@ export default function PaginaConductorColectivo() {
           flexWrap: 'wrap',
         }}>
           <div style={{
-            background: 'rgba(15, 23, 42, 0.88)',
+            background: 'rgba(0, 0, 0, 0.85)',
             backdropFilter: 'blur(8px)',
             border: '1px solid rgba(255, 255, 255, 0.15)',
             borderRadius: '20px',
             padding: '5px 12px',
             fontSize: '12px',
             fontWeight: '700',
-            color: '#F8FAFC',
+            color: '#FFFFFF',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
           }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: lineaActual?.color || '#2563EB' }} />
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#FACC15' }} />
             {lineaActual ? `${lineaActual.nombre} • ${sentidoRuta.toUpperCase()}` : 'Línea'}
           </div>
 
           <div style={{
-            background: enServicio ? 'rgba(16, 185, 129, 0.95)' : 'rgba(100, 116, 139, 0.85)',
+            background: enServicio ? '#FACC15' : '#262626',
             backdropFilter: 'blur(8px)',
             borderRadius: '20px',
             padding: '5px 10px',
             fontSize: '11px',
-            fontWeight: '700',
-            color: '#FFFFFF',
-            boxShadow: enServicio ? '0 0 10px rgba(16, 185, 129, 0.6)' : 'none',
+            fontWeight: '800',
+            color: enServicio ? '#000000' : '#A3A3A3',
+            boxShadow: enServicio ? '0 0 10px rgba(250, 204, 21, 0.5)' : 'none',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -712,19 +1002,19 @@ export default function PaginaConductorColectivo() {
           </div>
 
           <div style={{
-            background: 'rgba(15, 23, 42, 0.88)',
+            background: 'rgba(0, 0, 0, 0.85)',
             backdropFilter: 'blur(8px)',
             borderRadius: '20px',
             padding: '5px 10px',
             fontSize: '11px',
             fontWeight: '700',
-            color: asientosLibres === 0 ? '#F87171' : '#34D399',
+            color: asientosLibres === 0 ? '#A3A3A3' : '#FACC15',
             border: '1px solid rgba(255, 255, 255, 0.1)',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
           }}>
-            <IconoAsiento size={13} color={asientosLibres === 0 ? '#F87171' : '#34D399'} />
+            <IconoAsiento size={13} color={asientosLibres === 0 ? '#A3A3A3' : '#FACC15'} />
             <span>{asientosLibres === 0 ? 'Lleno' : `${asientosLibres} libre${asientosLibres > 1 ? 's' : ''}`}</span>
           </div>
         </div>
@@ -737,15 +1027,15 @@ export default function PaginaConductorColectivo() {
             bottom: '16px',
             right: '16px',
             zIndex: 10,
-            background: '#2563EB',
-            color: '#FFFFFF',
+            background: '#FACC15',
+            color: '#000000',
             border: 'none',
             borderRadius: '50px',
             padding: '10px 16px',
             fontSize: '13px',
-            fontWeight: '700',
+            fontWeight: '800',
             cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(37, 99, 235, 0.5)',
+            boxShadow: '0 4px 14px rgba(250, 204, 21, 0.4)',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -754,7 +1044,7 @@ export default function PaginaConductorColectivo() {
           onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.94)')}
           onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
         >
-          <IconoGps size={16} color="#FFFFFF" />
+          <IconoGps size={16} color="#000000" />
           <span>Centrar mi auto</span>
         </button>
 
@@ -766,6 +1056,7 @@ export default function PaginaConductorColectivo() {
             conductoresEnVivo={conductoresEnVivo}
             esModoConductor={true}
             miConductorId={choferSesion?.id}
+            miPatente={choferSesion?.vehiculo?.patente || choferSesion?.patente || 'MI AUTO'}
             pasajerosEnEspera={pasajerosEnEspera}
             disparadorCentrado={disparadorCentrado}
             altura="380px"
@@ -773,7 +1064,378 @@ export default function PaginaConductorColectivo() {
         </div>
       </section>
 
-      {/* ── SECCIÓN 2: BOTÓN DE TURNO (EN SERVICIO) ── */}
+      {/* ── SECCIÓN 2: PASAJEROS EN RUTA Y ACCIÓN RÁPIDA DE ABORDO / COBRO (INMEDIATAMENTE DEBAJO DEL MAPA) ── */}
+      <section style={{
+        background: '#121212',
+        borderRadius: '16px',
+        padding: '18px',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
+        marginBottom: '18px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IconoPasajero size={20} color="#FACC15" />
+            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#FFFFFF' }}>
+              Pasajeros en Ruta (Acción Rápida de Abordaje)
+            </h2>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {reservasPendientes.some((r) => r.estado === 'reservado') && (
+              <span style={{
+                fontSize: '11px',
+                fontWeight: '700',
+                color: '#FACC15',
+                background: 'rgba(250, 204, 21, 0.15)',
+                border: '1px solid rgba(250, 204, 21, 0.35)',
+                padding: '3px 8px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}>
+                <IconoMicrofono size={13} color="#FACC15" />
+                <span>Di &quot;A bordo&quot; o pulsa el botón</span>
+              </span>
+            )}
+            <span style={{
+              fontSize: '11px',
+              fontWeight: '800',
+              padding: '3px 8px',
+              borderRadius: '10px',
+              background: reservasPendientes.length > 0 ? '#FACC15' : '#262626',
+              color: reservasPendientes.length > 0 ? '#000000' : '#A3A3A3',
+            }}>
+              {reservasPendientes.length} en ruta
+            </span>
+          </div>
+        </div>
+
+        {reservasPendientes.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '20px 12px', color: '#A3A3A3', background: '#171717', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ marginBottom: '6px' }}>
+              <IconoParada size={28} color="#737373" />
+            </div>
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#D4D4D4' }}>
+              Sin pasajeros esperando en tu recorrido en este momento.
+            </p>
+            <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: '#737373' }}>
+              Al estar En Servicio, las solicitudes de pasajeros aparecerán aquí con botón gigante de Abordo.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {reservasPendientes.map((reserva) => {
+              // Calcular tiempo estimado de llegada para el conductor a buscar al pasajero
+              const infoLlegada = (() => {
+                if (reserva.estado !== 'reservado') return null;
+                let lat = reserva.latitudSubida;
+                let lng = reserva.longitudSubida;
+                if ((!lat || !lng) && lineaActual?.paradas) {
+                  const parada = lineaActual.paradas.find(
+                    (p) => p.nombre.toLowerCase() === reserva.direccionSubida?.toLowerCase()
+                  );
+                  if (parada) {
+                    lat = parada.latitud;
+                    lng = parada.longitud;
+                  }
+                }
+                if (!lat || !lng || !ubicacionChofer?.latitud || !ubicacionChofer?.longitud) return null;
+                return calcularInfoLlegada(ubicacionChofer.latitud, ubicacionChofer.longitud, lat, lng);
+              })();
+
+              return (
+                <div
+                  key={reserva.id}
+                style={{
+                  background: '#171717',
+                  padding: '14px',
+                  borderRadius: '12px',
+                  border: reserva.estado === 'reservado'
+                    ? '2px solid #FACC15'
+                    : reserva.estado === 'abordado'
+                    ? '1px solid rgba(255, 255, 255, 0.25)'
+                    : '1px solid #FACC15',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  boxShadow: reserva.estado === 'reservado' ? '0 4px 14px rgba(250, 204, 21, 0.25)' : '0 4px 12px rgba(0, 0, 0, 0.3)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#FFFFFF' }}>
+                      {reserva.pasajero.name}
+                    </h4>
+                    <span style={{
+                      fontSize: '12px',
+                      color: reserva.estado === 'reservado' ? '#FACC15' : reserva.estado === 'abordado' ? '#FFFFFF' : '#FACC15',
+                      fontWeight: '700',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      marginTop: '2px',
+                    }}>
+                      <IconoAsiento size={14} color={reserva.estado === 'reservado' ? '#FACC15' : reserva.estado === 'abordado' ? '#FFFFFF' : '#FACC15'} />
+                      <span>
+                        {reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} {reserva.estado === 'reservado' ? 'reservado (esperando subir)' : reserva.estado === 'abordado' ? 'a bordo (asiento ocupado)' : 'en proceso de pago'}
+                      </span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: '800',
+                      padding: '4px 8px',
+                      borderRadius: '8px',
+                      background: reserva.estado === 'reservado'
+                        ? 'rgba(250, 204, 21, 0.15)'
+                        : reserva.estado === 'abordado'
+                        ? '#262626'
+                        : 'rgba(250, 204, 21, 0.15)',
+                      color: reserva.estado === 'reservado'
+                        ? '#FACC15'
+                        : reserva.estado === 'abordado'
+                        ? '#FFFFFF'
+                        : '#FACC15',
+                      border: '1px solid currentColor',
+                    }}>
+                      {reserva.estado === 'reservado'
+                        ? 'RESERVADO (POR SUBIR)'
+                        : reserva.estado === 'abordado'
+                        ? 'A BORDO'
+                        : reserva.estado === 'pagando'
+                        ? 'PAGANDO'
+                        : 'PENDIENTE'}
+                    </span>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: '700',
+                      padding: '4px 8px',
+                      borderRadius: '8px',
+                      background: '#262626',
+                      color: '#FACC15',
+                      border: '1px solid rgba(250, 204, 21, 0.4)',
+                      textTransform: 'uppercase',
+                    }}>
+                      {reserva.metodoPago}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Badge cuantitativo de tiempo estimado de llegada para el conductor */}
+                {infoLlegada && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      background: 'rgba(250, 204, 21, 0.12)',
+                      border: '1.5px solid #FACC15',
+                      borderRadius: '10px',
+                      padding: '8px 12px',
+                      boxShadow: '0 2px 10px rgba(250, 204, 21, 0.2)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '50%',
+                        background: '#FACC15',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        <IconoReloj size={18} color="#000000" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '800', color: '#FACC15' }}>
+                          Llegas a buscarlo en ~{infoLlegada.minutos} min
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#D4D4D4' }}>
+                          Distancia: {infoLlegada.textoDistancia}
+                        </div>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: '800',
+                        color: '#000000',
+                        background: '#FACC15',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.3px',
+                      }}
+                    >
+                      En camino
+                    </span>
+                  </div>
+                )}
+
+                {reserva.direccionSubida && (
+                  <div style={{ fontSize: '12px', color: '#D4D4D4', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.05)', padding: '6px 10px', borderRadius: '8px' }}>
+                    <IconoUbicacion size={14} color="#FACC15" />
+                    <span>Punto de recogida: <b>{reserva.direccionSubida}</b></span>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '2px' }}>
+                  <a
+                    href={`tel:${reserva.pasajero.phone}`}
+                    style={{
+                      fontSize: '12px',
+                      color: '#FACC15',
+                      textDecoration: 'none',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <IconoTelefono size={13} color="#FACC15" />
+                    <span>Llamar ({reserva.pasajero.phone})</span>
+                  </a>
+
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {reserva.estado === 'pagando' ? (
+                      <button
+                        onClick={() => confirmarPagoPasajero(reserva.id)}
+                        disabled={cargandoAccion === reserva.id}
+                        style={{
+                          padding: '10px 16px',
+                          borderRadius: '10px',
+                          background: '#FACC15',
+                          color: '#000000',
+                          border: 'none',
+                          fontWeight: '800',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 10px rgba(250, 204, 21, 0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <IconoTarjeta size={15} color="#000000" />
+                        <span>{cargandoAccion === reserva.id ? 'Confirmando...' : 'Aceptar Pago'}</span>
+                      </button>
+                    ) : reserva.estado === 'abordado' ? (
+                      <button
+                        onClick={() => confirmarPagoPasajero(reserva.id)}
+                        disabled={cargandoAccion === reserva.id}
+                        style={{
+                          padding: '10px 16px',
+                          borderRadius: '10px',
+                          background: '#FACC15',
+                          color: '#000000',
+                          border: 'none',
+                          fontWeight: '800',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 10px rgba(250, 204, 21, 0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <IconoCheck size={15} color="#000000" />
+                        <span>{cargandoAccion === reserva.id ? 'Liberando...' : 'Cobrar y Liberar'}</span>
+                      </button>
+                    ) : reserva.estado === 'pendiente_chofer' ? (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          onClick={() => responderSolicitudDirigida(reserva.id, 'aceptar')}
+                          style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            background: '#FACC15',
+                            color: '#000000',
+                            border: 'none',
+                            fontWeight: '800',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <IconoCheck size={13} color="#000000" />
+                          <span>Aceptar</span>
+                        </button>
+                        <button
+                          onClick={() => responderSolicitudDirigida(reserva.id, 'rechazar')}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            background: '#262626',
+                            color: '#A3A3A3',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            fontWeight: '700',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Paso
+                        </button>
+                      </div>
+                    ) : (
+                      /* BOTÓN DESTACADO "SUBIR A BORDO" */
+                      <button
+                        onClick={() => confirmarAbordaje(reserva.id)}
+                        disabled={cargandoAccion === reserva.id}
+                        style={{
+                          padding: '11px 18px',
+                          borderRadius: '10px',
+                          background: '#FACC15',
+                          color: '#000000',
+                          border: 'none',
+                          fontWeight: '900',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 14px rgba(250, 204, 21, 0.45)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <IconoCheck size={16} color="#000000" />
+                        <span>{cargandoAccion === reserva.id ? 'Marcando...' : 'SUBIR A BORDO'}</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => cancelarReservaPasajero(reserva.id)}
+                      style={{
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        background: 'transparent',
+                        color: '#A3A3A3',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        fontWeight: '700',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <IconoCruz size={12} color="#A3A3A3" />
+                      <span>Cancelar</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ── SECCIÓN 3: BOTÓN DE TURNO (EN SERVICIO) ── */}
       <div style={{ marginBottom: '18px' }}>
         <button
           onClick={alternarServicio}
@@ -783,14 +1445,14 @@ export default function PaginaConductorColectivo() {
             borderRadius: '14px',
             border: 'none',
             background: enServicio
-              ? 'linear-gradient(135deg, #10B981, #059669)'
-              : 'linear-gradient(135deg, #475569, #334155)',
-            fontWeight: '800',
+              ? '#FACC15'
+              : '#262626',
+            fontWeight: '900',
             fontSize: '14px',
             cursor: 'pointer',
-            color: '#FFFFFF',
+            color: enServicio ? '#000000' : '#FFFFFF',
             boxShadow: enServicio
-              ? '0 6px 22px rgba(16, 185, 129, 0.45)'
+              ? '0 6px 22px rgba(250, 204, 21, 0.45)'
               : '0 4px 12px rgba(0, 0, 0, 0.3)',
             display: 'flex',
             alignItems: 'center',
@@ -805,71 +1467,102 @@ export default function PaginaConductorColectivo() {
         </button>
       </div>
 
-      {/* ── SECCIÓN 3: CONTROL RÁPIDO DE LOS 4 ASIENTOS ── */}
+      {/* ── SECCIÓN 4: CONTROL RÁPIDO DE LOS 4 ASIENTOS (NEGRO / AMARILLO) ── */}
       <section style={{
-        background: '#131D33',
+        background: '#121212',
         borderRadius: '16px',
         padding: '18px',
         border: '1px solid rgba(255, 255, 255, 0.1)',
         marginBottom: '18px',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#F8FAFC' }}>
+            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#FFFFFF' }}>
               Control de Asientos en Tiempo Real
             </h2>
-            <p style={{ margin: 0, fontSize: '11px', color: '#94A3B8' }}>
-              Toca directamente un asiento o usa los botones para actualizar
+            <p style={{ margin: 0, fontSize: '11px', color: '#A3A3A3' }}>
+              Oscuro: Disponible • Borde Amarillo: Reservado • Amarillo Sólido: A Bordo
             </p>
           </div>
-          <span style={{
-            fontSize: '12px',
-            fontWeight: '800',
-            padding: '4px 10px',
-            borderRadius: '12px',
-            background: asientosLibres === 0 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)',
-            border: asientosLibres === 0 ? '1px solid #EF4444' : '1px solid #10B981',
-            color: asientosLibres === 0 ? '#F87171' : '#34D399',
-          }}>
-            {asientosLibres === 0 ? 'LLENO' : `${asientosLibres} LIBRES`}
-          </span>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: '11px',
+              fontWeight: '800',
+              padding: '4px 8px',
+              borderRadius: '8px',
+              background: '#262626',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#D4D4D4',
+            }}>
+              {conteoAsientos.totalLibres} Libres
+            </span>
+            {conteoAsientos.totalReservados > 0 && (
+              <span style={{
+                fontSize: '11px',
+                fontWeight: '800',
+                padding: '4px 8px',
+                borderRadius: '8px',
+                background: 'rgba(250, 204, 21, 0.15)',
+                border: '1px solid #FACC15',
+                color: '#FACC15',
+              }}>
+                {conteoAsientos.totalReservados} Reservados
+              </span>
+            )}
+            {conteoAsientos.totalAbordados > 0 && (
+              <span style={{
+                fontSize: '11px',
+                fontWeight: '800',
+                padding: '4px 8px',
+                borderRadius: '8px',
+                background: '#FACC15',
+                border: '1px solid #FACC15',
+                color: '#000000',
+              }}>
+                {conteoAsientos.totalAbordados} A Bordo
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Visualizador de los 4 Asientos (Táctiles interactivos) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', marginBottom: '14px' }}>
           {[1, 2, 3, 4].map((numeroAsiento) => {
-            const estaOcupado = numeroAsiento <= asientosOcupados;
+            const estadoInfo = obtenerEstadoAsiento(numeroAsiento);
             return (
               <div
                 key={numeroAsiento}
                 onClick={() => alternarAsientoDirecto(numeroAsiento)}
                 style={{
-                  height: '76px',
-                  borderRadius: '12px',
-                  background: estaOcupado ? 'rgba(239, 68, 68, 0.18)' : 'rgba(16, 185, 129, 0.18)',
-                  border: estaOcupado ? '2px solid #EF4444' : '2px solid #10B981',
+                  height: '74px',
+                  borderRadius: '10px',
+                  background: estadoInfo.bgColor,
+                  border: `2px solid ${estadoInfo.borderColor}`,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '4px',
+                  gap: '2px',
                   cursor: 'pointer',
                   userSelect: 'none',
                   transition: 'transform 0.12s, box-shadow 0.12s',
-                  boxShadow: estaOcupado ? '0 2px 8px rgba(239, 68, 68, 0.2)' : '0 2px 8px rgba(16, 185, 129, 0.2)',
+                  boxShadow: estadoInfo.boxShadow,
+                  padding: '4px 2px',
+                  minWidth: 0,
+                  overflow: 'hidden',
                 }}
                 onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.95)')}
                 onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                title={`Toca para ${estaOcupado ? 'liberar' : 'ocupar'} asiento`}
+                title={`Asiento ${numeroAsiento}: ${estadoInfo.texto} (${estadoInfo.subtexto})`}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {estaOcupado ? <IconoPasajero size={22} color="#F87171" /> : <IconoAsiento size={22} color="#34D399" />}
+                  {estadoInfo.icono}
                 </div>
-                <span style={{ fontSize: '11px', fontWeight: '800', color: estaOcupado ? '#F87171' : '#34D399' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: '800', color: estadoInfo.textColor, whiteSpace: 'nowrap' }}>
                   Asiento {numeroAsiento}
                 </span>
-                <span style={{ fontSize: '9px', fontWeight: '600', color: estaOcupado ? '#FCA5A5' : '#6EE7B7' }}>
-                  {estaOcupado ? 'Ocupado' : 'Disponible'}
+                <span style={{ fontSize: '8.5px', fontWeight: '700', color: estadoInfo.textColor, textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {estadoInfo.texto}
                 </span>
               </div>
             );
@@ -885,7 +1578,7 @@ export default function PaginaConductorColectivo() {
               flex: 1,
               padding: '14px',
               borderRadius: '12px',
-              background: '#1E293B',
+              background: '#171717',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               color: '#FFFFFF',
               fontSize: '15px',
@@ -907,14 +1600,14 @@ export default function PaginaConductorColectivo() {
               flex: 1,
               padding: '14px',
               borderRadius: '12px',
-              background: '#2563EB',
+              background: '#FACC15',
               border: 'none',
-              color: '#FFFFFF',
+              color: '#000000',
               fontSize: '15px',
               fontWeight: '800',
               cursor: asientosOcupados >= 4 ? 'not-allowed' : 'pointer',
               opacity: asientosOcupados >= 4 ? 0.35 : 1,
-              boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
+              boxShadow: '0 4px 14px rgba(250, 204, 21, 0.35)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -926,9 +1619,9 @@ export default function PaginaConductorColectivo() {
         </div>
       </section>
 
-      {/* ── SECCIÓN 4: CONTROL DE LÍNEA Y SENTIDO DE RUTA ── */}
+      {/* ── SECCIÓN 5: CONTROL DE LÍNEA Y SENTIDO DE RUTA ── */}
       <section style={{
-        background: '#131D33',
+        background: '#121212',
         borderRadius: '16px',
         padding: '18px',
         border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -939,7 +1632,7 @@ export default function PaginaConductorColectivo() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#94A3B8', marginBottom: '6px', fontWeight: '600' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#A3A3A3', marginBottom: '6px', fontWeight: '600' }}>
               Línea Asignada:
             </label>
             <select
@@ -949,7 +1642,7 @@ export default function PaginaConductorColectivo() {
                 width: '100%',
                 padding: '10px 12px',
                 borderRadius: '10px',
-                background: '#0B1329',
+                background: '#171717',
                 border: '1px solid rgba(255, 255, 255, 0.2)',
                 color: '#FFFFFF',
                 fontSize: '14px',
@@ -965,7 +1658,7 @@ export default function PaginaConductorColectivo() {
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '12px', color: '#94A3B8', marginBottom: '6px', fontWeight: '600' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#A3A3A3', marginBottom: '6px', fontWeight: '600' }}>
               Sentido de Ruta:
             </label>
             <button
@@ -973,9 +1666,9 @@ export default function PaginaConductorColectivo() {
               style={{
                 padding: '10px 16px',
                 borderRadius: '10px',
-                background: '#1E293B',
-                color: '#38BDF8',
-                border: '1px solid rgba(56, 189, 248, 0.4)',
+                background: '#171717',
+                color: '#FACC15',
+                border: '1px solid #FACC15',
                 fontSize: '13px',
                 fontWeight: '800',
                 cursor: 'pointer',
@@ -984,211 +1677,16 @@ export default function PaginaConductorColectivo() {
                 gap: '8px',
               }}
             >
-              <IconoSentido size={16} color="#38BDF8" />
+              <IconoSentido size={16} color="#FACC15" />
               <span>Sentido {sentidoRuta === 'ida' ? 'IDA ->' : 'VUELTA ->'}</span>
             </button>
           </div>
         </div>
 
         {lineaActual && (
-          <div style={{ background: '#0B1329', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', color: '#94A3B8', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Ruta activa: <b style={{ color: '#F1F5F9' }}>{lineaActual.nombre}</b></span>
-            <span>Paradas en ruta: <b style={{ color: '#F1F5F9' }}>{lineaActual.paradas?.length || 0} paradas</b></span>
-          </div>
-        )}
-      </section>
-
-      {/* ── SECCIÓN 5: RESERVAS ACTIVAS SOLICITADAS POR PASAJEROS ── */}
-      <section style={{
-        background: '#131D33',
-        borderRadius: '16px',
-        padding: '18px',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        marginBottom: '18px',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconoPasajero size={18} color="#A78BFA" />
-            <span>Reservas de Pasajeros en Espera</span>
-          </h2>
-          <span style={{
-            fontSize: '11px',
-            fontWeight: '800',
-            padding: '3px 8px',
-            borderRadius: '10px',
-            background: reservasPendientes.length > 0 ? '#7C3AED' : '#334155',
-            color: '#FFFFFF',
-          }}>
-            {reservasPendientes.length} solicitud{reservasPendientes.length !== 1 ? 'es' : ''}
-          </span>
-        </div>
-
-        {reservasPendientes.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '24px 12px', color: '#64748B', background: '#0B1329', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ marginBottom: '8px' }}>
-              <IconoParada size={32} color="#64748B" />
-            </div>
-            <p style={{ margin: 0, fontSize: '13px' }}>
-              No hay solicitudes de reserva pendientes en tu ruta.
-            </p>
-            <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#475569' }}>
-              Los pasajeros verán tu colectivo en tiempo real en el mapa mientras estés En Servicio.
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {reservasPendientes.map((reserva) => (
-              <div
-                key={reserva.id}
-                style={{
-                  background: '#0B1329',
-                  padding: '14px',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(124, 58, 237, 0.3)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#F8FAFC' }}>
-                      {reserva.pasajero.name}
-                    </h4>
-                    <span style={{ fontSize: '12px', color: '#A78BFA', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
-                      <IconoAsiento size={14} color="#A78BFA" />
-                      <span>{reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} solicitado{reserva.cantidadAsientos > 1 ? 's' : ''}</span>
-                    </span>
-                  </div>
-                  <span style={{
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    padding: '3px 8px',
-                    borderRadius: '8px',
-                    background: reserva.metodoPago === 'rutpay' ? 'rgba(245, 158, 11, 0.2)' : reserva.metodoPago === 'mercadopago' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                    color: reserva.metodoPago === 'rutpay' ? '#FBBF24' : reserva.metodoPago === 'mercadopago' ? '#38BDF8' : '#34D399',
-                    border: '1px solid currentColor',
-                    textTransform: 'uppercase',
-                  }}>
-                    {reserva.metodoPago}
-                  </span>
-                </div>
-
-                {reserva.direccionSubida && (
-                  <div style={{ fontSize: '12px', color: '#CBD5E1', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.03)', padding: '6px 10px', borderRadius: '8px' }}>
-                    <IconoUbicacion size={14} color="#38BDF8" />
-                    <span>Subida solicitada: <b>{reserva.direccionSubida}</b></span>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <a
-                    href={`tel:${reserva.pasajero.phone}`}
-                    style={{
-                      fontSize: '12px',
-                      color: '#38BDF8',
-                      textDecoration: 'none',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <IconoTelefono size={13} color="#38BDF8" />
-                    <span>Llamar ({reserva.pasajero.phone})</span>
-                  </a>
-
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {reserva.estado === 'pagando' ? (
-                      <button
-                        onClick={() => confirmarPagoPasajero(reserva.id)}
-                        disabled={cargandoAccion === reserva.id}
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: '8px',
-                          background: '#38BDF8',
-                          color: '#0F172A',
-                          border: 'none',
-                          fontWeight: '800',
-                          fontSize: '12px',
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 8px rgba(56, 189, 248, 0.4)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                      >
-                        <IconoTarjeta size={14} color="#0F172A" />
-                        <span>{cargandoAccion === reserva.id ? 'Confirmando...' : 'Aceptar Pago'}</span>
-                      </button>
-                    ) : reserva.estado === 'abordado' ? (
-                      <button
-                        onClick={() => confirmarPagoPasajero(reserva.id)}
-                        disabled={cargandoAccion === reserva.id}
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: '8px',
-                          background: '#10B981',
-                          color: '#FFF',
-                          border: 'none',
-                          fontWeight: '800',
-                          fontSize: '12px',
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                      >
-                        <IconoCheck size={14} color="#FFF" />
-                        <span>{cargandoAccion === reserva.id ? 'Liberando...' : 'Cobrar y Liberar'}</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => confirmarAbordaje(reserva.id)}
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: '8px',
-                          background: '#10B981',
-                          color: '#FFF',
-                          border: 'none',
-                          fontWeight: '800',
-                          fontSize: '12px',
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                      >
-                        <IconoCheck size={14} color="#FFF" />
-                        <span>Marcar Abordó</span>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => cancelarReservaPasajero(reserva.id)}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        background: 'rgba(239, 68, 68, 0.15)',
-                        color: '#F87171',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        fontWeight: '700',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <IconoCruz size={12} color="#F87171" />
-                      <span>Cancelar</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div style={{ background: '#171717', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', color: '#A3A3A3', display: 'flex', justifyContent: 'space-between' }}>
+            <span>Ruta activa: <b style={{ color: '#FFFFFF' }}>{lineaActual.nombre}</b></span>
+            <span>Paradas en ruta: <b style={{ color: '#FFFFFF' }}>{lineaActual.paradas?.length || 0} paradas</b></span>
           </div>
         )}
       </section>
@@ -1196,7 +1694,7 @@ export default function PaginaConductorColectivo() {
       {/* ── SECCIÓN 6: CONFIGURACIÓN DE COBROS (RUTPAY Y MERCADOPAGO) ── */}
       {mostrarConfigCobro && (
         <section style={{
-          background: '#131D33',
+          background: '#121212',
           borderRadius: '16px',
           padding: '18px',
           border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -1204,23 +1702,23 @@ export default function PaginaConductorColectivo() {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <IconoTarjeta size={16} color="#38BDF8" />
+              <IconoTarjeta size={16} color="#FACC15" />
               <span>Métodos de Cobro Electrónico</span>
             </h3>
             <button
               onClick={() => setMostrarConfigCobro(false)}
-              style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              style={{ background: 'transparent', border: 'none', color: '#A3A3A3', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
             >
-              <IconoCruz size={16} color="#94A3B8" />
+              <IconoCruz size={16} color="#A3A3A3" />
             </button>
           </div>
-          <p style={{ fontSize: '12px', color: '#94A3B8', margin: '0 0 14px 0' }}>
+          <p style={{ fontSize: '12px', color: '#A3A3A3', margin: '0 0 14px 0' }}>
             Permite a los pasajeros transferirte vía RutPay BancoEstado o pagarte con MercadoPago directamente en el colectivo.
           </p>
 
           <form onSubmit={guardarDatosCobro} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', color: '#CBD5E1', marginBottom: '4px', fontWeight: '600' }}>
+              <label style={{ display: 'block', fontSize: '12px', color: '#D4D4D4', marginBottom: '4px', fontWeight: '600' }}>
                 Teléfono para RutPay BancoEstado:
               </label>
               <input
@@ -1232,8 +1730,8 @@ export default function PaginaConductorColectivo() {
                   width: '100%',
                   padding: '10px 12px',
                   borderRadius: '10px',
-                  background: '#0B1329',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  background: '#171717',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
                   color: '#FFFFFF',
                   fontSize: '13px',
                 }}
@@ -1241,7 +1739,7 @@ export default function PaginaConductorColectivo() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12px', color: '#CBD5E1', marginBottom: '4px', fontWeight: '600' }}>
+              <label style={{ display: 'block', fontSize: '12px', color: '#D4D4D4', marginBottom: '4px', fontWeight: '600' }}>
                 Link o Alias de MercadoPago:
               </label>
               <input
@@ -1253,8 +1751,8 @@ export default function PaginaConductorColectivo() {
                   width: '100%',
                   padding: '10px 12px',
                   borderRadius: '10px',
-                  background: '#0B1329',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  background: '#171717',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
                   color: '#FFFFFF',
                   fontSize: '13px',
                 }}
@@ -1267,20 +1765,20 @@ export default function PaginaConductorColectivo() {
               style={{
                 padding: '12px',
                 borderRadius: '10px',
-                background: '#2563EB',
-                color: '#FFFFFF',
+                background: '#FACC15',
+                color: '#000000',
                 border: 'none',
-                fontWeight: '700',
+                fontWeight: '800',
                 fontSize: '13px',
                 cursor: guardandoCobro ? 'not-allowed' : 'pointer',
-                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.4)',
+                boxShadow: '0 4px 12px rgba(250, 204, 21, 0.35)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
               }}
             >
-              <IconoGuardar size={16} color="#FFFFFF" />
+              <IconoGuardar size={16} color="#000000" />
               <span>{guardandoCobro ? 'Guardando...' : 'Guardar Datos de Cobro'}</span>
             </button>
           </form>
@@ -1304,7 +1802,7 @@ export default function PaginaConductorColectivo() {
             position: 'fixed',
             inset: 0,
             zIndex: 99998,
-            background: 'rgba(9, 13, 22, 0.88)',
+            background: 'rgba(0, 0, 0, 0.85)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
             flexDirection: 'column',
@@ -1317,11 +1815,11 @@ export default function PaginaConductorColectivo() {
             style={{
               width: '100%',
               maxWidth: '480px',
-              background: '#0F172A',
-              border: '2px solid #38BDF8',
+              background: '#121212',
+              border: '2px solid #FACC15',
               borderRadius: '20px',
               padding: '24px',
-              boxShadow: '0 12px 40px rgba(56, 189, 248, 0.3)',
+              boxShadow: '0 12px 40px rgba(250, 204, 21, 0.25)',
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
@@ -1334,14 +1832,14 @@ export default function PaginaConductorColectivo() {
                   width: '64px',
                   height: '64px',
                   borderRadius: '50%',
-                  background: 'rgba(56, 189, 248, 0.2)',
-                  border: '2px solid #38BDF8',
+                  background: 'rgba(250, 204, 21, 0.15)',
+                  border: '2px solid #FACC15',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <IconoTarjeta size={36} color="#38BDF8" />
+                <IconoTarjeta size={36} color="#FACC15" />
               </div>
             </div>
 
@@ -1350,7 +1848,7 @@ export default function PaginaConductorColectivo() {
                 style={{
                   fontSize: '12px',
                   fontWeight: '800',
-                  color: '#38BDF8',
+                  color: '#FACC15',
                   letterSpacing: '1px',
                   textTransform: 'uppercase',
                 }}
@@ -1367,24 +1865,25 @@ export default function PaginaConductorColectivo() {
               >
                 Pasajero {pagoPendiente.pasajeroNombre}
               </h2>
-              <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#94A3B8' }}>
+              <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#A3A3A3' }}>
                 Desea pagar y descender del vehículo
               </p>
             </div>
 
             <div
               style={{
-                background: 'rgba(255, 255, 255, 0.05)',
+                background: '#171717',
                 borderRadius: '12px',
                 padding: '12px 16px',
                 display: 'flex',
                 justifyContent: 'space-around',
                 alignItems: 'center',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
               }}
             >
               <div>
-                <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Medio de Pago</span>
-                <span style={{ fontSize: '14px', fontWeight: '800', color: '#F8FAFC', textTransform: 'uppercase' }}>
+                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Medio de Pago</span>
+                <span style={{ fontSize: '14px', fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase' }}>
                   {pagoPendiente.metodoPago === 'rutpay'
                     ? 'RutPay BancoEstado'
                     : pagoPendiente.metodoPago === 'mercadopago'
@@ -1394,11 +1893,43 @@ export default function PaginaConductorColectivo() {
               </div>
               <div style={{ width: '1px', height: '30px', background: 'rgba(255, 255, 255, 0.1)' }} />
               <div>
-                <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Cupos a Liberar</span>
-                <span style={{ fontSize: '14px', fontWeight: '800', color: '#34D399' }}>
+                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Cupos a Liberar</span>
+                <span style={{ fontSize: '14px', fontWeight: '800', color: '#FACC15' }}>
                   {pagoPendiente.cantidadAsientos} Asiento{pagoPendiente.cantidadAsientos > 1 ? 's' : ''}
                 </span>
               </div>
+            </div>
+
+            {/* INDICADOR DE CONFIRMACIÓN POR VOZ CON "SÍ" */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '10px 14px',
+                background: 'rgba(250, 204, 21, 0.12)',
+                borderRadius: '12px',
+                border: '1px solid #FACC15',
+                color: '#FACC15',
+                fontSize: '13px',
+                fontWeight: '700',
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  background: '#FACC15',
+                  boxShadow: '0 0 10px #FACC15',
+                }}
+              />
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <IconoMicrofono size={16} color="#FACC15" />
+                <span>Di &quot;SÍ&quot; para confirmar por voz o toca el botón</span>
+              </span>
             </div>
 
             {/* BOTÓN GIGANTE DE ACEPTACIÓN */}
@@ -1409,14 +1940,14 @@ export default function PaginaConductorColectivo() {
                 width: '100%',
                 padding: '18px 20px',
                 borderRadius: '14px',
-                background: 'linear-gradient(180deg, #10B981 0%, #059669 100%)',
+                background: '#FACC15',
                 border: 'none',
-                color: '#FFFFFF',
+                color: '#000000',
                 fontSize: '18px',
                 fontWeight: '900',
                 letterSpacing: '0.5px',
                 cursor: 'pointer',
-                boxShadow: '0 6px 20px rgba(16, 185, 129, 0.4)',
+                boxShadow: '0 6px 20px rgba(250, 204, 21, 0.4)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1424,7 +1955,7 @@ export default function PaginaConductorColectivo() {
                 textTransform: 'uppercase',
               }}
             >
-              <IconoCheck size={26} color="#FFFFFF" />
+              <IconoCheck size={26} color="#000000" />
               <span>
                 {cargandoAccion === pagoPendiente.reservaId
                   ? 'Liberando Asiento...'

@@ -1,21 +1,51 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import api, { saveSession } from '@/lib/api';
+import api, { saveSession, getSession } from '@/lib/api';
 import Logo from '@/components/Logo';
-import { IconoAlerta, IconoLlave, IconoColectivo, IconoPasajero, IconoRayo } from '@/components/icons/Iconos';
+import {
+  IconoAlerta,
+  IconoPasajero,
+  IconoAuto,
+} from '@/components/icons/Iconos';
 
-type Role = 'passenger' | 'driver' | 'admin';
+type Role = 'passenger' | 'driver';
 
-export default function LoginPage() {
+function ContenidoLogin() {
   const router = useRouter();
-  const [role, setRole] = useState<Role>('passenger');
+  const searchParams = useSearchParams();
+
+  const paramRole = searchParams.get('role');
+  const rolInicial: Role = paramRole === 'driver' || paramRole === 'conductor'
+    ? 'driver'
+    : 'passenger';
+
+  const [role, setRole] = useState<Role>(rolInicial);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const s = getSession();
+    if (s?.token) {
+      if (s.user?.role === 'driver') {
+        router.push('/driver');
+        return;
+      } else if (s.user?.role === 'passenger') {
+        router.push('/passenger');
+        return;
+      }
+    }
+
+    if (paramRole === 'driver' || paramRole === 'conductor') {
+      setRole('driver');
+    } else if (paramRole === 'passenger' || paramRole === 'pasajero') {
+      setRole('passenger');
+    }
+  }, [paramRole, router]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -24,15 +54,12 @@ export default function LoginPage() {
 
     try {
       let activeRole = role;
-      let endpoint = activeRole === 'admin' ? '/auth/admin/login'
-        : activeRole === 'driver' ? '/auth/driver/login'
-          : '/auth/passenger/login';
+      const endpoint = activeRole === 'driver' ? '/auth/driver/login' : '/auth/passenger/login';
 
       let res;
       try {
         res = await api.post(endpoint, { email, password });
       } catch (firstErr) {
-        // Fallback inteligente: si intentó como pasajero y falló, probar como conductor automáticamente
         if (activeRole === 'passenger') {
           try {
             res = await api.post('/auth/driver/login', { email, password });
@@ -53,134 +80,262 @@ export default function LoginPage() {
       }
 
       const userData = res.data.user || res.data.driver;
-
       saveSession(res.data.accessToken, { ...userData, role: activeRole });
 
-      if (activeRole === 'admin') router.push('/admin');
-      else if (activeRole === 'driver') router.push('/driver');
+      if (activeRole === 'driver') router.push('/driver');
       else router.push('/passenger');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
-      setError(e.response?.data?.error || 'Error al iniciar sesión. Revisa tus credenciales.');
+      setError(e.response?.data?.error || 'Credenciales incorrectas. Verifica correo y contraseña.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="app-container" style={{ background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '24px' }}>
+    <div
+      style={{
+        width: '100%',
+        maxWidth: '400px',
+        padding: '36px 28px',
+        background: '#0A0A0A',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
+        borderRadius: '18px',
+        boxShadow: '0 24px 48px rgba(0, 0, 0, 0.9)',
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* Logo y Encabezado limpio */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '24px', textAlign: 'center' }}>
+        <Logo width="130" height="46" />
+        <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#FFFFFF', margin: '14px 0 4px 0', letterSpacing: '-0.4px' }}>
+          Iniciar Sesión
+        </h1>
+        <p style={{ color: '#A3A3A3', fontSize: '13px', margin: 0 }}>
+          Ingresa a tu cuenta de Fim Colectivo
+        </p>
+      </div>
 
+      {/* Selector de Rol Minimalista (Solo Pasajero y Conductor) */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '6px',
+          padding: '4px',
+          background: '#000000',
+          borderRadius: '10px',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          marginBottom: '22px',
+        }}
+      >
+        <button
+          type="button"
+          id="role-passenger"
+          onClick={() => setRole('passenger')}
+          style={{
+            padding: '10px 8px',
+            border: 'none',
+            borderRadius: '7px',
+            cursor: 'pointer',
+            fontWeight: role === 'passenger' ? 800 : 600,
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            transition: 'all 0.15s ease',
+            background: role === 'passenger' ? '#FACC15' : 'transparent',
+            color: role === 'passenger' ? '#000000' : '#A3A3A3',
+          }}
+        >
+          <IconoPasajero size={15} color={role === 'passenger' ? '#000000' : '#A3A3A3'} />
+          <span>Pasajero</span>
+        </button>
+
+        <button
+          type="button"
+          id="role-driver"
+          onClick={() => setRole('driver')}
+          style={{
+            padding: '10px 8px',
+            border: 'none',
+            borderRadius: '7px',
+            cursor: 'pointer',
+            fontWeight: role === 'driver' ? 800 : 600,
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            transition: 'all 0.15s ease',
+            background: role === 'driver' ? '#FACC15' : 'transparent',
+            color: role === 'driver' ? '#000000' : '#A3A3A3',
+          }}
+        >
+          <IconoAuto size={15} color={role === 'driver' ? '#000000' : '#A3A3A3'} />
+          <span>Conductor</span>
+        </button>
+      </div>
+
+      {/* Alerta de error limpia */}
+      {error && (
+        <div
+          style={{
+            marginBottom: '18px',
+            padding: '10px 12px',
+            background: '#171717',
+            border: '1px solid #FACC15',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: '#FFFFFF',
+            fontSize: '12.5px',
+          }}
+        >
+          <IconoAlerta size={16} color="#FACC15" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Formulario de Login */}
+      <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div>
+          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#D4D4D4', fontWeight: 600 }}>
+            Correo Electrónico
+          </label>
+          <input
+            id="login-email"
+            type="email"
+            placeholder={role === 'driver' ? 'conductor@fimchile.cl' : 'pasajero@fimchile.cl'}
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            style={{
+              width: '100%',
+              padding: '12px 14px',
+              borderRadius: '8px',
+              background: '#000000',
+              border: '1px solid rgba(255, 255, 255, 0.18)',
+              color: '#FFFFFF',
+              fontSize: '14px',
+              outline: 'none',
+              boxSizing: 'border-box',
+              transition: 'border-color 0.15s',
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = '#FACC15')}
+            onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.18)')}
+          />
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#D4D4D4', fontWeight: 600 }}>
+            Contraseña
+          </label>
+          <input
+            id="login-password"
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            style={{
+              width: '100%',
+              padding: '12px 14px',
+              borderRadius: '8px',
+              background: '#000000',
+              border: '1px solid rgba(255, 255, 255, 0.18)',
+              color: '#FFFFFF',
+              fontSize: '14px',
+              outline: 'none',
+              boxSizing: 'border-box',
+              transition: 'border-color 0.15s',
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = '#FACC15')}
+            onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.18)')}
+          />
+        </div>
+
+        <button
+          id="login-submit"
+          type="submit"
+          disabled={loading}
+          style={{
+            marginTop: '6px',
+            padding: '13px',
+            borderRadius: '8px',
+            border: 'none',
+            background: '#FACC15',
+            color: '#000000',
+            fontWeight: 800,
+            fontSize: '14px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            boxShadow: '0 4px 16px rgba(250, 204, 21, 0.25)',
+            transition: 'transform 0.1s, opacity 0.15s',
+            opacity: loading ? 0.7 : 1,
+          }}
+        >
+          {loading ? 'Ingresando...' : role === 'driver' ? 'Ingresar a Cabina' : 'Ingresar como Pasajero'}
+        </button>
+      </form>
+
+      {/* Enlace inferior minimalista */}
+      <div style={{ marginTop: '22px', textAlign: 'center', color: '#A3A3A3', fontSize: '13px' }}>
+        ¿No tienes cuenta?{' '}
+        <Link
+          href={`/register?role=${role}`}
+          style={{
+            color: '#FACC15',
+            fontWeight: 700,
+            textDecoration: 'none',
+          }}
+        >
+          Regístrate gratis
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <div
+      style={{
+        background: '#000000',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        padding: '24px 16px',
+        boxSizing: 'border-box',
+        position: 'relative',
+      }}
+    >
       <div style={{ position: 'absolute', top: '24px', left: '24px' }}>
-        <Link href="/" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          ← REGRESAR AL INICIO
+        <Link
+          href="/"
+          style={{
+            color: '#A3A3A3',
+            fontSize: '13px',
+            fontWeight: 600,
+            textDecoration: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            transition: 'color 0.15s',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = '#FFFFFF')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = '#A3A3A3')}
+        >
+          ← Volver al inicio
         </Link>
       </div>
 
-      <div className="card" style={{ width: '100%', maxWidth: '420px', padding: '40px 32px', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
-          <Logo width="160" height="60" />
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Bienvenido de vuelta</p>
-        </div>
-
-        {/* Role selector */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px',
-          padding: '4px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius)',
-          marginBottom: '32px'
-        }}>
-          {([
-            { key: 'passenger', label: 'Pasajero' },
-            { key: 'driver', label: 'Conductor' },
-            { key: 'admin', label: 'Admin' },
-          ] as { key: Role; label: string }[]).map(r => (
-            <button
-              key={r.key}
-              id={`role-${r.key}`}
-              onClick={() => setRole(r.key)}
-              style={{
-                padding: '9px 4px', border: 'none', borderRadius: 'calc(var(--radius) - 4px)',
-                cursor: 'pointer', fontWeight: 600, fontSize: '0.78rem', transition: 'var(--transition)',
-                background: role === r.key ? 'var(--accent)' : 'transparent',
-                color: role === r.key ? '#09090F' : 'var(--text-muted)',
-              }}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-
-        {error && (
-          <div className="alert alert-error" style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconoAlerta size={18} color="#EF4444" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <input
-              id="login-email"
-              className="form-input"
-              type="email"
-              placeholder="tu@email.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Contraseña</label>
-            <input
-              id="login-password"
-              className="form-input"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          <button
-            id="login-submit"
-            type="submit"
-            className={`btn btn-primary btn-lg btn-block ${loading ? 'btn-loading' : ''}`}
-            disabled={loading}
-            style={{ marginTop: '12px' }}
-          >
-            {loading ? '' : 'Iniciar sesión →'}
-          </button>
-        </form>
-
-        <div className="divider" style={{ margin: '32px 0', color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', position: 'relative' }}>
-          <span style={{ background: 'var(--bg-card)', padding: '0 12px', position: 'relative', zIndex: 1 }}>o</span>
-          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: 'var(--border)', zIndex: 0 }} />
-        </div>
-
-        <p className="text-center" style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          ¿No tienes cuenta?{' '}
-          <Link href="/register" style={{ color: 'var(--accent)', fontWeight: 600 }}>Regístrate gratis</Link>
-        </p>
-
-        <div style={{ marginTop: '24px', padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.8' }}>
-          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <IconoLlave size={16} color="var(--accent)" />
-            <span>Cuentas activas de prueba:</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-            <IconoColectivo size={15} color="var(--accent)" />
-            <span><b>Conductor:</b> <code style={{ color: 'var(--accent)' }}>conductor@fimchile.cl</code> o <code style={{ color: 'var(--accent)' }}>conductor2@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>test123</code></span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-            <IconoPasajero size={15} color="var(--accent)" />
-            <span><b>Pasajero:</b> <code style={{ color: 'var(--accent)' }}>pasajero@fimchile.cl</code> o <code style={{ color: 'var(--accent)' }}>pasajero2@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>test123</code></span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <IconoRayo size={15} color="var(--accent)" />
-            <span><b>Admin:</b> <code style={{ color: 'var(--accent)' }}>admin@fimchile.cl</code> / Clave: <code style={{ color: 'var(--accent)' }}>admin123</code></span>
-          </div>
-        </div>
-      </div>
+      <Suspense fallback={<div style={{ color: '#FACC15', fontSize: '14px', fontWeight: 600 }}>Cargando Fim Colectivo...</div>}>
+        <ContenidoLogin />
+      </Suspense>
     </div>
   );
 }
