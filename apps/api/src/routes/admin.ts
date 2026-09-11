@@ -209,7 +209,7 @@ router.get('/revenue-report', async (req: Request, res: Response) => {
     // Agrupar por conductor y método de pago
     const stats: Record<string, any> = {};
 
-    trips.forEach(t => {
+    trips.forEach((t: any) => {
       const key = `${t.driverId}_${t.paymentMethod}`;
       const amount = t.finalPrice || t.estimatedPrice;
       
