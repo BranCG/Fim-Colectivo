@@ -101,7 +101,7 @@ router.get('/driver-trips', requireAuth, requireRole('driver'), async (req: Requ
       },
     });
 
-    const totalEarnings = trips.reduce((sum, t) => sum + (t.finalPrice || t.estimatedPrice), 0);
+    const totalEarnings = trips.reduce((sum: number, t: any) => sum + (t.finalPrice || t.estimatedPrice), 0);
 
     return res.json({ trips, totalEarnings });
   } catch (err) {
@@ -116,7 +116,7 @@ router.post('/:id/cancel', requireAuth, async (req: Request, res: Response) => {
     const { reason } = req.body;
     const role = req.user!.role;
 
-    const trip = await prisma.trip.findUnique({ where: { id } });
+    const trip = await prisma.trip.findUnique({ where: { id: String(id) } });
     if (!trip) return res.status(404).json({ error: 'Viaje no encontrado' });
 
     if (!['searching', 'driver_assigned'].includes(trip.status)) {
@@ -124,7 +124,7 @@ router.post('/:id/cancel', requireAuth, async (req: Request, res: Response) => {
     }
 
     const updated = await prisma.trip.update({
-      where: { id },
+      where: { id: String(id) },
       data: {
         status: 'cancelled',
         cancelledBy: role,
@@ -146,7 +146,7 @@ router.post('/:id/rate', requireAuth, requireRole('passenger'), async (req: Requ
     const { driverScore, driverComment } = req.body;
 
     const trip = await prisma.trip.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: { rating: true },
     });
 
@@ -156,14 +156,14 @@ router.post('/:id/rate', requireAuth, requireRole('passenger'), async (req: Requ
     if (trip.status !== 'completed') {
       return res.status(400).json({ error: 'Solo puedes calificar viajes completados' });
     }
-    if (trip.rating) {
+    if ((trip as any).rating) {
       return res.status(409).json({ error: 'Ya calificaste este viaje' });
     }
     if (!trip.driverId) return res.status(400).json({ error: 'Sin conductor asignado' });
 
     const rating = await prisma.rating.create({
       data: {
-        tripId: id,
+        tripId: String(id),
         passengerId: req.user!.id,
         driverId: trip.driverId,
         driverScore,
@@ -173,7 +173,7 @@ router.post('/:id/rate', requireAuth, requireRole('passenger'), async (req: Requ
 
     // Actualizar rating promedio del conductor
     const allRatings = await prisma.rating.findMany({ where: { driverId: trip.driverId } });
-    const avgRating = allRatings.reduce((s, r) => s + r.driverScore, 0) / allRatings.length;
+    const avgRating = allRatings.reduce((s: number, r: any) => s + r.driverScore, 0) / allRatings.length;
     await prisma.driver.update({
       where: { id: trip.driverId },
       data: { totalRating: avgRating, totalTrips: { increment: 1 } },
