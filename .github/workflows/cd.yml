@@ -2,7 +2,7 @@ name: CD - Despliegue Continuo AWS
 
 on:
   push:
-    branches: [ main, DevOpS ]
+    branches: [ main]
 
 jobs:
   build-check:
