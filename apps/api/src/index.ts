@@ -57,7 +57,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 import client from 'prom-client';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+// Prisma is already imported above
 
 // Prometheus Default Metrics
 const collectDefaultMetrics = client.collectDefaultMetrics;
