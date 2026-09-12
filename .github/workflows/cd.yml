@@ -19,7 +19,7 @@ jobs:
           cache: 'npm'
 
       - name: Instalación de dependencias
-        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+        run: npm install --no-package-lock --legacy-peer-deps
 
       - name: Generar cliente de Prisma
         run: npm run db:generate
