@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { calcularInfoLlegada } from '@/lib/geo';
+import { obtenerPuntosReferencia, PuntoReferencia } from '@/lib/puntosReferencia';
 
 export interface Parada {
   id: string;
@@ -63,27 +64,28 @@ interface Props {
   altura?: string;
 }
 
-// Estilo MapLibre con teselas OpenStreetMap de alta disponibilidad y sin marcas de agua
+// Estilo MapLibre con teselas CartoDB Dark Matter: limpias, sin saturación de comercios, restaurantes ni locales
 const ESTILO_MAPLIBRE: any = {
   version: 8,
   sources: {
-    'osm-tiles': {
+    'carto-dark-tiles': {
       type: 'raster',
       tiles: [
-        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
       ],
       tileSize: 256,
-      attribution: '© OpenStreetMap contributors',
+      attribution: '© CARTO © OpenStreetMap contributors',
       maxzoom: 19,
     },
   },
   layers: [
     {
-      id: 'osm-tiles-layer',
+      id: 'carto-dark-tiles-layer',
       type: 'raster',
-      source: 'osm-tiles',
+      source: 'carto-dark-tiles',
       minzoom: 0,
       maxzoom: 19,
     },
@@ -226,6 +228,80 @@ function generarSvgColectivoHtml({
   `;
 }
 
+// ─── Generador de Pin SVG para Puntos de Referencia Clave (Metro, Microbús, Malls) ───
+function generarSvgReferenciaHtml(punto: PuntoReferencia): string {
+  let iconoHtml = '';
+  let colorAcento = '#FFFFFF';
+
+  if (punto.tipo === 'metro') {
+    colorAcento = '#FACC15'; // Amarillo colectivo
+    iconoHtml = `
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#FACC15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;">
+        <rect x="4" y="3" width="16" height="14" rx="2"/>
+        <path d="M4 11h16"/>
+        <path d="M12 3v8"/>
+        <path d="m8 19-2 3"/>
+        <path d="m16 19 2 3"/>
+        <circle cx="9" cy="14" r="1" fill="#FACC15"/>
+        <circle cx="15" cy="14" r="1" fill="#FACC15"/>
+      </svg>
+    `;
+  } else if (punto.tipo === 'microbus') {
+    colorAcento = '#FFFFFF'; // Blanco
+    iconoHtml = `
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;">
+        <path d="M8 6v6"/>
+        <path d="M15 6v6"/>
+        <path d="M2 12h19.6"/>
+        <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.2 6 18.2 6H5.8C4.8 6 3.9 6.8 3.6 7.8L2.2 12.8c-.1.4-.2.8-.2 1.2 0 .4.1.8.2 1.2.3 1.1.8 2.8.8 2.8h3"/>
+        <circle cx="7" cy="18" r="2"/>
+        <circle cx="17" cy="18" r="2"/>
+      </svg>
+    `;
+  } else if (punto.tipo === 'mall') {
+    colorAcento = '#FACC15'; // Amarillo colectivo
+    iconoHtml = `
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#FACC15" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;">
+        <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+        <path d="M3 6h18"/>
+        <path d="M16 10a4 4 0 0 1-8 0"/>
+      </svg>
+    `;
+  }
+
+  return `
+    <div class="fim-referencia-pin" style="display: flex; flex-direction: column; align-items: center; cursor: pointer; user-select: none; z-index: 28; pointer-events: auto;">
+      <div style="
+        background: rgba(10, 10, 10, 0.94);
+        color: #FFFFFF;
+        border: 1.2px solid ${colorAcento};
+        border-radius: 6px;
+        padding: 1.5px 5px;
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.85);
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 3.5px;
+        backdrop-filter: blur(4px);
+      ">
+        ${iconoHtml}
+        <span>${punto.nombre}</span>
+      </div>
+      <div style="
+        width: 0;
+        height: 0;
+        border-left: 3px solid transparent;
+        border-right: 3px solid transparent;
+        border-top: 3.5px solid ${colorAcento};
+        margin-top: -0.5px;
+      "></div>
+    </div>
+  `;
+}
+
 export default function ColectivoMap({
   ubicacionUsuario,
   lineaSeleccionada,
@@ -247,6 +323,8 @@ export default function ColectivoMap({
   const [mapaCargado, setMapaCargado] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marcadoresRef = useRef<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const marcadoresReferenciaRef = useRef<any[]>([]);
 
   // 1. Inicializar MapLibre GL
   useEffect(() => {
@@ -304,6 +382,8 @@ export default function ColectivoMap({
 
     return () => {
       cancelado = true;
+      marcadoresReferenciaRef.current.forEach((m) => m.remove());
+      marcadoresReferenciaRef.current = [];
       if (mapaRef.current) {
         mapaRef.current.remove();
         mapaRef.current = null;
@@ -624,6 +704,68 @@ export default function ColectivoMap({
     pasajerosEnEspera,
   ]);
 
+  // 4. Renderizar marcadores de puntos de referencia clave (Metro, Microbús y Malls)
+  useEffect(() => {
+    if (!mapaCargado || !mapaRef.current || !maplibreModuleRef.current) return;
+
+    const mapa = mapaRef.current;
+    const { Marker, Popup } = maplibreModuleRef.current;
+
+    marcadoresReferenciaRef.current.forEach((m) => m.remove());
+    marcadoresReferenciaRef.current = [];
+
+    const puntos = obtenerPuntosReferencia();
+
+    puntos.forEach((punto) => {
+      const el = document.createElement('div');
+      el.className = 'fim-marker-container fim-marker-referencia';
+      el.innerHTML = generarSvgReferenciaHtml(punto);
+
+      let distanciaTexto = '';
+      if (ubicacionUsuario) {
+        const info = calcularInfoLlegada(
+          ubicacionUsuario.latitud,
+          ubicacionUsuario.longitud,
+          punto.latitud,
+          punto.longitud
+        );
+        if (info) {
+          distanciaTexto = `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-size: 10px; font-weight: 800;">A ${info.textoDistancia} de tu ubicación</div>`;
+        }
+      }
+
+      const tipoLabel =
+        punto.tipo === 'metro'
+          ? 'ESTACIÓN DE METRO'
+          : punto.tipo === 'microbus'
+          ? 'ESTACIÓN / INTERMODAL DE MICROBÚS'
+          : 'MALL / CENTRO COMERCIAL';
+
+      const colorAcento = punto.tipo === 'microbus' ? '#FFFFFF' : '#FACC15';
+
+      const marcador = new Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([punto.longitud, punto.latitud])
+        .setPopup(
+          new Popup({ offset: 16, closeButton: false, className: 'fim-map-popup' }).setHTML(
+            `<div style="padding: 2px;">
+              <div style="font-size: 8.5px; font-weight: 800; color: ${colorAcento}; letter-spacing: 0.5px;">${tipoLabel}</div>
+              <div style="font-size: 12px; font-weight: 900; color: #FFFFFF; margin-top: 2px;">${punto.nombre}</div>
+              <div style="font-size: 10px; color: #A3A3A3; margin-top: 2px;">${punto.subtitulo}</div>
+              ${distanciaTexto}
+            </div>`
+          )
+        )
+        .addTo(mapa);
+
+      marcadoresReferenciaRef.current.push(marcador);
+    });
+
+    return () => {
+      marcadoresReferenciaRef.current.forEach((m) => m.remove());
+      marcadoresReferenciaRef.current = [];
+    };
+  }, [mapaCargado, ubicacionUsuario]);
+
   // ETA destacado para mostrar en el HUD flotante superior del mapa
   const etaDestacado = useMemo(() => {
     if (!ubicacionUsuario) return null;
@@ -740,6 +882,10 @@ export default function ColectivoMap({
         }
         .fim-map-popup .maplibregl-popup-tip {
           border-top-color: #0A0A0A !important;
+        }
+        .fim-referencia-pin:hover {
+          transform: scale(1.12);
+          transition: transform 0.15s ease-out;
         }
         @keyframes fimPulse {
           0% {
