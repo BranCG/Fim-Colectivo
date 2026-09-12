@@ -67,7 +67,7 @@ router.get('/lineas/:id', async (peticion: Request, respuesta: Response) => {
   try {
     const { id } = peticion.params;
     const linea = await prisma.lineaColectivo.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: {
         paradas: {
           orderBy: { orden: 'asc' },
@@ -471,7 +471,7 @@ router.post('/reservas/:id/abordar', requireAuth, requireRole('driver', 'admin')
     const { id } = peticion.params;
 
     const reserva = await prisma.reservaAsiento.findFirst({
-      where: { id, conductorId },
+      where: { id: String(id), conductorId },
     });
 
     if (!reserva) {
@@ -486,7 +486,7 @@ router.post('/reservas/:id/abordar', requireAuth, requireRole('driver', 'admin')
 
     const [reservaActualizada, choferActualizado] = await prisma.$transaction([
       prisma.reservaAsiento.update({
-        where: { id },
+        where: { id: String(id) },
         data: { estado: 'abordado' },
       }),
       prisma.driver.update({
@@ -525,7 +525,7 @@ router.post('/reservas/:id/solicitar-pago', requireAuth, async (peticion: Reques
     const { id } = peticion.params;
 
     const reserva = await prisma.reservaAsiento.findFirst({
-      where: { id, pasajeroId },
+      where: { id: String(id), pasajeroId },
       include: {
         pasajero: { select: { id: true, name: true, phone: true } },
         conductor: { select: { id: true, name: true, vehiclePlate: true, telefonoRutPay: true, mercadoPagoLink: true } },
@@ -537,7 +537,7 @@ router.post('/reservas/:id/solicitar-pago', requireAuth, async (peticion: Reques
     }
 
     const reservaActualizada = await prisma.reservaAsiento.update({
-      where: { id },
+      where: { id: String(id) },
       data: { estado: 'pagando' },
       include: {
         pasajero: { select: { id: true, name: true, phone: true } },
@@ -582,7 +582,7 @@ router.post('/reservas/:id/confirmar-pago', requireAuth, requireRole('driver', '
     const { id } = peticion.params;
 
     const reserva = await prisma.reservaAsiento.findFirst({
-      where: { id, conductorId },
+      where: { id: String(id), conductorId },
       include: {
         conductor: true,
         pasajero: { select: { id: true, name: true, phone: true } },
@@ -598,7 +598,7 @@ router.post('/reservas/:id/confirmar-pago', requireAuth, requireRole('driver', '
 
     const [reservaActualizada, choferActualizado] = await prisma.$transaction([
       prisma.reservaAsiento.update({
-        where: { id },
+        where: { id: String(id) },
         data: { estado: 'completado' },
         include: {
           pasajero: { select: { id: true, name: true, phone: true } },
@@ -656,7 +656,7 @@ router.post('/reservas/:id/cancelar', requireAuth, async (peticion: Request, res
   try {
     const { id } = peticion.params;
     const reserva = await prisma.reservaAsiento.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: { conductor: true },
     });
 
@@ -665,7 +665,7 @@ router.post('/reservas/:id/cancelar', requireAuth, async (peticion: Request, res
     }
 
     const reservaActualizada = await prisma.reservaAsiento.update({
-      where: { id },
+      where: { id: String(id) },
       data: { estado: 'cancelado' },
     });
 
@@ -695,10 +695,10 @@ router.post('/reservas/:id/cancelar', requireAuth, async (peticion: Request, res
     }
 
     // Si la reserva estaba en proceso de despacho dirigido, cancelar el timer
-    const solicitudActiva = solicitudesDirigidasActivas.get(id);
+    const solicitudActiva = solicitudesDirigidasActivas.get(String(id));
     if (solicitudActiva?.timer) {
       clearTimeout(solicitudActiva.timer);
-      solicitudesDirigidasActivas.delete(id);
+      solicitudesDirigidasActivas.delete(String(id));
     }
 
     io.to(`driver:${reserva.conductorId}`).emit('colectivo:reserva-cancelada', { reservaId: id });
@@ -780,7 +780,7 @@ export function despacharASiguienteConductor(reservaId: string) {
       lastLat: true,
       lastLng: true,
     },
-  }).then((chofer) => {
+  }).then((chofer: any) => {
     if (!chofer || !chofer.isOnline || (chofer.asientosTotales - chofer.asientosOcupados) < solicitud.cantidadAsientos) {
       // Chofer ya no califica, pasar de inmediato al siguiente
       solicitud.conductorActualIndex++;
@@ -855,7 +855,7 @@ export function despacharASiguienteConductor(reservaId: string) {
       solicitud.conductorActualIndex++;
       despacharASiguienteConductor(reservaId);
     }, 15000);
-  }).catch((err) => {
+  }).catch((err: any) => {
     console.error('Error al despachar a chofer:', err);
     solicitud.conductorActualIndex++;
     despacharASiguienteConductor(reservaId);
@@ -914,7 +914,7 @@ router.post('/solicitar-dirigido', requireAuth, async (peticion: Request, respue
     });
 
     // 2. Filtrar los que tienen cupo disponible suficiente
-    const choferesConCupo = choferes.filter((c) => {
+    const choferesConCupo = choferes.filter((c: any) => {
       const disponibles = c.asientosTotales - c.asientosOcupados;
       return disponibles >= cantidadAsientos && c.lastLat != null && c.lastLng != null;
     });
@@ -928,7 +928,7 @@ router.post('/solicitar-dirigido', requireAuth, async (peticion: Request, respue
 
     // 3. Ordenar choferes: mismo sentido primero y por distancia de aproximación
     const candidatosOrdenados = choferesConCupo
-      .map((c) => {
+      .map((c: any) => {
         const distKm = calculateDistance(c.lastLat!, c.lastLng!, latitudSubida, longitudSubida);
         const distMetros = Math.round(distKm * 1000);
         const coincideSentido = c.sentidoRuta === sentido;
@@ -939,7 +939,7 @@ router.post('/solicitar-dirigido', requireAuth, async (peticion: Request, respue
           coincideSentido,
         };
       })
-      .sort((a, b) => {
+      .sort((a: any, b: any) => {
         if (a.coincideSentido && !b.coincideSentido) return -1;
         if (!a.coincideSentido && b.coincideSentido) return 1;
         return a.distMetros - b.distMetros;
@@ -988,7 +988,7 @@ router.post('/solicitar-dirigido', requireAuth, async (peticion: Request, respue
     });
 
     // 5. Registrar en el mapa activo de despacho
-    const listaCandidatosIds = candidatosOrdenados.map((c) => c.id);
+    const listaCandidatosIds = candidatosOrdenados.map((c: any) => c.id);
     solicitudesDirigidasActivas.set(nuevaReserva.id, {
       reservaId: nuevaReserva.id,
       lineaId,
@@ -1028,7 +1028,7 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
     const { accion } = peticion.body; // 'aceptar' | 'rechazar'
 
     const reserva = await prisma.reservaAsiento.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: {
         conductor: { select: { id: true, name: true, vehiclePlate: true, phone: true, lastLat: true, lastLng: true, telefonoRutPay: true, mercadoPagoLink: true } },
         pasajero: { select: { id: true, name: true, phone: true } },
@@ -1040,11 +1040,11 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
       return respuesta.status(404).json({ error: 'Reserva no encontrada' });
     }
 
-    const solicitud = solicitudesDirigidasActivas.get(id);
+    const solicitud = solicitudesDirigidasActivas.get(String(id));
 
     if (accion === 'aceptar') {
       if (solicitud?.timer) clearTimeout(solicitud.timer);
-      solicitudesDirigidasActivas.delete(id);
+      solicitudesDirigidasActivas.delete(String(id));
 
       const choferActual = await prisma.driver.findUnique({ where: { id: conductorId } });
       const yaOcupaba = reserva.estado === 'reservado' || reserva.estado === 'abordado';
@@ -1057,7 +1057,7 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
 
       const [reservaActualizada, choferActualizado] = await prisma.$transaction([
         prisma.reservaAsiento.update({
-          where: { id },
+          where: { id: String(id) },
           data: {
             conductorId,
             estado: 'reservado',
@@ -1078,7 +1078,7 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
       await prisma.reservaAsiento.updateMany({
         where: {
           pasajeroId: reserva.pasajeroId,
-          id: { not: id },
+          id: { not: String(id) },
           estado: 'pendiente_chofer',
         },
         data: { estado: 'cancelado' },
@@ -1127,10 +1127,10 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
 
       if (solicitud) {
         solicitud.conductorActualIndex++;
-        despacharASiguienteConductor(id);
+        despacharASiguienteConductor(String(id));
       } else {
         await prisma.reservaAsiento.update({
-          where: { id },
+          where: { id: String(id) },
           data: { estado: 'rechazado' },
         });
         io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-cancelada', { reservaId: id });
