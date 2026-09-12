@@ -133,26 +133,47 @@ export default function PaginaPasajeroColectivo() {
     setUsuarioSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener geolocalización del pasajero y centrar mapa
+  // 2. Obtener geolocalización en tiempo real del pasajero y auto-centrar el mapa
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (posicion) => {
-          setUbicacionPasajero({
-            latitud: posicion.coords.latitude,
-            longitud: posicion.coords.longitude,
-          });
-          setDisparadorCentrado((prev) => prev + 1);
-        },
-        (error) => {
-          console.warn('Geolocalización desactivada o denegada:', error);
-          // Coordenadas por defecto (Centro de Santiago de Chile)
-          setUbicacionPasajero({ latitud: -33.4489, longitud: -70.6693 });
-          setDisparadorCentrado((prev) => prev + 1);
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    }
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) return;
+
+    let primerExito = true;
+
+    const alObtenerUbicacion = (posicion: GeolocationPosition) => {
+      const lat = posicion.coords.latitude;
+      const lng = posicion.coords.longitude;
+
+      setUbicacionPasajero({ latitud: lat, longitud: lng });
+
+      if (primerExito) {
+        primerExito = false;
+        setDisparadorCentrado((prev) => prev + 1);
+      }
+    };
+
+    const alFallarUbicacion = (error: GeolocationPositionError) => {
+      console.warn('GPS inicial no disponible, aguardando señal precisa:', error.message);
+      if (primerExito) {
+        setUbicacionPasajero((prev) => prev || { latitud: -33.4489, longitud: -70.6693 });
+      }
+    };
+
+    // Intentar obtener rápidamente la posición actual
+    navigator.geolocation.getCurrentPosition(alObtenerUbicacion, alFallarUbicacion, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 3000,
+    });
+
+    // Suscribir rastreo continuo para actualizar ubicación mientras la app se usa
+    const watchId = navigator.geolocation.watchPosition(alObtenerUbicacion, alFallarUbicacion, {
+      enableHighAccuracy: true,
+      maximumAge: 2000,
+    });
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
   }, []);
 
   // 3. Cargar líneas de colectivo y reservas activas
