@@ -312,15 +312,20 @@ export default function ColectivoMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2. Centrar mapa con animación suave cuando se dispare `disparadorCentrado`
+  const haCentradoInicialRef = useRef(false);
+
+  // 2. Centrar mapa con animación suave cuando se obtenga la ubicación inicial o se dispare `disparadorCentrado`
   useEffect(() => {
-    if (mapaCargado && mapaRef.current && disparadorCentrado > 0 && ubicacionUsuario) {
-      mapaRef.current.flyTo({
-        center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
-        zoom: 16,
-        essential: true,
-        duration: 1000,
-      });
+    if (mapaCargado && mapaRef.current && ubicacionUsuario) {
+      if (!haCentradoInicialRef.current || disparadorCentrado > 0) {
+        haCentradoInicialRef.current = true;
+        mapaRef.current.flyTo({
+          center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
+          zoom: 16,
+          essential: true,
+          duration: 1000,
+        });
+      }
     }
   }, [disparadorCentrado, ubicacionUsuario, mapaCargado]);
 

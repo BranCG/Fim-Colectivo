@@ -136,6 +136,39 @@ export default function PaginaConductorColectivo() {
     }
   }, []);
 
+  // 2.1. Prevención de suspensión de pantalla para el chofer (Screen Wake Lock API)
+  useEffect(() => {
+    let wakeLockSentinel: any = null;
+
+    const solicitarWakeLock = async () => {
+      try {
+        if (typeof window !== 'undefined' && 'wakeLock' in navigator) {
+          wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+          console.log('[Wake Lock] Pantalla mantenida encendida continuamente para el chofer.');
+        }
+      } catch (err) {
+        console.warn('[Wake Lock] No se pudo mantener la pantalla encendida:', err);
+      }
+    };
+
+    solicitarWakeLock();
+
+    const alCambiarVisibilidad = () => {
+      if (document.visibilityState === 'visible') {
+        solicitarWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', alCambiarVisibilidad);
+
+    return () => {
+      document.removeEventListener('visibilitychange', alCambiarVisibilidad);
+      if (wakeLockSentinel) {
+        wakeLockSentinel.release().catch(() => {});
+      }
+    };
+  }, []);
+
   // 3. Cargar datos del chofer y líneas disponibles
   const cargarDatosChofer = useCallback(async () => {
     try {

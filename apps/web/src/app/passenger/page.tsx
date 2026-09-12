@@ -133,7 +133,7 @@ export default function PaginaPasajeroColectivo() {
     setUsuarioSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener geolocalización del pasajero
+  // 2. Obtener geolocalización del pasajero y centrar mapa
   useEffect(() => {
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -142,13 +142,15 @@ export default function PaginaPasajeroColectivo() {
             latitud: posicion.coords.latitude,
             longitud: posicion.coords.longitude,
           });
+          setDisparadorCentrado((prev) => prev + 1);
         },
         (error) => {
           console.warn('Geolocalización desactivada o denegada:', error);
           // Coordenadas por defecto (Centro de Santiago de Chile)
           setUbicacionPasajero({ latitud: -33.4489, longitud: -70.6693 });
+          setDisparadorCentrado((prev) => prev + 1);
         },
-        { enableHighAccuracy: true }
+        { enableHighAccuracy: true, timeout: 8000 }
       );
     }
   }, []);
