@@ -64,11 +64,8 @@ interface Props {
   altura?: string;
 }
 
-// Estilo Vectorial Nativo Dark de OpenFreeMap: 100% abierto, sin API key, sin marcas de agua y sin saturación comercial
-const URL_ESTILO_DARK = 'https://tiles.openfreemap.org/styles/dark';
-
-// Fallback por si la conexión al CDN vectorial se viera interrumpida
-const ESTILO_FALLBACK: any = {
+// Estilo MapLibre con teselas OpenStreetMap de alta disponibilidad: 100% libre, sin API key, sin marcas de agua
+const ESTILO_MAPLIBRE: any = {
   version: 8,
   sources: {
     'osm-tiles': {
@@ -91,10 +88,8 @@ const ESTILO_FALLBACK: any = {
       minzoom: 0,
       maxzoom: 19,
       paint: {
-        'raster-brightness-max': 0.4,
-        'raster-brightness-min': 0.05,
-        'raster-contrast': 0.25,
-        'raster-saturation': -0.9,
+        'raster-saturation': -0.3,
+        'raster-contrast': 0.1,
       },
     },
   ],
@@ -352,7 +347,7 @@ export default function ColectivoMap({
 
       const mapa = new Map({
         container: contenedorRef.current,
-        style: URL_ESTILO_DARK,
+        style: ESTILO_MAPLIBRE,
         center: centroInicial,
         zoom: 14.8,
         pitch: 0,
@@ -371,12 +366,7 @@ export default function ColectivoMap({
       );
 
       mapa.on('error', (err: any) => {
-        // En caso de que el CDN vectorial no responda, activar fallback
-        if (err && err.error && (err.error.status === 404 || err.error.status === 500)) {
-          try {
-            mapa.setStyle(ESTILO_FALLBACK);
-          } catch {}
-        }
+        console.warn('MapLibre evento:', err);
       });
 
       const marcarListo = () => {
