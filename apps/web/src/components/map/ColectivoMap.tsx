@@ -64,30 +64,38 @@ interface Props {
   altura?: string;
 }
 
-// Estilo MapLibre con teselas CartoDB Dark Matter: limpias, sin saturación de comercios, restaurantes ni locales
-const ESTILO_MAPLIBRE: any = {
+// Estilo Vectorial Nativo Dark de OpenFreeMap: 100% abierto, sin API key, sin marcas de agua y sin saturación comercial
+const URL_ESTILO_DARK = 'https://tiles.openfreemap.org/styles/dark';
+
+// Fallback por si la conexión al CDN vectorial se viera interrumpida
+const ESTILO_FALLBACK: any = {
   version: 8,
   sources: {
-    'carto-dark-tiles': {
+    'osm-tiles': {
       type: 'raster',
       tiles: [
-        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
       ],
       tileSize: 256,
-      attribution: '© CARTO © OpenStreetMap contributors',
+      attribution: '© OpenStreetMap contributors',
       maxzoom: 19,
     },
   },
   layers: [
     {
-      id: 'carto-dark-tiles-layer',
+      id: 'osm-tiles-layer',
       type: 'raster',
-      source: 'carto-dark-tiles',
+      source: 'osm-tiles',
       minzoom: 0,
       maxzoom: 19,
+      paint: {
+        'raster-brightness-max': 0.4,
+        'raster-brightness-min': 0.05,
+        'raster-contrast': 0.25,
+        'raster-saturation': -0.9,
+      },
     },
   ],
 };
@@ -344,7 +352,7 @@ export default function ColectivoMap({
 
       const mapa = new Map({
         container: contenedorRef.current,
-        style: ESTILO_MAPLIBRE,
+        style: URL_ESTILO_DARK,
         center: centroInicial,
         zoom: 14.8,
         pitch: 0,
@@ -363,7 +371,12 @@ export default function ColectivoMap({
       );
 
       mapa.on('error', (err: any) => {
-        console.warn('MapLibre evento:', err);
+        // En caso de que el CDN vectorial no responda, activar fallback
+        if (err && err.error && (err.error.status === 404 || err.error.status === 500)) {
+          try {
+            mapa.setStyle(ESTILO_FALLBACK);
+          } catch {}
+        }
       });
 
       const marcarListo = () => {
