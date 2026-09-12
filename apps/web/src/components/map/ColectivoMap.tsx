@@ -58,6 +58,7 @@ interface Props {
   alSeleccionarConductor?: (conductor: ConductorColectivo) => void;
   disparadorCentrado?: number;
   esModoConductor?: boolean;
+  modoSeguimientoNavegacion?: boolean;
   miConductorId?: string;
   miPatente?: string;
   pasajerosEnEspera?: PasajeroEnEspera[];
@@ -313,6 +314,7 @@ export default function ColectivoMap({
   alSeleccionarConductor,
   disparadorCentrado = 0,
   esModoConductor = false,
+  modoSeguimientoNavegacion = false,
   miConductorId,
   miPatente,
   pasajerosEnEspera = [],
@@ -324,6 +326,7 @@ export default function ColectivoMap({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const maplibreModuleRef = useRef<any>(null);
   const [mapaCargado, setMapaCargado] = useState(false);
+  const [seguimientoPausado, setSeguimientoPausado] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marcadoresRef = useRef<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -398,25 +401,50 @@ export default function ColectivoMap({
   const haCentradoInicialmenteRef = useRef(false);
   const ultimoDisparadorRef = useRef(0);
 
-  // 2. Centrar mapa ÚNICAMENTE en la carga inicial o al presionar el botón GPS (disparadorCentrado)
+  // Escuchar gestos de arrastre manual para pausar el seguimiento automático de navegación si el usuario explora el mapa
+  useEffect(() => {
+    if (!mapaCargado || !mapaRef.current) return;
+    const mapa = mapaRef.current;
+
+    const alPausarSeguimiento = () => {
+      if (modoSeguimientoNavegacion) {
+        setSeguimientoPausado(true);
+      }
+    };
+
+    mapa.on('dragstart', alPausarSeguimiento);
+    mapa.on('touchstart', alPausarSeguimiento);
+
+    return () => {
+      mapa.off('dragstart', alPausarSeguimiento);
+      mapa.off('touchstart', alPausarSeguimiento);
+    };
+  }, [mapaCargado, modoSeguimientoNavegacion]);
+
+  // 2. Centrar mapa: Carga inicial, botón GPS o seguimiento de navegación activa (Chofer / Pasajero A Bordo)
   useEffect(() => {
     if (mapaCargado && mapaRef.current && ubicacionUsuario) {
       const esPrimeraVez = !haCentradoInicialmenteRef.current;
       const esBotonGpsPresionado = disparadorCentrado > ultimoDisparadorRef.current;
 
-      if (esPrimeraVez || esBotonGpsPresionado) {
+      if (esBotonGpsPresionado) {
+        setSeguimientoPausado(false);
+      }
+
+      const debeSeguirEnNavegacion = modoSeguimientoNavegacion && !seguimientoPausado;
+
+      if (esPrimeraVez || esBotonGpsPresionado || debeSeguirEnNavegacion) {
         haCentradoInicialmenteRef.current = true;
         ultimoDisparadorRef.current = disparadorCentrado;
 
-        mapaRef.current.flyTo({
+        mapaRef.current.easeTo({
           center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
-          zoom: 16,
-          essential: true,
-          duration: 1000,
+          zoom: esModoConductor ? 16.5 : 16,
+          duration: debeSeguirEnNavegacion ? 800 : 1000,
         });
       }
     }
-  }, [disparadorCentrado, ubicacionUsuario, mapaCargado]);
+  }, [disparadorCentrado, ubicacionUsuario, mapaCargado, modoSeguimientoNavegacion, seguimientoPausado, esModoConductor]);
 
   // 3. Renderizar capa de ruta y marcadores dinámicos
   useEffect(() => {
@@ -876,6 +904,39 @@ export default function ColectivoMap({
             </span>
           </span>
         </div>
+      )}
+
+      {/* Botón flotante para reanudar seguimiento automático de navegación GPS */}
+      {modoSeguimientoNavegacion && seguimientoPausado && (
+        <button
+          onClick={() => setSeguimientoPausado(false)}
+          style={{
+            position: 'absolute',
+            bottom: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10,
+            background: '#FACC15',
+            color: '#000000',
+            border: 'none',
+            borderRadius: '24px',
+            padding: '8px 18px',
+            fontSize: '12px',
+            fontWeight: '900',
+            cursor: 'pointer',
+            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+          </svg>
+          <span>Recentrar Navegación GPS</span>
+        </button>
       )}
 
       <div ref={contenedorRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />

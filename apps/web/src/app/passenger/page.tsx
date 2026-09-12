@@ -679,6 +679,7 @@ export default function PaginaPasajeroColectivo() {
           conductorSeleccionadoId={reservaActiva ? (reservaActiva.conductor?.id || (reservaActiva as any).conductorId) : conductorElegido?.conductorId}
           alSeleccionarConductor={(chofer) => setConductorElegido(chofer)}
           disparadorCentrado={disparadorCentrado}
+          modoSeguimientoNavegacion={reservaActiva?.estado === 'abordado'}
         />
 
         {/* Botón flotante para recentrar ubicación */}

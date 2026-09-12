@@ -1088,6 +1088,7 @@ export default function PaginaConductorColectivo() {
             lineaSeleccionada={lineaActual}
             conductoresEnVivo={conductoresEnVivo}
             esModoConductor={true}
+            modoSeguimientoNavegacion={enServicio}
             miConductorId={choferSesion?.id}
             miPatente={choferSesion?.vehiculo?.patente || choferSesion?.patente || 'MI AUTO'}
             pasajerosEnEspera={pasajerosEnEspera}

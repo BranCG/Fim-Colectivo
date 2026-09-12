@@ -67,6 +67,28 @@ export function reproducirSonido(tipo: 'alerta' | 'exito' | 'rechazo') {
   }
 }
 
+/**
+ * Emite una notificación nativa visual (con título y cuerpo) y reproduce un tono audible
+ */
+export function notificarConSonido(titulo: string, cuerpo: string, tipoSonido: 'alerta' | 'exito' = 'alerta') {
+  reproducirSonido(tipoSonido);
+
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (Notification.permission === 'granted') {
+      try {
+        new Notification(titulo, {
+          body: cuerpo,
+          tag: 'fim-colectivo-notif',
+        });
+      } catch (e) {
+        console.warn('Error al mostrar notificación nativa:', e);
+      }
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }
+}
+
 // Cache de voces disponibles
 let vocesPrecargadas: SpeechSynthesisVoice[] = [];
 let audioActual: HTMLAudioElement | null = null;
@@ -171,8 +193,8 @@ export function detenerVoz() {
 }
 
 /**
- * Lee texto en voz alta utilizando el motor nativo de síntesis de voz (SpeechSynthesis)
- * de alta fluidez y sin retrasos de red, con fallback a audio streaming.
+ * Lee texto en voz alta utilizando síntesis de voz neuronal (Google TTS Proxy)
+ * de alta claridad y fluidez para el chofer.
  */
 export function hablarTexto(texto: string, alFinalizar?: () => void) {
   if (typeof window === 'undefined') {
@@ -190,15 +212,17 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
     }
   };
 
-  // 1. Prioridad: Síntesis nativa del dispositivo (0ms de latencia, audio fluido sin cortes)
-  if ('speechSynthesis' in window) {
+  const isNativeApp = Capacitor.isNativePlatform() || window.location.protocol === 'capacitor:';
+
+  // Si no es app nativa y el navegador tiene speechSynthesis nativo confiable
+  if (!isNativeApp && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();
       window.speechSynthesis.resume();
 
       const locucion = new SpeechSynthesisUtterance(texto);
       locucion.lang = 'es-CL';
-      locucion.rate = 1.08;
+      locucion.rate = 1.05;
       locucion.pitch = 1.0;
       locucion.volume = 1.0;
 
@@ -216,48 +240,57 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
 
       locucion.onerror = (err) => {
         clearTimeout(timerSeguridad);
-        console.warn('[TTS] SpeechSynthesis error:', err);
-        invocarFinal();
+        console.warn('[TTS] Error en SpeechSynthesis nativo, usando voz neuronal:', err);
+        reproducirAudioNeuronal(texto, invocarFinal);
       };
 
       window.speechSynthesis.speak(locucion);
       return;
     } catch (e) {
-      console.warn('[TTS] Error en SpeechSynthesis nativo, probando fallback:', e);
+      console.warn('[TTS] Excepción en SpeechSynthesis nativo:', e);
     }
   }
 
-  // 2. Fallback: Stream de audio si el navegador no cuenta con speechSynthesis
+  // Reproducir voz neuronal vía stream proxy backend (Google TTS en español)
+  reproducirAudioNeuronal(texto, invocarFinal);
+}
+
+function reproducirAudioNeuronal(texto: string, alFinalizar?: () => void) {
   try {
     const textoCodificado = encodeURIComponent(texto.trim().slice(0, 250));
     const urlProxy = `${getBaseApiUrl()}/api/colectivos/tts?texto=${textoCodificado}&lang=es`;
 
-    const audio = new Audio();
+    const audio = new Audio(urlProxy);
     audioActual = audio;
+    audio.volume = 1.0;
 
-    const timerSeguridad = setTimeout(invocarFinal, 7000);
+    const timerSeguridad = setTimeout(() => {
+      audioActual = null;
+      if (alFinalizar) alFinalizar();
+    }, 8000);
 
     audio.onended = () => {
       clearTimeout(timerSeguridad);
       audioActual = null;
-      invocarFinal();
+      if (alFinalizar) alFinalizar();
     };
 
-    audio.onerror = () => {
+    audio.onerror = (err) => {
       clearTimeout(timerSeguridad);
       audioActual = null;
-      invocarFinal();
+      console.warn('[Voz Neuronal Error]', err);
+      if (alFinalizar) alFinalizar();
     };
 
-    audio.src = urlProxy;
-    audio.play().catch(() => {
+    audio.play().catch((err) => {
       clearTimeout(timerSeguridad);
       audioActual = null;
-      invocarFinal();
+      console.warn('[Voz Neuronal Play Error]', err);
+      if (alFinalizar) alFinalizar();
     });
   } catch (e) {
-    console.warn('[TTS Audio] Error en audio fallback:', e);
-    invocarFinal();
+    console.warn('[Voz Neuronal Exception]', e);
+    if (alFinalizar) alFinalizar();
   }
 }
 
