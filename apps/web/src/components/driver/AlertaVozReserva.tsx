@@ -67,14 +67,14 @@ export default function AlertaVozReserva({
       });
     };
 
-    // Hablar inmediatamente; al terminar la frase (o a los 1.3s), se enciende el micrófono
+    // Hablar inmediatamente; al terminar la frase (o a los 2.5s como resguardo), se enciende el micrófono
     hablarTexto(textoVoz, () => {
       activarMicrofono();
     });
 
     const timerSeguridadMic = setTimeout(() => {
       activarMicrofono();
-    }, 1300);
+    }, 2500);
 
     return () => {
       clearTimeout(timerSeguridadMic);

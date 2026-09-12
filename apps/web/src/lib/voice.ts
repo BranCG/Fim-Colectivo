@@ -2,6 +2,8 @@
 // Proporciona Text-to-Speech (TTS), reconocimiento de voz (STT) y chimes de audio
 // para evitar que el conductor desvíe la vista o manipule el teléfono mientras conduce.
 
+import { Capacitor } from '@capacitor/core';
+
 let contextoAudio: AudioContext | null = null;
 
 function obtenerAudioContext(): AudioContext | null {
@@ -75,6 +77,13 @@ function getBaseApiUrl(): string {
   if (typeof window === 'undefined') return 'https://colectivo.fimchile.cl';
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
   const host = window.location.hostname;
+  const isNativeApp =
+    Capacitor.isNativePlatform() ||
+    window.location.protocol === 'capacitor:' ||
+    (host === 'localhost' && window.location.port !== '3000' && window.location.port !== '3001');
+  if (isNativeApp) {
+    return 'https://colectivo.fimchile.cl';
+  }
   if (host === 'localhost' || host === '127.0.0.1') return `http://${host}:3011`;
   return 'https://colectivo.fimchile.cl';
 }
@@ -171,8 +180,8 @@ export function detenerVoz() {
 }
 
 /**
- * Lee texto en voz alta utilizando el motor nativo de síntesis de voz (SpeechSynthesis)
- * de alta fluidez y sin retrasos de red, con fallback a audio streaming.
+ * Lee texto en voz alta utilizando el motor de audio streaming neuronal en español (Google Neural TTS)
+ * con fallback a síntesis nativa del dispositivo si falla la red.
  */
 export function hablarTexto(texto: string, alFinalizar?: () => void) {
   if (typeof window === 'undefined') {
@@ -190,52 +199,18 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
     }
   };
 
-  // 1. Prioridad: Síntesis nativa del dispositivo (0ms de latencia, audio fluido sin cortes)
-  if ('speechSynthesis' in window) {
-    try {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.resume();
-
-      const locucion = new SpeechSynthesisUtterance(texto);
-      locucion.lang = 'es-CL';
-      locucion.rate = 1.08;
-      locucion.pitch = 1.0;
-      locucion.volume = 1.0;
-
-      const vozEspanol = buscarVozEspanol();
-      if (vozEspanol) {
-        locucion.voice = vozEspanol;
-      }
-
-      const timerSeguridad = setTimeout(invocarFinal, 7000);
-
-      locucion.onend = () => {
-        clearTimeout(timerSeguridad);
-        invocarFinal();
-      };
-
-      locucion.onerror = (err) => {
-        clearTimeout(timerSeguridad);
-        console.warn('[TTS] SpeechSynthesis error:', err);
-        invocarFinal();
-      };
-
-      window.speechSynthesis.speak(locucion);
-      return;
-    } catch (e) {
-      console.warn('[TTS] Error en SpeechSynthesis nativo, probando fallback:', e);
-    }
-  }
-
-  // 2. Fallback: Stream de audio si el navegador no cuenta con speechSynthesis
+  // 1. Prioridad: Stream de audio neural humano en español (/api/colectivos/tts o Google TTS directo)
   try {
     const textoCodificado = encodeURIComponent(texto.trim().slice(0, 250));
     const urlProxy = `${getBaseApiUrl()}/api/colectivos/tts?texto=${textoCodificado}&lang=es`;
+    const urlGoogle = `https://translate.google.com/translate_tts?ie=UTF-8&q=${textoCodificado}&tl=es&client=tw-ob`;
 
     const audio = new Audio();
     audioActual = audio;
 
-    const timerSeguridad = setTimeout(invocarFinal, 7000);
+    const timerSeguridad = setTimeout(() => {
+      invocarFinal();
+    }, 10000);
 
     audio.onended = () => {
       clearTimeout(timerSeguridad);
@@ -245,19 +220,97 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
 
     audio.onerror = () => {
       clearTimeout(timerSeguridad);
+      console.warn('[TTS Neural] Falló endpoint proxy, probando Google directo o síntesis nativa...');
       audioActual = null;
-      invocarFinal();
+      probarGoogleDirecto(urlGoogle, texto, invocarFinal);
     };
 
     audio.src = urlProxy;
-    audio.play().catch(() => {
-      clearTimeout(timerSeguridad);
-      audioActual = null;
-      invocarFinal();
-    });
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn('[TTS Neural] Error al reproducir audio proxy, intentando Google directo:', err);
+        probarGoogleDirecto(urlGoogle, texto, invocarFinal);
+      });
+    }
   } catch (e) {
-    console.warn('[TTS Audio] Error en audio fallback:', e);
-    invocarFinal();
+    console.warn('[TTS Neural] Error al inicializar audio neural, pasando a síntesis nativa:', e);
+    ejecutarLecturaSintesis(texto, invocarFinal);
+  }
+}
+
+function probarGoogleDirecto(urlGoogle: string, textoOriginal: string, onFin: () => void) {
+  try {
+    const audioSecundario = new Audio();
+    audioActual = audioSecundario;
+
+    const timer = setTimeout(() => {
+      onFin();
+    }, 10000);
+
+    audioSecundario.onended = () => {
+      clearTimeout(timer);
+      audioActual = null;
+      onFin();
+    };
+
+    audioSecundario.onerror = () => {
+      clearTimeout(timer);
+      audioActual = null;
+      ejecutarLecturaSintesis(textoOriginal, onFin);
+    };
+
+    audioSecundario.src = urlGoogle;
+    audioSecundario.play().catch(() => {
+      clearTimeout(timer);
+      audioActual = null;
+      ejecutarLecturaSintesis(textoOriginal, onFin);
+    });
+  } catch {
+    ejecutarLecturaSintesis(textoOriginal, onFin);
+  }
+}
+
+function ejecutarLecturaSintesis(texto: string, alFinalizar?: () => void) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    if (alFinalizar) alFinalizar();
+    return;
+  }
+
+  try {
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+
+    const locucion = new SpeechSynthesisUtterance(texto);
+    locucion.lang = 'es-CL';
+    locucion.rate = 1.05;
+    locucion.pitch = 1.0;
+    locucion.volume = 1.0;
+
+    const vozEspanol = buscarVozEspanol();
+    if (vozEspanol) {
+      locucion.voice = vozEspanol;
+    }
+
+    let completado = false;
+    const invocarFinal = () => {
+      if (!completado) {
+        completado = true;
+        if (alFinalizar) alFinalizar();
+      }
+    };
+
+    locucion.onend = invocarFinal;
+    locucion.onerror = (err) => {
+      console.warn('[TTS Nativo] SpeechSynthesis error:', err);
+      invocarFinal();
+    };
+
+    setTimeout(invocarFinal, 7000);
+    window.speechSynthesis.speak(locucion);
+  } catch (err) {
+    console.warn('[TTS Nativo] Error al ejecutar speak:', err);
+    if (alFinalizar) alFinalizar();
   }
 }
 
