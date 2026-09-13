@@ -124,9 +124,98 @@ model LineaColectivo {
   fechaActualizacion  DateTime          @updatedAt
   conductores         Driver[]
   paradas             ParadaColectivo[]
+  tramos              RouteSegment[]
+  trazados            RouteShape[]
   reservas            ReservaAsiento[]
 
   @@map("lineas_colectivo")
+}
+
+model RouteSegment {
+  id                 String         @id @default(cuid())
+  lineaId            String         @map("linea_id")
+  folio              String
+  sentido            String         // "ida" | "regreso"
+  orden              Int            // Orden estricto del Excel: 1, 2, 3...
+  calleOriginal      String         @map("calle_original")
+  calleNormalizada   String         @map("calle_normalizada")
+  comuna             String
+  latInicio          Float?         @map("lat_inicio")
+  lngInicio          Float?         @map("lng_inicio")
+  latFin             Float?         @map("lat_fin")
+  lngFin             Float?         @map("lng_fin")
+  geojson            Json?
+  confianza          Float          @default(100.0)
+  estadoValidacion   String         @default("PENDIENTE") @map("estado_validacion") // "PENDIENTE", "VALIDADO", "PUBLICADO", "REQUIERE_REVISION", "FALLIDO"
+  notasValidacion    String?        @map("notas_validacion")
+  metadatos          Json?
+  fechaCreacion      DateTime       @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime       @updatedAt @map("fecha_actualizacion")
+
+  linea              LineaColectivo @relation(fields: [lineaId], references: [id], onDelete: Cascade)
+
+  @@index([lineaId, sentido, orden])
+  @@index([folio, sentido, orden])
+  @@index([estadoValidacion])
+  @@map("route_segments")
+}
+
+model RouteShape {
+  id                 String         @id @default(cuid())
+  lineaId            String         @map("linea_id")
+  folio              String
+  sentido            String         // "ida" | "regreso"
+  shapeId            String         @map("shape_id") // ej: "SHP-233012-IDA-v1"
+  version            Int            @default(1)
+  origenTipo         String         @default("RUTEADO_OSM") @map("origen_tipo") // "OFICIAL", "RUTEADO_OSM", "MAP_MATCHED", "MANUAL", "IMPORTADO"
+  proveedorOrigen    String?        @map("proveedor_origen") // "OSRM", "MTT", "GTFS"
+  versionOrigen      String?        @map("version_origen")
+  distanciaMetros    Float?         @map("distancia_metros") // Calculado con ST_Length(geom::geography) en PostGIS
+  confianza          Float          @default(100.0)
+  estadoValidacion   String         @default("PENDIENTE") @map("estado_validacion") // "PENDIENTE", "VALIDADO", "PUBLICADO", "REQUIERE_REVISION", "FALLIDO"
+  notasValidacion    String?        @map("notas_validacion")
+  puntos             Json?          // Array derivado [[lat, lng], ...] para consumo rápido en frontend a 60fps
+  limites            Json?          // Bounding box [minLng, minLat, maxLng, maxLat]
+  esActivo           Boolean        @default(true) @map("es_activo")
+  metadatos          Json?
+  fechaCreacion      DateTime       @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime       @updatedAt @map("fecha_actualizacion")
+
+  linea              LineaColectivo @relation(fields: [lineaId], references: [id], onDelete: Cascade)
+
+  @@index([lineaId, sentido, esActivo])
+  @@index([folio, sentido, esActivo])
+  @@index([shapeId])
+  @@index([estadoValidacion])
+  @@map("route_shapes")
+}
+
+model CacheSegmentoVial {
+  id                 String         @id @default(cuid())
+  calleNormalizada   String         @map("calle_normalizada")
+  comuna             String
+  comunaVerificada   String?        @map("comuna_verificada")
+  nombreVialResuelto String?        @map("nombre_vial_resuelto")
+  osmWayId           String?        @map("osm_way_id")
+  roadId             String?        @map("road_id")
+  sentidoVial        String?        @map("sentido_vial")
+  metodoResolucion   String         @default("OVERPASS_OSM") @map("metodo_resolucion")
+  proveedor          String         @default("OSM")
+  versionProveedor   String         @default("1.0") @map("version_proveedor")
+  latInicio          Float?         @map("lat_inicio")
+  lngInicio          Float?         @map("lng_inicio")
+  latFin             Float?         @map("lat_fin")
+  lngFin             Float?         @map("lng_fin")
+  geometriaGeojson   Json?          @map("geometria_geojson")
+  confianza          Float          @default(100.0)
+  datosCrudos        Json?          @map("datos_crudos")
+  fechaCreacion      DateTime       @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime       @updatedAt @map("fecha_actualizacion")
+
+  @@unique([calleNormalizada, comuna, proveedor])
+  @@index([osmWayId])
+  @@index([roadId])
+  @@map("cache_segmentos_viales")
 }
 
 model ParadaColectivo {
