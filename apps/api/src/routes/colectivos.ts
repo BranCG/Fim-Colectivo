@@ -217,7 +217,7 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       nombrePasajero: nuevaReserva.pasajero.name,
       cantidadAsientos: nuevaReserva.cantidadAsientos,
       distanciaMetros,
-      tiempoLimiteSegundos: 20,
+      tiempoLimiteSegundos: 30,
       direccionSubida: nuevaReserva.direccionSubida,
     });
     if (lineaId) {
@@ -227,7 +227,7 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
         nombrePasajero: nuevaReserva.pasajero.name,
         cantidadAsientos: nuevaReserva.cantidadAsientos,
         distanciaMetros,
-        tiempoLimiteSegundos: 20,
+        tiempoLimiteSegundos: 30,
         direccionSubida: nuevaReserva.direccionSubida,
       });
     }
@@ -828,7 +828,7 @@ export function despacharASiguienteConductor(reservaId: string) {
       nombrePasajero: solicitud.nombrePasajero,
       cantidadAsientos: solicitud.cantidadAsientos,
       distanciaMetros,
-      tiempoLimiteSegundos: 15,
+      tiempoLimiteSegundos: 30,
       direccionSubida: solicitud.direccionSubida,
     });
     if (solicitud.lineaId) {
@@ -838,7 +838,7 @@ export function despacharASiguienteConductor(reservaId: string) {
         nombrePasajero: solicitud.nombrePasajero,
         cantidadAsientos: solicitud.cantidadAsientos,
         distanciaMetros,
-        tiempoLimiteSegundos: 15,
+        tiempoLimiteSegundos: 30,
         direccionSubida: solicitud.direccionSubida,
       });
     }
@@ -867,13 +867,13 @@ export function despacharASiguienteConductor(reservaId: string) {
       });
     }
 
-    // Temporizador de 15 segundos antes de cascada automática
+    // Temporizador de 30 segundos antes de cascada automática
     solicitud.timer = setTimeout(() => {
-      console.log(`[Colectivos] Conductor ${driverId} no respondió en 15s. Cascada hacia siguiente móvil en ruta...`);
+      console.log(`[Colectivos] Conductor ${driverId} no respondió en 30s. Cascada hacia siguiente móvil en ruta...`);
       io.to(`driver:${driverId}`).emit('colectivo:solicitud-expirada', { reservaId });
       solicitud.conductorActualIndex++;
       despacharASiguienteConductor(reservaId);
-    }, 15000);
+    }, 30000);
   }).catch((err) => {
     console.error('Error al despachar a chofer:', err);
     solicitud.conductorActualIndex++;

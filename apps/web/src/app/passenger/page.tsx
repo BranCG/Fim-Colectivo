@@ -100,7 +100,7 @@ export default function PaginaPasajeroColectivo() {
 
   // Cálculo cuantitativo de tiempo estimado de llegada del colectivo reservado/asignado
   const infoLlegadaReserva = useMemo(() => {
-    if (!reservaActiva || reservaActiva.estado === 'abordado' || reservaActiva.estado === 'completado') {
+    if (!reservaActiva || reservaActiva.estado !== 'reservado') {
       return null;
     }
     const conductorIdTarget = reservaActiva.conductor?.id || (reservaActiva as any).conductorId;
@@ -772,7 +772,7 @@ export default function PaginaPasajeroColectivo() {
                     {reservaActiva.estado === 'abordado'
                       ? 'A Bordo'
                       : reservaActiva.estado === 'pendiente_chofer'
-                      ? 'Esperando al Chofer...'
+                      ? 'Solicitud Enviada'
                       : 'Asiento Reservado'}
                   </span>
                 </span>
@@ -800,14 +800,54 @@ export default function PaginaPasajeroColectivo() {
                   {reservaActiva.estado === 'abordado'
                     ? 'En viaje'
                     : reservaActiva.estado === 'pendiente_chofer'
-                    ? 'Esperando confirmación'
-                    : 'Asiento reservado'}
+                    ? 'Esperando respuesta del chofer'
+                    : 'Móvil en camino'}
                 </div>
               </div>
             </div>
 
-            {/* Tiempo estimado de llegada del colectivo reservado (cuantitativo en minutos) */}
-            {infoLlegadaReserva && (
+            {/* Si está en pendiente_chofer: tarjeta especial de espera sin estimación prematura */}
+            {reservaActiva.estado === 'pendiente_chofer' && (
+              <div
+                style={{
+                  background: 'rgba(250, 204, 21, 0.08)',
+                  border: '1.5px dashed #FACC15',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    background: 'rgba(250, 204, 21, 0.15)',
+                    border: '1.5px solid #FACC15',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    animation: 'fimPulse 1.2s infinite ease-out',
+                  }}
+                >
+                  <IconoReloj size={20} color="#FACC15" />
+                </div>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#FACC15' }}>
+                    Esperando confirmación del conductor...
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#D4D4D4', marginTop: '2px' }}>
+                    El chofer recibió la alerta en su vehículo. Debe responder <b>Sí</b> o <b>No</b> para confirmar tu viaje.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tiempo estimado de llegada del colectivo reservado (cuantitativo en minutos) - ÚNICAMENTE cuando fue confirmado */}
+            {reservaActiva.estado === 'reservado' && infoLlegadaReserva && (
               <div
                 style={{
                   background: 'rgba(250, 204, 21, 0.12)',
