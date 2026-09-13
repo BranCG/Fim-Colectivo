@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  // Solo export estático si se solicita explícitamente para mobile
+  ...(process.env.NEXT_EXPORT === 'true' ? { output: 'export' } : {}),
   images: {
     unoptimized: true,
     domains: ['localhost'],
