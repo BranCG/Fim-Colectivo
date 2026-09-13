@@ -2,6 +2,7 @@
 const nextConfig = {
   // Solo export estático si se solicita explícitamente para mobile
   ...(process.env.NEXT_EXPORT === 'true' ? { output: 'export' } : {}),
+  trailingSlash: true,
   images: {
     unoptimized: true,
     domains: ['localhost'],

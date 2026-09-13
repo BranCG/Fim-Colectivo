@@ -201,11 +201,11 @@ function RegisterForm() {
       if (role === 'passenger') {
         const res = await api.post('/auth/passenger/register', { name, email, phone, password, rut, birthDate, address, idFrontUrl: idFront.url, idBackUrl: idBack.url, selfieUrl: selfie.url });
         saveSession(res.data.accessToken, { ...res.data.user, role: 'passenger' });
-        router.push('/passenger');
+        router.replace('/passenger/');
       } else {
         const res = await api.post('/auth/driver/register', { name, email, phone, password, rut, birthDate, address, idFrontUrl: idFront.url, idBackUrl: idBack.url, selfieUrl: selfie.url, licenseNumber, licenseUrl: licenseFile.url, vehicleBrand, vehicleModel, vehicleYear, vehiclePlate, tagNumber, vehiclePhotoUrl: vehiclePhoto.url, membershipPlan });
         saveSession(res.data.accessToken, { ...res.data.driver, role: 'driver' });
-        router.push('/driver');
+        router.replace('/driver/');
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Error al registrarse.');

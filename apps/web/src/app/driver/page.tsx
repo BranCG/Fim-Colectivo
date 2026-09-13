@@ -123,7 +123,7 @@ export default function PaginaConductorColectivo() {
   useEffect(() => {
     const sesion = getSession();
     if (!sesion) {
-      router.push('/login?role=driver');
+      router.replace('/login/?role=driver');
       return;
     }
     setChoferSesion(sesion.user);
@@ -842,7 +842,7 @@ export default function PaginaConductorColectivo() {
   // Cerrar sesión
   const cerrarSesionChofer = () => {
     clearSession();
-    router.push('/login?role=driver');
+    router.replace('/login/?role=driver');
   };
 
   // Pasajeros en espera formateados para marcadores en el mapa con cálculo de ETA cuantitativo

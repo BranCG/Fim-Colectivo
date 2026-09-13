@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Capacitor } from '@capacitor/core';
+import { getSession } from '@/lib/api';
 import Logo from '@/components/Logo';
 import {
   IconoColectivo,
@@ -14,8 +17,33 @@ import {
 } from '@/components/icons/Iconos';
 
 export default function Home() {
+  const router = useRouter();
   const [rolActivo, setRolActivo] = useState<'pasajero' | 'conductor'>('pasajero');
   const [faqAbierta, setFaqAbierta] = useState<number | null>(null);
+  const [sesion, setSesion] = useState<{ token: string; user: any } | null>(null);
+
+  useEffect(() => {
+    const s = getSession();
+    if (s?.token) {
+      setSesion(s);
+      const role = (s.user?.role || '').toLowerCase();
+      if (role === 'driver' || role === 'conductor') {
+        router.replace('/driver/');
+        return;
+      } else if (role === 'passenger' || role === 'pasajero') {
+        router.replace('/passenger/');
+        return;
+      }
+    } else {
+      // En la aplicación nativa (APK), si no hay sesión activa, ir directo al login
+      if (typeof window !== 'undefined') {
+        const isNative = Capacitor.isNativePlatform() || window.location.protocol === 'capacitor:';
+        if (isNative) {
+          router.replace('/login/');
+        }
+      }
+    }
+  }, [router]);
 
   const toggleFaq = (index: number) => {
     setFaqAbierta(faqAbierta === index ? null : index);
@@ -31,12 +59,24 @@ export default function Home() {
         </Link>
 
         <div className="nav-actions">
-          <Link href="/login" className="nav-btn-login">
-            Iniciar sesión
-          </Link>
-          <Link href="/register" className="nav-btn-register">
-            Registrarse
-          </Link>
+          {sesion ? (
+            <Link
+              href={(sesion.user?.role || '').toLowerCase() === 'driver' ? '/driver/' : '/passenger/'}
+              className="nav-btn-login"
+              style={{ background: '#FACC15', color: '#000000', fontWeight: 800 }}
+            >
+              Ir a la App
+            </Link>
+          ) : (
+            <>
+              <Link href="/login/" className="nav-btn-login">
+                Iniciar sesión
+              </Link>
+              <Link href="/register/" className="nav-btn-register">
+                Registrarse
+              </Link>
+            </>
+          )}
         </div>
       </nav>
 
@@ -148,7 +188,7 @@ export default function Home() {
           }}
         >
           <Link
-            href="/login?role=passenger"
+            href="/login/?role=passenger"
             style={{
               flex: '1 1 240px',
               padding: '16px 20px',
@@ -171,7 +211,7 @@ export default function Home() {
           </Link>
 
           <Link
-            href="/login?role=driver"
+            href="/login/?role=driver"
             style={{
               flex: '1 1 240px',
               padding: '16px 20px',

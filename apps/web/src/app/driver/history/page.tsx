@@ -25,7 +25,7 @@ export default function DriverHistoryPage() {
 
   useEffect(() => {
     const s = getSession();
-    if (!s) { router.push('/login'); return; }
+    if (!s) { router.replace('/login/?role=driver'); return; }
 
     api.get('/trips/driver-trips')
       .then(r => setTrips(r.data.trips))
@@ -36,7 +36,7 @@ export default function DriverHistoryPage() {
   return (
     <div className="app-container" style={{ padding: '24px', background: 'var(--bg-primary)', minHeight: '100vh' }}>
       <header style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
-        <Link href="/driver" style={{ color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 700 }}>
+        <Link href="/driver/" style={{ color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', fontWeight: 700 }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           VOLVER AL MAPA
         </Link>

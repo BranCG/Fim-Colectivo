@@ -31,11 +31,12 @@ function ContenidoLogin() {
   useEffect(() => {
     const s = getSession();
     if (s?.token) {
-      if (s.user?.role === 'driver') {
-        router.push('/driver');
+      const rol = (s.user?.role || '').toLowerCase();
+      if (rol === 'driver' || rol === 'conductor') {
+        router.replace('/driver/');
         return;
-      } else if (s.user?.role === 'passenger') {
-        router.push('/passenger');
+      } else if (rol === 'passenger' || rol === 'pasajero') {
+        router.replace('/passenger/');
         return;
       }
     }
@@ -97,8 +98,8 @@ function ContenidoLogin() {
       const userData = res.data.user || res.data.driver;
       saveSession(res.data.accessToken, { ...userData, role: activeRole });
 
-      if (activeRole === 'driver') router.push('/driver');
-      else router.push('/passenger');
+      if (activeRole === 'driver') router.replace('/driver/');
+      else router.replace('/passenger/');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       setError(e.response?.data?.error || 'Credenciales incorrectas. Verifica correo y contraseña.');
@@ -299,7 +300,7 @@ function ContenidoLogin() {
       <div style={{ marginTop: '22px', textAlign: 'center', color: '#A3A3A3', fontSize: '13px' }}>
         ¿No tienes cuenta?{' '}
         <Link
-          href={`/register?role=${role}`}
+          href={`/register/?role=${role}`}
           style={{
             color: '#FACC15',
             fontWeight: 700,

@@ -39,7 +39,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('fim_colectivo_token');
       localStorage.removeItem('fim_colectivo_user');
-      window.location.href = '/login';
+      window.location.href = '/login/';
     }
     return Promise.reject(error);
   }
