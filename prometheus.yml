@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Monitoreo de la API Backend Fim-Colectivo
+  - job_name: 'fim-colectivo-api'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['api:3011']
+
+  # Monitoreo de Contenedores Docker vía cAdvisor
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']

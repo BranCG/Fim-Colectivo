@@ -3,7 +3,6 @@
   "appName": "Fim Colectivo",
   "webDir": "out",
   "server": {
-    "url": "https://colectivo.fimchile.cl",
     "androidScheme": "https",
     "cleartext": true
   }

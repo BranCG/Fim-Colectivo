@@ -95,7 +95,7 @@ router.get('/drivers', async (req: Request, res: Response) => {
 router.get('/drivers/:id', async (req: Request, res: Response) => {
   try {
     const driver = await prisma.driver.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         trips: {
           orderBy: { createdAt: 'desc' },
@@ -114,7 +114,7 @@ router.get('/drivers/:id', async (req: Request, res: Response) => {
 router.post('/drivers/:id/approve', async (req: Request, res: Response) => {
   try {
     const driver = await prisma.driver.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: { status: 'approved', adminNotes: null },
     });
     return res.json({ message: 'Conductor aprobado', driver });
@@ -128,7 +128,7 @@ router.post('/drivers/:id/reject', async (req: Request, res: Response) => {
   try {
     const { reason } = req.body;
     const driver = await prisma.driver.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: { status: 'rejected', adminNotes: reason },
     });
     return res.json({ message: 'Conductor rechazado', driver });
@@ -141,7 +141,7 @@ router.post('/drivers/:id/reject', async (req: Request, res: Response) => {
 router.post('/drivers/:id/membership-paid', async (req: Request, res: Response) => {
   try {
     const driver = await prisma.driver.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: {
         membershipPaid: true,
         membershipDate: new Date(),
@@ -159,7 +159,7 @@ router.post('/drivers/:id/suspend', async (req: Request, res: Response) => {
   try {
     const { reason } = req.body;
     const driver = await prisma.driver.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: { status: 'suspended', isOnline: false, adminNotes: reason },
     });
     return res.json({ message: 'Conductor suspendido', driver });
@@ -209,7 +209,7 @@ router.get('/revenue-report', async (req: Request, res: Response) => {
     // Agrupar por conductor y método de pago
     const stats: Record<string, any> = {};
 
-    trips.forEach(t => {
+    trips.forEach((t: any) => {
       const key = `${t.driverId}_${t.paymentMethod}`;
       const amount = t.finalPrice || t.estimatedPrice;
       

@@ -347,7 +347,10 @@ export default function ColectivoMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2. Centrar mapa con animación suave cuando se dispare `disparadorCentrado`
+  const haCentradoInicialmenteRef = useRef(false);
+  const ultimoDisparadorRef = useRef(0);
+
+  // 2. Centrar mapa ÚNICAMENTE en la carga inicial o al presionar el botón GPS (disparadorCentrado)
   useEffect(() => {
     if (mapaCargado && mapaRef.current && disparadorCentrado > 0) {
       if (estaAbordado && conductorSeleccionadoId) {
@@ -363,6 +366,14 @@ export default function ColectivoMap({
         }
       }
       if (ubicacionUsuario) {
+    if (mapaCargado && mapaRef.current && ubicacionUsuario) {
+      const esPrimeraVez = !haCentradoInicialmenteRef.current;
+      const esBotonGpsPresionado = disparadorCentrado > ultimoDisparadorRef.current;
+
+      if (esPrimeraVez || esBotonGpsPresionado) {
+        haCentradoInicialmenteRef.current = true;
+        ultimoDisparadorRef.current = disparadorCentrado;
+
         mapaRef.current.flyTo({
           center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
           zoom: 16,

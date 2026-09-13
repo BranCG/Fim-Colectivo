@@ -1,9 +1,17 @@
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
 
 const getApiUrl = () => {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-  return `http://${host}:3011`;
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    const isNativeApp = Capacitor.isNativePlatform() || window.location.protocol === 'capacitor:' || host === 'localhost';
+    if (isNativeApp) {
+      return 'https://colectivo.fimchile.cl';
+    }
+    return `http://${host}:3011`;
+  }
+  return 'https://colectivo.fimchile.cl';
 };
 
 const API_URL = getApiUrl();

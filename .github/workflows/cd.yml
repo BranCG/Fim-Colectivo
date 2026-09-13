@@ -2,7 +2,7 @@ name: CD - Despliegue Continuo AWS
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main]
 
 jobs:
   build-check:
@@ -19,13 +19,20 @@ jobs:
           cache: 'npm'
 
       - name: Instalación de dependencias
-        run: npm ci || npm install
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
       - name: Generar cliente de Prisma
-        run: npx prisma generate --schema=./packages/database/schema.prisma
+        run: npm run db:generate
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
 
       - name: Compilar Monorepo
         run: npm run build
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+          NEXT_PUBLIC_API_URL: "https://colectivo.fimchile.cl"
+          JWT_SECRET: "ci-secret-key"
+          JWT_REFRESH_SECRET: "ci-refresh-secret"
 
   deploy:
     name: Desplegar en Servidor AWS
@@ -34,7 +41,7 @@ jobs:
 
     steps:
       - name: Ejecutar despliegue vía SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
@@ -47,7 +54,9 @@ jobs:
             if [ -d "$APP_DIR" ]; then
               cd "$APP_DIR"
               echo "🔄 Obteniendo últimos cambios de Git..."
-              git pull origin main
+              git fetch origin
+              CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+              git pull origin $CURRENT_BRANCH
               
               echo "🐳 Reconstruyendo y actualizando contenedores Docker..."
               docker compose up -d --build
