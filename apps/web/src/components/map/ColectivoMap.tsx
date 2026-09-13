@@ -383,21 +383,22 @@ export default function ColectivoMap({
 
   // 2. Centrar mapa ÚNICAMENTE en la carga inicial o al presionar el botón GPS (disparadorCentrado)
   useEffect(() => {
-    if (mapaCargado && mapaRef.current && disparadorCentrado > 0) {
-      if (estaAbordado && conductorSeleccionadoId) {
-        const choferAsignado = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
-        if (choferAsignado && choferAsignado.latitud && choferAsignado.longitud) {
-          mapaRef.current.flyTo({
-            center: [choferAsignado.longitud, choferAsignado.latitud],
-            zoom: 16.5,
-            essential: true,
-            duration: 1000,
-          });
-          return;
-        }
+    if (!mapaCargado || !mapaRef.current) return;
+
+    if (estaAbordado && conductorSeleccionadoId) {
+      const choferAsignado = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
+      if (choferAsignado && choferAsignado.latitud && choferAsignado.longitud) {
+        mapaRef.current.flyTo({
+          center: [choferAsignado.longitud, choferAsignado.latitud],
+          zoom: 16.5,
+          essential: true,
+          duration: 1000,
+        });
+        return;
       }
-      if (ubicacionUsuario) {
-    if (mapaCargado && mapaRef.current && ubicacionUsuario) {
+    }
+
+    if (ubicacionUsuario) {
       const esPrimeraVez = !haCentradoInicialmenteRef.current;
       const esBotonGpsPresionado = disparadorCentrado > ultimoDisparadorRef.current;
 
