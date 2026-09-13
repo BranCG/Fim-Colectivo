@@ -224,8 +224,8 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
   const invocarFinal = () => {
     if (!finalizado) {
       finalizado = true;
-      // Reanudar la escucha tras un pequeño búfer de 250ms para que se limpie el eco acústico
-      GestorReconocimientoVoz.obtener().reanudarTrasHabla(250);
+      // Reanudar la escucha tras un pequeño búfer de 120ms para que se limpie el eco acústico
+      GestorReconocimientoVoz.obtener().reanudarTrasHabla(120);
       if (alFinalizar) alFinalizar();
     }
   };
@@ -238,10 +238,12 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
 
     const audio = new Audio();
     audioActual = audio;
+    audio.defaultPlaybackRate = 1.15;
+    audio.playbackRate = 1.15;
 
     const timerSeguridad = setTimeout(() => {
       invocarFinal();
-    }, 10000);
+    }, 4500);
 
     audio.onended = () => {
       clearTimeout(timerSeguridad);
@@ -409,13 +411,34 @@ class GestorReconocimientoVoz {
       clearTimeout(this.timerReanudarHabla);
       this.timerReanudarHabla = null;
     }
+    if (this.timerReintento) {
+      clearTimeout(this.timerReintento);
+      this.timerReintento = null;
+    }
+
+    // Detener y abortar el micrófono durante la locución del parlante
+    // para evitar que el reconocedor capture la voz neuronal y se enganche a esa transcripción
+    if (this.reconocimiento) {
+      try {
+        this.reconocimiento.onstart = null;
+        this.reconocimiento.onresult = null;
+        this.reconocimiento.onerror = null;
+        this.reconocimiento.onend = null;
+        this.reconocimiento.abort();
+      } catch {}
+      this.reconocimiento = null;
+      this.estaCorriendo = false;
+      this.notificarEstadoEscucha(false);
+    }
   }
 
-  reanudarTrasHabla(retrasoMs = 150) {
+  reanudarTrasHabla(retrasoMs = 120) {
     if (this.timerReanudarHabla) clearTimeout(this.timerReanudarHabla);
     this.timerReanudarHabla = setTimeout(() => {
       this.silenciadoPorHabla = false;
-      if (this.escuchandoDeseado && this.suscriptores.size > 0 && !this.estaCorriendo) {
+      // Limpiar cualquier texto residual para que el conductor comience con pantalla limpia
+      this.notificarTextoDetectado('');
+      if (this.escuchandoDeseado && this.suscriptores.size > 0) {
         this.iniciarCiclo();
       }
     }, retrasoMs);
@@ -498,6 +521,9 @@ class GestorReconocimientoVoz {
       };
 
       rec.onresult = (evento: any) => {
+        // Si el parlante está reproduciendo voz neuronal, ignorar cualquier captura acústica
+        if (this.silenciadoPorHabla) return;
+
         const ahora = Date.now();
         const resultados = evento.results;
         if (!resultados || resultados.length === 0) return;
@@ -661,6 +687,10 @@ class GestorReconocimientoVoz {
       rec.onend = () => {
         this.estaCorriendo = false;
         this.notificarEstadoEscucha(false);
+
+        // Si está silenciado durante la locución del parlante, NO reiniciar aquí;
+        // reanudarTrasHabla se encargará de abrir el ciclo limpio cuando finalice el audio
+        if (this.silenciadoPorHabla) return;
 
         // Reinicio automático con instancia limpia para Android
         if (this.escuchandoDeseado && this.suscriptores.size > 0) {

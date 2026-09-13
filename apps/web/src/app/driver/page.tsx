@@ -96,6 +96,7 @@ export default function PaginaConductorColectivo() {
   // Estados de retroalimentación de voz en tiempo real
   const [textoDetectadoPago, setTextoDetectadoPago] = useState<string>('');
   const [textoDetectadoAbordaje, setTextoDetectadoAbordaje] = useState<string>('');
+  const [anunciandoPagoVoz, setAnunciandoPagoVoz] = useState<boolean>(false);
 
   // Mensajes de alerta y feedback
   const [mensajeExito, setMensajeExito] = useState<string>('');
@@ -317,10 +318,13 @@ export default function PaginaConductorColectivo() {
 
       // Frase clara sin incluir las palabras disparadoras "sí" o "no" para evitar auto-disparo del parlante
       const mensajeVoz = 'Cliente solicita pagar. ¿Liberamos asiento?';
+      setAnunciandoPagoVoz(true);
 
       // Esperar a que concluya el chime de alerta (350ms) antes de emitir la voz
       setTimeout(() => {
-        hablarTexto(mensajeVoz);
+        hablarTexto(mensajeVoz, () => {
+          setAnunciandoPagoVoz(false);
+        });
       }, 350);
     };
 
@@ -2067,13 +2071,15 @@ export default function PaginaConductorColectivo() {
                       ? '#22C55E'
                       : textoDetectadoPago.includes('NO')
                       ? '#EF4444'
+                      : anunciandoPagoVoz
+                      ? '#3B82F6'
                       : '#FACC15',
                     boxShadow: '0 0 10px currentColor',
                     animation: 'fimPulse 1s infinite ease-out',
                   }}
                 />
                 <span style={{ fontSize: '11px', fontWeight: '800', color: '#FACC15', letterSpacing: '0.6px', textTransform: 'uppercase' }}>
-                  {textoDetectadoPago ? 'VOZ DETECTADA' : 'MICRÓFONO EN VIVO — DI TU RESPUESTA:'}
+                  {textoDetectadoPago ? 'VOZ DETECTADA' : anunciandoPagoVoz ? 'ANUNCIANDO COBRO...' : 'MICRÓFONO EN VIVO — DI TU RESPUESTA:'}
                 </span>
               </div>
               <div
@@ -2084,14 +2090,16 @@ export default function PaginaConductorColectivo() {
                     ? '#FACC15'
                     : textoDetectadoPago.includes('NO')
                     ? '#EF4444'
+                    : anunciandoPagoVoz
+                    ? '#E5E5E5'
                     : textoDetectadoPago
                     ? '#FFFFFF'
-                    : '#A3A3A3',
+                    : '#FACC15',
                   textAlign: 'center',
-                  textShadow: textoDetectadoPago ? '0 0 12px rgba(250, 204, 21, 0.5)' : 'none',
+                  textShadow: (textoDetectadoPago || !anunciandoPagoVoz) ? '0 0 12px rgba(250, 204, 21, 0.5)' : 'none',
                 }}
               >
-                {textoDetectadoPago ? `"${textoDetectadoPago}"` : 'Di "SÍ" para liberar o "NO" para cancelar'}
+                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? '🔊 Cliente solicita pagar. ¿Liberamos asiento?' : '🎙️ Escuchando... Di "SÍ" o "NO"'}
               </div>
             </div>
 

@@ -31,6 +31,7 @@ export default function AlertaVozReserva({
   const tiempoTotal = solicitud.tiempoLimiteSegundos || 15;
   const [segundosRestantes, setSegundosRestantes] = useState(tiempoTotal);
   const [escuchandoVoz, setEscuchandoVoz] = useState(false);
+  const [anunciandoVoz, setAnunciandoVoz] = useState(true);
   const [textoDetectado, setTextoDetectado] = useState('');
   const [comandoDetectado, setComandoDetectado] = useState<'si' | 'no' | null>(null);
   const [respondido, setRespondido] = useState(false);
@@ -43,19 +44,17 @@ export default function AlertaVozReserva({
     ? `${(solicitud.distanciaMetros / 1000).toFixed(1)} km`
     : `${solicitud.distanciaMetros} m`;
 
+  const nombre = (solicitud.nombrePasajero || 'Pasajero').split(' ')[0];
+  const asientos = solicitud.cantidadAsientos || 1;
+  const textoAsientos = asientos === 1 ? 'un asiento' : `${asientos} asientos`;
+  const textoVoz = `${nombre}, ${textoAsientos}. ¿Tomamos?`;
+
   // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS), luego activar micrófono
   useEffect(() => {
     // Sonido de alerta chime inicial
     reproducirSonido('alerta');
 
-    // Locución ultra-concisa de 1 segundo ("JUAN, UN ASIENTO. ¿TOMAMOS?")
-    const nombre = (solicitud.nombrePasajero || 'Pasajero').split(' ')[0];
-    const asientos = solicitud.cantidadAsientos || 1;
-    const textoAsientos = asientos === 1 ? 'un asiento' : `${asientos} asientos`;
-    const textoVoz = `${nombre}, ${textoAsientos}. ¿Tomamos?`;
-
-    // Iniciar escucha del micrófono de inmediato (segundo 0)
-    // El conductor puede responder "SÍ" o "DALE" al instante sin esperar
+    // Iniciar escucha del micrófono
     escuchaRef.current = iniciarEscuchaVoz({
       onSi: () => {
         setComandoDetectado('si');
@@ -77,8 +76,10 @@ export default function AlertaVozReserva({
 
     // Permitir que el doble tono de aviso de reserva suene limpio antes de iniciar la locución
     const timerInicioVoz = setTimeout(() => {
-      hablarTexto(textoVoz);
-    }, 350);
+      hablarTexto(textoVoz, () => {
+        setAnunciandoVoz(false);
+      });
+    }, 300);
 
     return () => {
       clearTimeout(timerInicioVoz);
@@ -234,20 +235,24 @@ export default function AlertaVozReserva({
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            background: escuchandoVoz ? 'rgba(250, 204, 21, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-            border: escuchandoVoz ? '1.5px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.1)',
+            background: anunciandoVoz ? 'rgba(255, 255, 255, 0.08)' : escuchandoVoz ? 'rgba(250, 204, 21, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+            border: anunciandoVoz ? '1px solid rgba(255, 255, 255, 0.2)' : escuchandoVoz ? '1.5px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.1)',
             padding: '5px 12px',
             borderRadius: '20px',
             maxWidth: '60%',
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={escuchandoVoz ? '#FACC15' : '#A3A3A3'} strokeWidth="2.5">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="22" />
-          </svg>
-          <span style={{ fontSize: '11px', fontWeight: '800', color: escuchandoVoz ? '#FACC15' : '#A3A3A3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {textoDetectado ? `"${textoDetectado}"` : escuchandoVoz ? 'DI "SÍ" O "NO"' : 'AUDIO ACTIVO'}
+          {anunciandoVoz ? (
+            <span style={{ fontSize: '13px' }}>🔊</span>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={escuchandoVoz ? '#FACC15' : '#A3A3A3'} strokeWidth="2.5">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="22" />
+            </svg>
+          )}
+          <span style={{ fontSize: '11px', fontWeight: '800', color: anunciandoVoz ? '#D4D4D4' : escuchandoVoz ? '#FACC15' : '#A3A3A3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {anunciandoVoz ? 'ANUNCIANDO...' : textoDetectado ? `"${textoDetectado}"` : 'DI "SÍ" O "NO"'}
           </span>
         </div>
       </div>
@@ -354,14 +359,19 @@ export default function AlertaVozReserva({
                 width: '12px',
                 height: '12px',
                 borderRadius: '50%',
-                background: comandoDetectado === 'si' ? '#22C55E' : comandoDetectado === 'no' ? '#EF4444' : '#FACC15',
-                boxShadow: comandoDetectado ? '0 0 14px currentColor' : '0 0 10px #FACC15',
+                background: comandoDetectado === 'si' ? '#22C55E' : comandoDetectado === 'no' ? '#EF4444' : anunciandoVoz ? '#3B82F6' : '#FACC15',
+                boxShadow: comandoDetectado ? '0 0 14px currentColor' : anunciandoVoz ? '0 0 10px #3B82F6' : '0 0 10px #FACC15',
                 flexShrink: 0,
+                animation: 'fimPulse 1s infinite ease-out',
               }}
             />
             <div style={{ minWidth: 0, overflow: 'hidden' }}>
               <div style={{ fontSize: '10px', fontWeight: '800', color: '#A3A3A3', letterSpacing: '0.6px', textTransform: 'uppercase' }}>
-                {comandoDetectado ? 'COMANDO RECONOCIDO' : 'MICRÓFONO EN VIVO (DI TU RESPUESTA):'}
+                {comandoDetectado
+                  ? 'COMANDO RECONOCIDO'
+                  : anunciandoVoz
+                  ? 'ANUNCIANDO PASAJERO:'
+                  : 'MICRÓFONO EN VIVO (DI TU RESPUESTA):'}
               </div>
               <div
                 style={{
@@ -371,22 +381,26 @@ export default function AlertaVozReserva({
                     ? '#FACC15'
                     : comandoDetectado === 'no'
                     ? '#EF4444'
+                    : anunciandoVoz
+                    ? '#E5E5E5'
                     : textoDetectado
                     ? '#FFFFFF'
-                    : '#737373',
+                    : '#FACC15',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  textShadow: textoDetectado ? '0 0 10px rgba(250, 204, 21, 0.4)' : 'none',
+                  textShadow: (textoDetectado || !anunciandoVoz) ? '0 0 10px rgba(250, 204, 21, 0.4)' : 'none',
                 }}
               >
                 {comandoDetectado === 'si'
                   ? '✓ ¡SÍ DETECTADO!'
                   : comandoDetectado === 'no'
                   ? '✕ ¡PASO DETECTADO!'
+                  : anunciandoVoz
+                  ? `🔊 ${nombre}, ${textoAsientos}. ¿Tomamos?`
                   : textoDetectado
                   ? `"${textoDetectado}"`
-                  : 'Escuchando... Di "SÍ" o "NO"'}
+                  : '🎙️ Escuchando... Di "SÍ" o "NO"'}
               </div>
             </div>
           </div>
