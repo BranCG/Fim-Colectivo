@@ -45,12 +45,14 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onStart() {
         super.onStart();
-        // Limpiar caché de WebView para asegurar que siempre ejecute los archivos más recientes
+        // Limpiar caché de WebView y habilitar GPS nativo en WebView
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebView webView = getBridge().getWebView();
             webView.clearCache(true);
             WebSettings settings = webView.getSettings();
             settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+            settings.setGeolocationEnabled(true);
+            settings.setGeolocationDatabasePath(getFilesDir().getPath());
         }
     }
 }

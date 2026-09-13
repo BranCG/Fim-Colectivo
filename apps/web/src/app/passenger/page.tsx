@@ -20,6 +20,7 @@ import {
   IconoAsiento,
   IconoReloj,
   IconoBuscar,
+  IconoParada,
 } from '@/components/icons/Iconos';
 import { reproducirSonido, hablarTexto } from '@/lib/voice';
 
@@ -112,6 +113,7 @@ export default function PaginaPasajeroColectivo() {
     direccion?: string;
   } | null>(null);
   const [disparadorCentrado, setDisparadorCentrado] = useState(0);
+  const [disparadorEncuadrarRuta, setDisparadorEncuadrarRuta] = useState(0);
 
   // Feedback y mensajes
   const [mensajeAlerta, setMensajeAlerta] = useState<string>('');
@@ -162,6 +164,27 @@ export default function PaginaPasajeroColectivo() {
   }, [router]);
 
   // 2. Obtener geolocalización en tiempo real del pasajero y auto-centrar el mapa
+  const centrarGpsOEncuadrarRuta = useCallback(() => {
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (posicion: GeolocationPosition) => {
+          const lat = posicion.coords.latitude;
+          const lng = posicion.coords.longitude;
+          setUbicacionPasajero({ latitud: lat, longitud: lng });
+          setDisparadorCentrado((prev) => prev + 1);
+        },
+        (error: GeolocationPositionError) => {
+          console.warn('GPS no disponible en el dispositivo:', error.message);
+          // Si el GPS falla o está deshabilitado en el teléfono, encuadrar la ruta para que el usuario no quede desorientado
+          setDisparadorEncuadrarRuta((prev) => prev + 1);
+        },
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+      );
+    } else {
+      setDisparadorEncuadrarRuta((prev) => prev + 1);
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined' || !('geolocation' in navigator)) return;
 
@@ -180,10 +203,8 @@ export default function PaginaPasajeroColectivo() {
     };
 
     const alFallarUbicacion = (error: GeolocationPositionError) => {
-      console.warn('GPS inicial no disponible, aguardando señal precisa:', error.message);
-      if (primerExito) {
-        setUbicacionPasajero((prev) => prev || { latitud: -33.4489, longitud: -70.6693 });
-      }
+      console.warn('GPS inicial no disponible, mostrando trazado oficial:', error.message);
+      // No asignar coordenadas falsas de Santiago Centro para no alejar la cámara de La Granja
     };
 
     // Intentar obtener rápidamente la posición actual
@@ -1102,33 +1123,66 @@ export default function PaginaPasajeroColectivo() {
           conductorSeleccionadoId={reservaActiva ? (reservaActiva.conductor?.id || (reservaActiva as any).conductorId) : conductorElegido?.conductorId}
           alSeleccionarConductor={(chofer) => setConductorElegido(chofer)}
           disparadorCentrado={disparadorCentrado}
+          disparadorEncuadrarRuta={disparadorEncuadrarRuta}
           estaAbordado={reservaActiva?.estado === 'abordado' || reservaActiva?.estado === 'pagando'}
           sentidoSeleccionado={sentidoSeleccionado}
           tramoSeleccionado={tramoSeleccionado}
         />
 
-        {/* Botón flotante para recentrar ubicación */}
+        {/* Botón flotante para ver y encuadrar recorrido completo */}
         <button
-          onClick={() => setDisparadorCentrado((prev) => prev + 1)}
+          onClick={() => setDisparadorEncuadrarRuta((prev) => prev + 1)}
           style={{
             position: 'absolute',
             right: '16px',
-            bottom: '16px',
+            bottom: '70px',
             zIndex: 1000,
-            background: '#171717',
+            background: 'rgba(18, 18, 18, 0.95)',
+            backdropFilter: 'blur(8px)',
             color: '#FACC15',
-            border: '1px solid #FACC15',
+            border: '1.5px solid rgba(250, 204, 21, 0.4)',
             borderRadius: '50%',
             width: '44px',
             height: '44px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '18px',
-            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.6)',
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.7)',
             cursor: 'pointer',
+            transition: 'transform 0.15s ease',
           }}
-          title="Centrar en mi posición"
+          title="Ver recorrido completo"
+          onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.92)')}
+          onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+        >
+          <IconoParada size={20} color="#FACC15" />
+        </button>
+
+        {/* Botón flotante para recentrar ubicación GPS */}
+        <button
+          onClick={centrarGpsOEncuadrarRuta}
+          style={{
+            position: 'absolute',
+            right: '16px',
+            bottom: '16px',
+            zIndex: 1000,
+            background: 'rgba(18, 18, 18, 0.95)',
+            backdropFilter: 'blur(8px)',
+            color: '#FACC15',
+            border: '1.5px solid #FACC15',
+            borderRadius: '50%',
+            width: '44px',
+            height: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 14px rgba(250, 204, 21, 0.3)',
+            cursor: 'pointer',
+            transition: 'transform 0.15s ease',
+          }}
+          title="Centrar en mi ubicación GPS"
+          onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.92)')}
+          onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
         >
           <IconoGps size={20} color="#FACC15" />
         </button>

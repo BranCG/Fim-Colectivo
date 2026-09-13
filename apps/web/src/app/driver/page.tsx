@@ -79,6 +79,27 @@ export default function PaginaConductorColectivo() {
     longitud: number;
   } | null>(null);
   const [disparadorCentrado, setDisparadorCentrado] = useState(0);
+  const [disparadorEncuadrarRuta, setDisparadorEncuadrarRuta] = useState(0);
+
+  const centrarMiAuto = useCallback(() => {
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setUbicacionChofer({ latitud: lat, longitud: lng });
+          setDisparadorCentrado((prev) => prev + 1);
+        },
+        (err) => {
+          console.warn('GPS chofer no disponible:', err.message);
+          setDisparadorCentrado((prev) => prev + 1);
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      );
+    } else {
+      setDisparadorCentrado((prev) => prev + 1);
+    }
+  }, []);
   const [conductoresEnVivo, setConductoresEnVivo] = useState<ConductorColectivo[]>([]);
 
   // Reservas de pasajeros
@@ -1332,9 +1353,39 @@ export default function PaginaConductorColectivo() {
           </div>
         </div>
 
+        {/* Botón flotante para ver recorrido completo */}
+        <button
+          onClick={() => setDisparadorEncuadrarRuta((prev) => prev + 1)}
+          style={{
+            position: 'absolute',
+            bottom: '16px',
+            left: '16px',
+            zIndex: 10,
+            background: 'rgba(18, 18, 18, 0.92)',
+            backdropFilter: 'blur(8px)',
+            color: '#FACC15',
+            border: '1.5px solid rgba(250, 204, 21, 0.4)',
+            borderRadius: '50px',
+            padding: '8px 14px',
+            fontSize: '12px',
+            fontWeight: '800',
+            cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            transition: 'transform 0.15s',
+          }}
+          onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.94)')}
+          onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+        >
+          <IconoParada size={15} color="#FACC15" />
+          <span>Ver recorrido</span>
+        </button>
+
         {/* Botón flotante para centrar mapa en el colectivo */}
         <button
-          onClick={() => setDisparadorCentrado((prev) => prev + 1)}
+          onClick={centrarMiAuto}
           style={{
             position: 'absolute',
             bottom: '16px',
@@ -1372,6 +1423,7 @@ export default function PaginaConductorColectivo() {
             miPatente={choferSesion?.vehiculo?.patente || choferSesion?.patente || ''}
             pasajerosEnEspera={pasajerosEnEspera}
             disparadorCentrado={disparadorCentrado}
+            disparadorEncuadrarRuta={disparadorEncuadrarRuta}
             sentidoSeleccionado={sentidoRuta === 'regreso' ? 'regreso' : 'ida'}
             altura="300px"
           />

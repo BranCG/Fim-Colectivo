@@ -98,6 +98,7 @@ interface Props {
   conductorSeleccionadoId?: string | null;
   alSeleccionarConductor?: (conductor: ConductorColectivo) => void;
   disparadorCentrado?: number;
+  disparadorEncuadrarRuta?: number;
   esModoConductor?: boolean;
   miConductorId?: string;
   miPatente?: string;
@@ -368,6 +369,7 @@ export default function ColectivoMap({
   conductorSeleccionadoId,
   alSeleccionarConductor,
   disparadorCentrado = 0,
+  disparadorEncuadrarRuta = 0,
   esModoConductor = false,
   miConductorId,
   miPatente,
@@ -405,6 +407,73 @@ export default function ColectivoMap({
       .catch((e) => console.warn('Error al auto-completar trazados en mapa:', e));
   }, [lineaSeleccionada, trazadosLocales]);
 
+  // Función reutilizable para encuadrar la cámara al trazado oficial de la línea
+  const encuadrarRutaActual = useCallback(() => {
+    if (!mapaRef.current) return false;
+    const mapa = mapaRef.current;
+
+    const sentidoNormalizado = (sentidoSeleccionado || 'ida').toLowerCase().trim();
+    const trazados =
+      lineaSeleccionada?.trazados && lineaSeleccionada.trazados.length > 0
+        ? lineaSeleccionada.trazados
+        : (lineaSeleccionada?.id ? trazadosLocales[lineaSeleccionada.id] : null);
+
+    const trazado =
+      trazados?.find((t: any) => t.sentido?.toLowerCase().trim() === sentidoNormalizado && t.esActivo !== false) ||
+      trazados?.find((t: any) => t.sentido?.toLowerCase().trim() === sentidoNormalizado) ||
+      (trazados && trazados.length > 0 ? trazados[0] : null);
+
+    let pts: any = trazado?.puntos;
+    if (!pts && lineaSeleccionada) {
+      pts = sentidoNormalizado === 'regreso' && lineaSeleccionada.puntosRutaRegreso
+        ? lineaSeleccionada.puntosRutaRegreso
+        : lineaSeleccionada.puntosRuta;
+    }
+
+    if (typeof pts === 'string') {
+      try {
+        pts = JSON.parse(pts);
+      } catch {}
+    }
+
+    if (Array.isArray(pts) && pts.length > 1) {
+      let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+      for (const p of pts) {
+        if (Array.isArray(p) && p.length >= 2) {
+          const v0 = Number(p[0]);
+          const v1 = Number(p[1]);
+          if (!isNaN(v0) && !isNaN(v1)) {
+            const lng = v0 < -50 && v1 > -45 ? v0 : v1;
+            const lat = v0 < -50 && v1 > -45 ? v1 : v0;
+            if (lng < minLng) minLng = lng;
+            if (lng > maxLng) maxLng = lng;
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+          }
+        }
+      }
+      if (minLng < maxLng && minLat < maxLat) {
+        try {
+          mapa.fitBounds(
+            [
+              [minLng, minLat],
+              [maxLng, maxLat],
+            ],
+            {
+              padding: { top: 90, bottom: esModoConductor ? 120 : 180, left: 35, right: 35 },
+              duration: 1000,
+              maxZoom: 15,
+            }
+          );
+          return true;
+        } catch (e) {
+          console.warn('Error al encuadrar ruta:', e);
+        }
+      }
+    }
+    return false;
+  }, [lineaSeleccionada, sentidoSeleccionado, trazadosLocales, esModoConductor]);
+
   // 1. Inicializar MapLibre GL
   useEffect(() => {
     if (mapaRef.current || !contenedorRef.current) return;
@@ -417,15 +486,22 @@ export default function ColectivoMap({
       maplibreModuleRef.current = mod;
       const { Map, NavigationControl } = mod;
 
-      const centroInicial: [number, number] = ubicacionUsuario
-        ? [ubicacionUsuario.longitud, ubicacionUsuario.latitud]
-        : [-70.6506, -33.4372]; // Santiago Centro
+      // Centro inicial: si el usuario tiene ubicación válida en Santiago Sur, usarla; si no, ir directo a la zona del recorrido oficial (La Granja / Folio 233012)
+      const tieneGpsValido =
+        ubicacionUsuario &&
+        typeof ubicacionUsuario.latitud === 'number' &&
+        typeof ubicacionUsuario.longitud === 'number' &&
+        ubicacionUsuario.latitud < -33.48; // Evitar saltar a Santiago Centro si el GPS falló
+
+      const centroInicial: [number, number] = tieneGpsValido
+        ? [ubicacionUsuario!.longitud, ubicacionUsuario!.latitud]
+        : [-70.6192, -33.5513]; // La Granja, RM (Recorrido Folio 233012)
 
       const mapa = new Map({
         container: contenedorRef.current,
         style: ESTILO_MAPLIBRE,
         center: centroInicial,
-        zoom: 14.8,
+        zoom: tieneGpsValido ? 15.5 : 13.8,
         pitch: 0,
         bearing: 0,
         attributionControl: false,
@@ -449,7 +525,10 @@ export default function ColectivoMap({
         if (cancelado) return;
         mapaRef.current = mapa;
         setMapaCargado(true);
-        setTimeout(() => mapa.resize(), 100);
+        setTimeout(() => {
+          mapa.resize();
+          encuadrarRutaActual();
+        }, 200);
       };
 
       if (mapa.loaded()) {
@@ -471,9 +550,10 @@ export default function ColectivoMap({
 
   const haCentradoInicialmenteRef = useRef(false);
   const ultimoDisparadorRef = useRef(0);
+  const ultimoDisparadorEncuadreRef = useRef(0);
   const ultimaRutaEncuadradaRef = useRef('');
 
-  // 2. Centrar mapa ÚNICAMENTE en la carga inicial o al presionar el botón GPS (disparadorCentrado)
+  // 2. Centrar mapa: Al presionar botón GPS, al solicitar encuadre de ruta o al abordar
   useEffect(() => {
     if (!mapaCargado || !mapaRef.current) return;
 
@@ -490,23 +570,55 @@ export default function ColectivoMap({
       }
     }
 
-    if (ubicacionUsuario) {
-      const esPrimeraVez = !haCentradoInicialmenteRef.current;
-      const esBotonGpsPresionado = disparadorCentrado > ultimoDisparadorRef.current;
+    // Si se presiona el botón de ver recorrido completo
+    if (disparadorEncuadrarRuta > ultimoDisparadorEncuadreRef.current) {
+      ultimoDisparadorEncuadreRef.current = disparadorEncuadrarRuta;
+      encuadrarRutaActual();
+      return;
+    }
 
-      if (esPrimeraVez || esBotonGpsPresionado) {
-        haCentradoInicialmenteRef.current = true;
-        ultimoDisparadorRef.current = disparadorCentrado;
-
+    // Si se presiona el botón de centrar GPS
+    const esBotonGpsPresionado = disparadorCentrado > ultimoDisparadorRef.current;
+    if (esBotonGpsPresionado) {
+      ultimoDisparadorRef.current = disparadorCentrado;
+      if (ubicacionUsuario && ubicacionUsuario.latitud && ubicacionUsuario.longitud) {
         mapaRef.current.flyTo({
           center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
           zoom: 16,
           essential: true,
           duration: 1000,
         });
+      } else {
+        // Si no hay señal de GPS en el dispositivo, centrar en la ruta
+        encuadrarRutaActual();
+      }
+      return;
+    }
+
+    // En la primera carga
+    if (!haCentradoInicialmenteRef.current) {
+      haCentradoInicialmenteRef.current = true;
+      if (esModoConductor && ubicacionUsuario) {
+        mapaRef.current.flyTo({
+          center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
+          zoom: 16,
+          duration: 1000,
+        });
+      } else {
+        encuadrarRutaActual();
       }
     }
-  }, [disparadorCentrado, ubicacionUsuario, mapaCargado, estaAbordado, conductorSeleccionadoId, conductoresEnVivo]);
+  }, [
+    disparadorCentrado,
+    disparadorEncuadrarRuta,
+    ubicacionUsuario,
+    mapaCargado,
+    estaAbordado,
+    conductorSeleccionadoId,
+    conductoresEnVivo,
+    encuadrarRutaActual,
+    esModoConductor,
+  ]);
 
   // 2b. Fijar y seguir netamente al GPS del conductor en tiempo real mientras el pasajero esté a bordo
   useEffect(() => {
