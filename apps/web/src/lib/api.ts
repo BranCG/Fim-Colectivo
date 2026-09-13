@@ -55,10 +55,14 @@ export function saveSession(token: string, user: object) {
 
 export function getSession() {
   if (typeof window === 'undefined') return null;
-  const token = localStorage.getItem('fim_colectivo_token');
-  const user = localStorage.getItem('fim_colectivo_user');
-  if (!token || !user) return null;
-  return { token, user: JSON.parse(user) };
+  try {
+    const token = localStorage.getItem('fim_colectivo_token');
+    const user = localStorage.getItem('fim_colectivo_user');
+    if (!token || !user) return null;
+    return { token, user: JSON.parse(user) };
+  } catch {
+    return null;
+  }
 }
 
 export function clearSession() {
