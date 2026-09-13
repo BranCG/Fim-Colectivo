@@ -72,6 +72,9 @@ export function reproducirSonido(tipo: 'alerta' | 'exito' | 'rechazo') {
 // Cache de voces disponibles
 let vocesPrecargadas: SpeechSynthesisVoice[] = [];
 let audioActual: HTMLAudioElement | null = null;
+let esParadaIntencional = false;
+let ultimoTextoHablado = '';
+let tiempoUltimoHabla = 0;
 
 function getBaseApiUrl(): string {
   if (typeof window === 'undefined') return 'https://colectivo.fimchile.cl';
@@ -165,10 +168,15 @@ export function desbloquearAudioYVoz(
  * Detiene inmediatamente cualquier locución en curso (audio streaming o síntesis nativa)
  */
 export function detenerVoz() {
+  esParadaIntencional = true;
   if (audioActual) {
     try {
+      audioActual.onended = null;
+      audioActual.onerror = null;
       audioActual.pause();
       audioActual.currentTime = 0;
+      audioActual.removeAttribute('src');
+      audioActual.load();
     } catch {}
     audioActual = null;
   }
@@ -182,6 +190,7 @@ export function detenerVoz() {
 /**
  * Lee texto en voz alta utilizando el motor de audio streaming neuronal en español (Google Neural TTS)
  * con fallback a síntesis nativa del dispositivo si falla la red.
+ * Durante la reproducción silencia el micrófono para evitar ducking, distorsión y autocancelación.
  */
 export function hablarTexto(texto: string, alFinalizar?: () => void) {
   if (typeof window === 'undefined') {
@@ -189,19 +198,41 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
     return;
   }
 
+  const textoLimpio = texto.trim();
+  if (!textoLimpio) {
+    if (alFinalizar) alFinalizar();
+    return;
+  }
+
+  // Prevenir duplicados inmediatos en ráfaga (<800ms)
+  const ahora = Date.now();
+  if (textoLimpio === ultimoTextoHablado && ahora - tiempoUltimoHabla < 800) {
+    if (alFinalizar) alFinalizar();
+    return;
+  }
+  ultimoTextoHablado = textoLimpio;
+  tiempoUltimoHabla = ahora;
+
   detenerVoz();
+  esParadaIntencional = false;
+
+  // Pausar reconocimiento mientras se emite voz para evitar que el hardware
+  // de Android duckee el volumen o que el micrófono capture el parlante
+  GestorReconocimientoVoz.obtener().pausarPorHabla();
 
   let finalizado = false;
   const invocarFinal = () => {
     if (!finalizado) {
       finalizado = true;
+      // Reanudar la escucha tras un pequeño búfer de 250ms para que se limpie el eco acústico
+      GestorReconocimientoVoz.obtener().reanudarTrasHabla(250);
       if (alFinalizar) alFinalizar();
     }
   };
 
   // 1. Prioridad: Stream de audio neural humano en español (/api/colectivos/tts o Google TTS directo)
   try {
-    const textoCodificado = encodeURIComponent(texto.trim().slice(0, 250));
+    const textoCodificado = encodeURIComponent(textoLimpio.slice(0, 250));
     const urlProxy = `${getBaseApiUrl()}/api/colectivos/tts?texto=${textoCodificado}&lang=es`;
     const urlGoogle = `https://translate.google.com/translate_tts?ie=UTF-8&q=${textoCodificado}&tl=es&client=tw-ob`;
 
@@ -220,26 +251,38 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
 
     audio.onerror = () => {
       clearTimeout(timerSeguridad);
-      console.warn('[TTS Neural] Falló endpoint proxy, probando Google directo o síntesis nativa...');
+      if (esParadaIntencional) return;
+      console.warn('[TTS Neural] Error en endpoint proxy, probando Google directo o síntesis...');
       audioActual = null;
-      probarGoogleDirecto(urlGoogle, texto, invocarFinal);
+      probarGoogleDirecto(urlGoogle, textoLimpio, invocarFinal);
     };
 
     audio.src = urlProxy;
     const playPromise = audio.play();
     if (playPromise !== undefined) {
       playPromise.catch((err) => {
+        if (esParadaIntencional || err?.name === 'AbortError') {
+          return;
+        }
         console.warn('[TTS Neural] Error al reproducir audio proxy, intentando Google directo:', err);
-        probarGoogleDirecto(urlGoogle, texto, invocarFinal);
+        probarGoogleDirecto(urlGoogle, textoLimpio, invocarFinal);
       });
     }
   } catch (e) {
-    console.warn('[TTS Neural] Error al inicializar audio neural, pasando a síntesis nativa:', e);
-    ejecutarLecturaSintesis(texto, invocarFinal);
+    if (!esParadaIntencional) {
+      console.warn('[TTS Neural] Error al inicializar audio neural, pasando a síntesis nativa:', e);
+      ejecutarLecturaSintesis(textoLimpio, invocarFinal);
+    } else {
+      invocarFinal();
+    }
   }
 }
 
 function probarGoogleDirecto(urlGoogle: string, textoOriginal: string, onFin: () => void) {
+  if (esParadaIntencional) {
+    onFin();
+    return;
+  }
   try {
     const audioSecundario = new Audio();
     audioActual = audioSecundario;
@@ -256,23 +299,31 @@ function probarGoogleDirecto(urlGoogle: string, textoOriginal: string, onFin: ()
 
     audioSecundario.onerror = () => {
       clearTimeout(timer);
+      if (esParadaIntencional) return;
       audioActual = null;
       ejecutarLecturaSintesis(textoOriginal, onFin);
     };
 
     audioSecundario.src = urlGoogle;
-    audioSecundario.play().catch(() => {
+    audioSecundario.play().catch((err) => {
+      if (esParadaIntencional || err?.name === 'AbortError') {
+        return;
+      }
       clearTimeout(timer);
       audioActual = null;
       ejecutarLecturaSintesis(textoOriginal, onFin);
     });
   } catch {
-    ejecutarLecturaSintesis(textoOriginal, onFin);
+    if (!esParadaIntencional) {
+      ejecutarLecturaSintesis(textoOriginal, onFin);
+    } else {
+      onFin();
+    }
   }
 }
 
 function ejecutarLecturaSintesis(texto: string, alFinalizar?: () => void) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+  if (esParadaIntencional || typeof window === 'undefined' || !('speechSynthesis' in window)) {
     if (alFinalizar) alFinalizar();
     return;
   }
@@ -296,6 +347,7 @@ function ejecutarLecturaSintesis(texto: string, alFinalizar?: () => void) {
     const invocarFinal = () => {
       if (!completado) {
         completado = true;
+        GestorReconocimientoVoz.obtener().reanudarTrasHabla(250);
         if (alFinalizar) alFinalizar();
       }
     };
@@ -329,6 +381,8 @@ class GestorReconocimientoVoz {
   private reconocimiento: any = null;
   private escuchandoDeseado = false;
   private estaCorriendo = false;
+  private silenciadoPorHabla = false;
+  private timerReanudarHabla: NodeJS.Timeout | null = null;
   private suscriptores: Map<string, OpcionesEscucha> = new Map();
   private ultimoDisparoComando = 0;
   private timerReintento: NodeJS.Timeout | null = null;
@@ -370,6 +424,10 @@ class GestorReconocimientoVoz {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       this.reconocimiento.onresult = (evento: any) => {
+        if (this.silenciadoPorHabla) {
+          return;
+        }
+
         const ahora = Date.now();
         const resultados = evento.results;
 
@@ -408,12 +466,12 @@ class GestorReconocimientoVoz {
               if (ejecutado) return;
             }
 
-            // 2. Comando: SÍ (confirmar/aceptar)
+            // 2. Comando: SÍ (confirmar/aceptar reserva o pago)
             // Alta sensibilidad fonética para dialecto chileno y ASR en cabina:
-            // "si", "sii", "siii", "sip", "sipo", "si po", "se", "dale", "ya", "yapo", "ya po",
+            // "si", "sii", "siii", "sip", "sipo", "si po", "dale", "ya", "yapo", "ya po",
             // "bueno", "ok", "oka", "okay", "toma", "tomar", "tomalo", "tomala", "tomamos",
-            // "claro", "confirmo", "confirmar", "afirmativo", "positivo", "acepto", "aceptar"
-            const regexSi = /\b(s+i+|s+i+p+o*|se|dale|ya|yapo|ya po|bueno|ok|oka|okay|acepto|aceptar|toma|tomar|tomalo|tomala|tomamos|claro|confirmo|confirmar|afirmativo|positivo)\b/i;
+            // "claro", "confirmo", "confirmar", "afirmativo", "positivo", "acepto", "aceptar", "libera", "liberar", "pago"
+            const regexSi = /\b(s+i+|s+i+p+o*|dale|ya|yapo|ya po|bueno|ok|oka|okay|acepto|aceptar|toma|tomar|tomalo|tomala|tomamos|claro|confirmo|confirmar|afirmativo|positivo|libera|liberar|pagado|pago)\b/i;
             if (regexSi.test(normalizado)) {
               this.ultimoDisparoComando = ahora;
               detenerVoz();
@@ -421,8 +479,8 @@ class GestorReconocimientoVoz {
               if (ejecutado) return;
             }
 
-            // 3. Comando: NO (rechazar/pasar)
-            const regexNo = /\b(n+o+|nop|nopo|no po|paso|rechazo|rechazar|dejalo|dejala|no puedo|cancelar|negativo)\b/i;
+            // 3. Comando: NO (rechazar/pasar/cancelar)
+            const regexNo = /\b(n+o+|nop|nopo|no po|paso|rechazo|rechazar|dejalo|dejala|no puedo|cancelar|cancela|negativo)\b/i;
             if (regexNo.test(normalizado)) {
               this.ultimoDisparoComando = ahora;
               detenerVoz();
@@ -441,24 +499,51 @@ class GestorReconocimientoVoz {
           this.notificarError('Permiso de micrófono denegado');
           return;
         }
-        // no-speech, network, audio-capture son transitorios y se auto-recuperan
       };
 
       this.reconocimiento.onend = () => {
         this.estaCorriendo = false;
         this.notificarEstadoEscucha(false);
 
-        // Si el conductor tiene oyentes activos (ruta o modal), reiniciar de inmediato en 50ms
+        if (this.silenciadoPorHabla) {
+          // No reiniciar mientras la app esté hablando
+          return;
+        }
+
+        // Si el conductor tiene oyentes activos (ruta o modal), reiniciar de inmediato en 80ms
         if (this.escuchandoDeseado && this.suscriptores.size > 0) {
           if (this.timerReintento) clearTimeout(this.timerReintento);
           this.timerReintento = setTimeout(() => {
             this.iniciarCiclo();
-          }, 50);
+          }, 80);
         }
       };
     } catch (e) {
       console.warn('[Voz Chofer] No se pudo instanciar SpeechRecognition:', e);
     }
+  }
+
+  pausarPorHabla() {
+    this.silenciadoPorHabla = true;
+    if (this.timerReanudarHabla) {
+      clearTimeout(this.timerReanudarHabla);
+      this.timerReanudarHabla = null;
+    }
+    try {
+      if (this.reconocimiento && this.estaCorriendo) {
+        this.reconocimiento.stop();
+      }
+    } catch {}
+  }
+
+  reanudarTrasHabla(retrasoMs = 250) {
+    if (this.timerReanudarHabla) clearTimeout(this.timerReanudarHabla);
+    this.timerReanudarHabla = setTimeout(() => {
+      this.silenciadoPorHabla = false;
+      if (this.escuchandoDeseado && this.suscriptores.size > 0) {
+        this.iniciarCiclo();
+      }
+    }, retrasoMs);
   }
 
   private despacharComando(tipo: 'onSi' | 'onNo' | 'onAbordo'): boolean {
@@ -496,6 +581,7 @@ class GestorReconocimientoVoz {
   }
 
   private iniciarCiclo() {
+    if (this.silenciadoPorHabla) return;
     if (!this.reconocimiento) {
       this.inicializarReconocimiento();
     }
@@ -518,10 +604,12 @@ class GestorReconocimientoVoz {
     this.escuchandoDeseado = true;
     this.ultimoDisparoComando = 0; // Permitir que la primera respuesta del chofer se procese de inmediato
 
-    if (!this.estaCorriendo) {
-      this.iniciarCiclo();
-    } else {
-      if (opciones.onEscuchando) opciones.onEscuchando(true);
+    if (!this.silenciadoPorHabla) {
+      if (!this.estaCorriendo) {
+        this.iniciarCiclo();
+      } else {
+        if (opciones.onEscuchando) opciones.onEscuchando(true);
+      }
     }
 
     return {

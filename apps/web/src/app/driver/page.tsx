@@ -286,23 +286,32 @@ export default function PaginaConductorColectivo() {
       }
       setPagoPendiente(datos);
       reproducirSonido('alerta');
-      const primerNombre = (datos.pasajeroNombre || 'Pasajero').split(' ')[0];
-      const mensajeVoz = `${primerNombre} desciende. ¿Confirmas pago?`;
 
-      // Activar escucha de inmediato para capturar "SÍ" sin demora
+      // Frase solicitada para la alerta de cobro
+      const mensajeVoz = 'Cliente paga, ¿aceptar pago y liberar? ¿Sí o no?';
+
       if (escuchaPagoRef.current) {
         try {
           escuchaPagoRef.current.detener();
         } catch {}
+        escuchaPagoRef.current = null;
       }
-      escuchaPagoRef.current = iniciarEscuchaVoz({
-        id: 'escucha-pago-conductor',
-        onSi: () => {
-          confirmarPagoPasajero(datos.reservaId);
-        },
-      });
 
-      hablarTexto(mensajeVoz);
+      // Esperar a que concluya el chime de alerta (350ms) antes de emitir la voz
+      setTimeout(() => {
+        hablarTexto(mensajeVoz, () => {
+          // Activar escucha de voz únicamente cuando la locución termine
+          escuchaPagoRef.current = iniciarEscuchaVoz({
+            id: 'escucha-pago-conductor',
+            onSi: () => {
+              confirmarPagoPasajero(datos.reservaId);
+            },
+            onNo: () => {
+              rechazarPagoPasajero();
+            },
+          });
+        });
+      }, 350);
     };
 
     // Evento: Pago confirmado
@@ -595,7 +604,9 @@ export default function PaginaConductorColectivo() {
       }
       setMensajeExito('Pasajero a bordo. Asiento registrado en rojo.');
       reproducirSonido('exito');
-      hablarTexto('Pasajero a bordo');
+      setTimeout(() => {
+        hablarTexto('Pasajero a bordo');
+      }, 350);
     } catch (error) {
       console.error('Error al confirmar abordaje:', error);
       setMensajeError('No se pudo registrar el abordaje.');
@@ -635,6 +646,19 @@ export default function PaginaConductorColectivo() {
     };
   }, [reservasPendientes, solicitudActiva, pagoPendiente]);
 
+  // Rechazar o cancelar solicitud de pago del pasajero
+  const rechazarPagoPasajero = () => {
+    detenerVoz();
+    if (escuchaPagoRef.current) {
+      try {
+        escuchaPagoRef.current.detener();
+      } catch {}
+      escuchaPagoRef.current = null;
+    }
+    setPagoPendiente(null);
+    reproducirSonido('rechazo');
+  };
+
   // Confirmar pago del pasajero y liberar asiento
   const confirmarPagoPasajero = async (reservaId: string) => {
     try {
@@ -649,7 +673,9 @@ export default function PaginaConductorColectivo() {
       setPagoPendiente((prev) => (prev?.reservaId === reservaId ? null : prev));
       setMensajeExito(res.data.mensaje || 'Pago confirmado y asiento liberado.');
       reproducirSonido('exito');
-      hablarTexto('Pago confirmado. Asiento liberado.');
+      setTimeout(() => {
+        hablarTexto('Pago confirmado. Asiento liberado.');
+      }, 350);
 
       // Actualizar estado local de reservas y chofer
       setReservasPendientes((prev) => prev.filter((r) => r.id !== reservaId));
@@ -1893,14 +1919,14 @@ export default function PaginaConductorColectivo() {
               </div>
               <div style={{ width: '1px', height: '30px', background: 'rgba(255, 255, 255, 0.1)' }} />
               <div>
-                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Cupos a Liberar</span>
+                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Asientos a Liberar</span>
                 <span style={{ fontSize: '14px', fontWeight: '800', color: '#FACC15' }}>
                   {pagoPendiente.cantidadAsientos} Asiento{pagoPendiente.cantidadAsientos > 1 ? 's' : ''}
                 </span>
               </div>
             </div>
 
-            {/* INDICADOR DE CONFIRMACIÓN POR VOZ CON "SÍ" */}
+            {/* INDICADOR DE CONFIRMACIÓN POR VOZ CON "SÍ" O "NO" */}
             <div
               style={{
                 display: 'flex',
@@ -1928,40 +1954,65 @@ export default function PaginaConductorColectivo() {
               />
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <IconoMicrofono size={16} color="#FACC15" />
-                <span>Di &quot;SÍ&quot; para confirmar por voz o toca el botón</span>
+                <span>Di &quot;SÍ&quot; para liberar o &quot;NO&quot; para cancelar</span>
               </span>
             </div>
 
-            {/* BOTÓN GIGANTE DE ACEPTACIÓN */}
-            <button
-              onClick={() => confirmarPagoPasajero(pagoPendiente.reservaId)}
-              disabled={cargandoAccion === pagoPendiente.reservaId}
-              style={{
-                width: '100%',
-                padding: '18px 20px',
-                borderRadius: '14px',
-                background: '#FACC15',
-                border: 'none',
-                color: '#000000',
-                fontSize: '18px',
-                fontWeight: '900',
-                letterSpacing: '0.5px',
-                cursor: 'pointer',
-                boxShadow: '0 6px 20px rgba(250, 204, 21, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '10px',
-                textTransform: 'uppercase',
-              }}
-            >
-              <IconoCheck size={26} color="#000000" />
-              <span>
-                {cargandoAccion === pagoPendiente.reservaId
-                  ? 'Liberando Asiento...'
-                  : 'ACEPTAR PAGO Y LIBERAR ASIENTO'}
-              </span>
-            </button>
+            {/* BOTONES GIGANTES: SÍ / NO */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+              <button
+                onClick={() => confirmarPagoPasajero(pagoPendiente.reservaId)}
+                disabled={cargandoAccion === pagoPendiente.reservaId}
+                style={{
+                  width: '100%',
+                  padding: '16px 20px',
+                  borderRadius: '14px',
+                  background: '#FACC15',
+                  border: 'none',
+                  color: '#000000',
+                  fontSize: '17px',
+                  fontWeight: '900',
+                  letterSpacing: '0.5px',
+                  cursor: 'pointer',
+                  boxShadow: '0 6px 20px rgba(250, 204, 21, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  textTransform: 'uppercase',
+                }}
+              >
+                <IconoCheck size={24} color="#000000" />
+                <span>
+                  {cargandoAccion === pagoPendiente.reservaId
+                    ? 'Liberando Asiento...'
+                    : 'ACEPTAR PAGO Y LIBERAR'}
+                </span>
+              </button>
+
+              <button
+                onClick={rechazarPagoPasajero}
+                disabled={cargandoAccion === pagoPendiente.reservaId}
+                style={{
+                  width: '100%',
+                  padding: '14px 20px',
+                  borderRadius: '14px',
+                  background: '#1A1A1A',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  color: '#FFFFFF',
+                  fontSize: '15px',
+                  fontWeight: '800',
+                  letterSpacing: '0.5px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span>CANCELAR / MANTENER ASIENTO</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

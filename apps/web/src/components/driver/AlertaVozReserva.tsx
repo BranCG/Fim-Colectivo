@@ -67,16 +67,20 @@ export default function AlertaVozReserva({
       });
     };
 
-    // Hablar inmediatamente; al terminar la frase (o a los 2.5s como resguardo), se enciende el micrófono
-    hablarTexto(textoVoz, () => {
-      activarMicrofono();
-    });
+    // Permitir que el doble tono de aviso de reserva suene limpio antes de iniciar la locución
+    const timerInicioVoz = setTimeout(() => {
+      hablarTexto(textoVoz, () => {
+        activarMicrofono();
+      });
+    }, 350);
 
+    // Resguardo amplio de seguridad para encender el micrófono si la red falla
     const timerSeguridadMic = setTimeout(() => {
       activarMicrofono();
-    }, 2500);
+    }, 4500);
 
     return () => {
+      clearTimeout(timerInicioVoz);
       clearTimeout(timerSeguridadMic);
       detenerVoz();
       if (escuchaRef.current) {
@@ -120,7 +124,9 @@ export default function AlertaVozReserva({
 
     try {
       reproducirSonido('exito');
-      hablarTexto('Reserva aceptada');
+      setTimeout(() => {
+        hablarTexto('Reserva aceptada');
+      }, 350);
     } catch {}
 
     try {
