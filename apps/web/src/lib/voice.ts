@@ -377,7 +377,6 @@ interface OpcionesEscucha {
 
 class GestorReconocimientoVoz {
   private static instancia: GestorReconocimientoVoz | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private reconocimiento: any = null;
   private escuchandoDeseado = false;
   private estaCorriendo = false;
@@ -386,12 +385,17 @@ class GestorReconocimientoVoz {
   private suscriptores: Map<string, OpcionesEscucha> = new Map();
   private ultimoDisparoComando = 0;
   private timerReintento: NodeJS.Timeout | null = null;
+  private bloqueoAbordoHasta = 0;
 
   static obtener(): GestorReconocimientoVoz {
     if (!GestorReconocimientoVoz.instancia) {
       GestorReconocimientoVoz.instancia = new GestorReconocimientoVoz();
     }
     return GestorReconocimientoVoz.instancia;
+  }
+
+  bloquearAbordoTemporal(duracionMs = 4000) {
+    this.bloqueoAbordoHasta = Date.now() + duracionMs;
   }
 
   private constructor() {
@@ -424,15 +428,11 @@ class GestorReconocimientoVoz {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       this.reconocimiento.onresult = (evento: any) => {
-        if (this.silenciadoPorHabla) {
-          return;
-        }
-
         const ahora = Date.now();
         const resultados = evento.results;
 
-        // Antirrebote mínimo de 500ms entre comandos aceptados
-        if (ahora - this.ultimoDisparoComando < 500) {
+        // Antirrebote mínimo de 350ms entre comandos aceptados
+        if (ahora - this.ultimoDisparoComando < 350) {
           return;
         }
 
@@ -455,33 +455,61 @@ class GestorReconocimientoVoz {
 
             if (!normalizado) continue;
 
-            console.log('[Voz Chofer] Detectado (alt ' + altIdx + '):', normalizado, item.isFinal ? '(final)' : '(interim)');
+            console.log('[Voz Chofer] Escuchado:', normalizado, item.isFinal ? '(final)' : '(interim)');
 
-            // 1. Comando: A BORDO (sube pasajero)
-            const regexAbordo = /\b(a bordo|abordo|subio|sube|subieron|ya subio|arriba|pasajero a bordo|listo|aborde|adentro)\b/i;
-            if (regexAbordo.test(normalizado)) {
-              this.ultimoDisparoComando = ahora;
-              detenerVoz();
-              const ejecutado = this.despacharComando('onAbordo');
-              if (ejecutado) return;
-            }
+            // 1. Comando: SÍ (confirmar/aceptar reserva o pago)
+            // No incluye "tomamos" para que la pregunta del sistema nunca se auto-confirme.
+            // Alta tolerancia fonética para el dialecto chileno y ruido ambiente en cabina.
+            const matchSi =
+              normalizado === 'si' ||
+              normalizado === 'sip' ||
+              normalizado === 'dale' ||
+              normalizado === 'ya' ||
+              normalizado === 'bueno' ||
+              normalizado.split(' ').includes('si') ||
+              normalizado.split(' ').includes('sip') ||
+              normalizado.split(' ').includes('dale') ||
+              /(^|\s)(s+i+|s+i+p+o*|dale|ya|yapo|ya po|bueno|ok|oka|okay|acepto|aceptar|toma|tomar|tomalo|tomala|claro|confirmo|confirmar|afirmativo|positivo|libera|liberar|pagado|pago|vale|vamos|listo|correcto|exacto|aja|chi|shi|ci)($|\s)/i.test(
+                normalizado
+              );
 
-            // 2. Comando: SÍ (confirmar/aceptar reserva o pago)
-            // Alta sensibilidad fonética para dialecto chileno y ASR en cabina:
-            // "si", "sii", "siii", "sip", "sipo", "si po", "dale", "ya", "yapo", "ya po",
-            // "bueno", "ok", "oka", "okay", "toma", "tomar", "tomalo", "tomala", "tomamos",
-            // "claro", "confirmo", "confirmar", "afirmativo", "positivo", "acepto", "aceptar", "libera", "liberar", "pago"
-            const regexSi = /\b(s+i+|s+i+p+o*|dale|ya|yapo|ya po|bueno|ok|oka|okay|acepto|aceptar|toma|tomar|tomalo|tomala|tomamos|claro|confirmo|confirmar|afirmativo|positivo|libera|liberar|pagado|pago)\b/i;
-            if (regexSi.test(normalizado)) {
+            if (matchSi) {
               this.ultimoDisparoComando = ahora;
               detenerVoz();
               const ejecutado = this.despacharComando('onSi');
               if (ejecutado) return;
             }
 
+            // 2. Comando: A BORDO (sube pasajero)
+            // Tolera "a bordo", "bordo", "subió", "ya subió", "sube", "al auto", "arriba"
+            const matchAbordo =
+              normalizado.includes('bordo') ||
+              normalizado.includes('subio') ||
+              normalizado.includes('sube') ||
+              normalizado.includes('arriba') ||
+              normalizado.includes('adentro') ||
+              /(a\s*bordo|bordo|subi[oó]|sube|subieron|subir|ya\s+subi|arriba|adentro|al\s*auto|aborde)/i.test(
+                normalizado
+              );
+
+            if (matchAbordo && ahora > this.bloqueoAbordoHasta) {
+              this.ultimoDisparoComando = ahora;
+              detenerVoz();
+              const ejecutado = this.despacharComando('onAbordo');
+              if (ejecutado) return;
+            }
+
             // 3. Comando: NO (rechazar/pasar/cancelar)
-            const regexNo = /\b(n+o+|nop|nopo|no po|paso|rechazo|rechazar|dejalo|dejala|no puedo|cancelar|cancela|negativo)\b/i;
-            if (regexNo.test(normalizado)) {
+            const matchNo =
+              normalizado === 'no' ||
+              normalizado === 'nop' ||
+              normalizado === 'paso' ||
+              normalizado.split(' ').includes('no') ||
+              /(^|\s)(n+o+|nop|nopo|no po|paso|rechazo|rechazar|dejalo|dejala|no puedo|cancelar|cancela|negativo)($|\s)/i.test(
+                normalizado
+              );
+
+            if (matchNo) {
               this.ultimoDisparoComando = ahora;
               detenerVoz();
               const ejecutado = this.despacharComando('onNo');
@@ -499,23 +527,19 @@ class GestorReconocimientoVoz {
           this.notificarError('Permiso de micrófono denegado');
           return;
         }
+        this.estaCorriendo = false;
       };
 
       this.reconocimiento.onend = () => {
         this.estaCorriendo = false;
         this.notificarEstadoEscucha(false);
 
-        if (this.silenciadoPorHabla) {
-          // No reiniciar mientras la app esté hablando
-          return;
-        }
-
-        // Si el conductor tiene oyentes activos (ruta o modal), reiniciar de inmediato en 80ms
+        // Si el conductor tiene oyentes activos (ruta o modal), reiniciar de inmediato en 100ms
         if (this.escuchandoDeseado && this.suscriptores.size > 0) {
           if (this.timerReintento) clearTimeout(this.timerReintento);
           this.timerReintento = setTimeout(() => {
             this.iniciarCiclo();
-          }, 80);
+          }, 100);
         }
       };
     } catch (e) {
@@ -529,18 +553,13 @@ class GestorReconocimientoVoz {
       clearTimeout(this.timerReanudarHabla);
       this.timerReanudarHabla = null;
     }
-    try {
-      if (this.reconocimiento && this.estaCorriendo) {
-        this.reconocimiento.stop();
-      }
-    } catch {}
   }
 
-  reanudarTrasHabla(retrasoMs = 250) {
+  reanudarTrasHabla(retrasoMs = 150) {
     if (this.timerReanudarHabla) clearTimeout(this.timerReanudarHabla);
     this.timerReanudarHabla = setTimeout(() => {
       this.silenciadoPorHabla = false;
-      if (this.escuchandoDeseado && this.suscriptores.size > 0) {
+      if (this.escuchandoDeseado && this.suscriptores.size > 0 && !this.estaCorriendo) {
         this.iniciarCiclo();
       }
     }, retrasoMs);
@@ -581,7 +600,6 @@ class GestorReconocimientoVoz {
   }
 
   private iniciarCiclo() {
-    if (this.silenciadoPorHabla) return;
     if (!this.reconocimiento) {
       this.inicializarReconocimiento();
     }
@@ -590,11 +608,15 @@ class GestorReconocimientoVoz {
     try {
       this.reconocimiento.start();
     } catch (e: any) {
-      if (e?.name === 'InvalidStateError') {
-        this.estaCorriendo = true;
-      } else {
-        console.warn('[Voz Chofer] Error al ejecutar start():', e);
-      }
+      this.estaCorriendo = false;
+      if (this.timerReintento) clearTimeout(this.timerReintento);
+      this.timerReintento = setTimeout(() => {
+        if (this.escuchandoDeseado && this.suscriptores.size > 0 && !this.estaCorriendo) {
+          try {
+            this.reconocimiento?.start();
+          } catch {}
+        }
+      }, 200);
     }
   }
 
@@ -637,4 +659,13 @@ export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => v
     return { detener: () => {} };
   }
   return GestorReconocimientoVoz.obtener().suscribir(opciones);
+}
+
+/**
+ * Bloquea temporalmente el comando de voz "A bordo" durante locuciones del sistema
+ * para evitar que el altavoz active su propio comando por eco acústico.
+ */
+export function bloquearAbordoTemporal(ms = 4000) {
+  if (typeof window === 'undefined') return;
+  GestorReconocimientoVoz.obtener().bloquearAbordoTemporal(ms);
 }

@@ -31,7 +31,7 @@ import {
 // Cargar mapa dinámico sin SSR para Leaflet
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
 import AlertaVozReserva, { DatosSolicitudDirigida } from '@/components/driver/AlertaVozReserva';
-import { reproducirSonido, hablarTexto, desbloquearAudioYVoz, iniciarEscuchaVoz, detenerVoz } from '@/lib/voice';
+import { reproducirSonido, hablarTexto, desbloquearAudioYVoz, iniciarEscuchaVoz, detenerVoz, bloquearAbordoTemporal } from '@/lib/voice';
 
 interface SolicitudPagoActiva {
   reservaId: string;
@@ -543,12 +543,21 @@ export default function PaginaConductorColectivo() {
 
   // Responder a la solicitud dirigida de asiento (Aceptar / Rechazar)
   const responderSolicitudDirigida = async (reservaId: string, accion: 'aceptar' | 'rechazar') => {
+    const pasajeroNombre = (solicitudActiva?.nombrePasajero || solicitudActiva?.pasajeroNombre || 'el pasajero').split(' ')[0];
     try {
       setSolicitudActiva(null);
       const res = await api.post(`/colectivos/reservas/${reservaId}/responder`, { accion });
       if (accion === 'aceptar') {
-        setMensajeExito('Reserva aceptada. Pasajero confirmado en tu ruta.');
+        const nombreConfirmado = (res.data?.reserva?.pasajero?.name || pasajeroNombre).split(' ')[0];
+        setMensajeExito(`Reserva aceptada: ${nombreConfirmado} confirmado.`);
         reproducirSonido('exito');
+
+        // Locución guiada solicitada: Di "A bordo" cuando [Nombre] suba al auto
+        const locucionConfirmada = `Reserva aceptada. Di a bordo cuando ${nombreConfirmado} suba al auto.`;
+        setTimeout(() => {
+          bloquearAbordoTemporal(4000);
+          hablarTexto(locucionConfirmada);
+        }, 350);
 
         // Actualizar conteo de asientos inmediatamente en pantalla
         if (res.data?.asientosOcupados !== undefined) {
@@ -605,6 +614,7 @@ export default function PaginaConductorColectivo() {
       setMensajeExito('Pasajero a bordo. Asiento registrado en rojo.');
       reproducirSonido('exito');
       setTimeout(() => {
+        bloquearAbordoTemporal(3000);
         hablarTexto('Pasajero a bordo');
       }, 350);
     } catch (error) {

@@ -11,6 +11,8 @@ export interface DatosSolicitudDirigida {
   distanciaMetros: number;
   tiempoLimiteSegundos?: number;
   direccionSubida?: string;
+  pasajeroNombre?: string;
+  asientos?: number;
 }
 
 interface Props {
@@ -50,38 +52,27 @@ export default function AlertaVozReserva({
     const textoAsientos = asientos === 1 ? 'un asiento' : `${asientos} asientos`;
     const textoVoz = `${nombre}, ${textoAsientos}. ¿Tomamos?`;
 
-    let microfonoIniciado = false;
-    const activarMicrofono = () => {
-      if (microfonoIniciado || respondido) return;
-      microfonoIniciado = true;
-      escuchaRef.current = iniciarEscuchaVoz({
-        onSi: () => {
-          manejarAceptar();
-        },
-        onNo: () => {
-          manejarRechazar();
-        },
-        onEscuchando: (activo) => {
-          setEscuchandoVoz(activo);
-        },
-      });
-    };
+    // Iniciar escucha del micrófono de inmediato (segundo 0)
+    // El conductor puede responder "SÍ" o "DALE" al instante sin esperar
+    escuchaRef.current = iniciarEscuchaVoz({
+      onSi: () => {
+        manejarAceptar();
+      },
+      onNo: () => {
+        manejarRechazar();
+      },
+      onEscuchando: (activo) => {
+        setEscuchandoVoz(activo);
+      },
+    });
 
     // Permitir que el doble tono de aviso de reserva suene limpio antes de iniciar la locución
     const timerInicioVoz = setTimeout(() => {
-      hablarTexto(textoVoz, () => {
-        activarMicrofono();
-      });
+      hablarTexto(textoVoz);
     }, 350);
-
-    // Resguardo amplio de seguridad para encender el micrófono si la red falla
-    const timerSeguridadMic = setTimeout(() => {
-      activarMicrofono();
-    }, 4500);
 
     return () => {
       clearTimeout(timerInicioVoz);
-      clearTimeout(timerSeguridadMic);
       detenerVoz();
       if (escuchaRef.current) {
         try {
@@ -124,9 +115,6 @@ export default function AlertaVozReserva({
 
     try {
       reproducirSonido('exito');
-      setTimeout(() => {
-        hablarTexto('Reserva aceptada');
-      }, 350);
     } catch {}
 
     try {
