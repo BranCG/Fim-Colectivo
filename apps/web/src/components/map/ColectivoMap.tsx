@@ -62,6 +62,7 @@ interface Props {
   miPatente?: string;
   pasajerosEnEspera?: PasajeroEnEspera[];
   altura?: string;
+  estaAbordado?: boolean;
 }
 
 // Estilo MapLibre con teselas OpenStreetMap de alta disponibilidad: 100% libre, sin API key, sin marcas de agua
@@ -333,6 +334,7 @@ export default function ColectivoMap({
   miPatente,
   pasajerosEnEspera = [],
   altura = '100%',
+  estaAbordado = false,
 }: Props) {
   const contenedorRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -413,15 +415,42 @@ export default function ColectivoMap({
 
   // 2. Centrar mapa con animación suave cuando se dispare `disparadorCentrado`
   useEffect(() => {
-    if (mapaCargado && mapaRef.current && disparadorCentrado > 0 && ubicacionUsuario) {
-      mapaRef.current.flyTo({
-        center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
-        zoom: 16,
-        essential: true,
-        duration: 1000,
-      });
+    if (mapaCargado && mapaRef.current && disparadorCentrado > 0) {
+      if (estaAbordado && conductorSeleccionadoId) {
+        const choferAsignado = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
+        if (choferAsignado && choferAsignado.latitud && choferAsignado.longitud) {
+          mapaRef.current.flyTo({
+            center: [choferAsignado.longitud, choferAsignado.latitud],
+            zoom: 16.5,
+            essential: true,
+            duration: 1000,
+          });
+          return;
+        }
+      }
+      if (ubicacionUsuario) {
+        mapaRef.current.flyTo({
+          center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
+          zoom: 16,
+          essential: true,
+          duration: 1000,
+        });
+      }
     }
-  }, [disparadorCentrado, ubicacionUsuario, mapaCargado]);
+  }, [disparadorCentrado, ubicacionUsuario, mapaCargado, estaAbordado, conductorSeleccionadoId, conductoresEnVivo]);
+
+  // 2b. Fijar y seguir netamente al GPS del conductor en tiempo real mientras el pasajero esté a bordo
+  useEffect(() => {
+    if (!mapaCargado || !mapaRef.current || !estaAbordado || !conductorSeleccionadoId) return;
+    const choferAsignado = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
+    if (!choferAsignado || !choferAsignado.latitud || !choferAsignado.longitud) return;
+
+    mapaRef.current.easeTo({
+      center: [choferAsignado.longitud, choferAsignado.latitud],
+      zoom: Math.max(mapaRef.current.getZoom(), 16),
+      duration: 800,
+    });
+  }, [mapaCargado, estaAbordado, conductorSeleccionadoId, conductoresEnVivo]);
 
   // 3. Renderizar capa de ruta y marcadores dinámicos
   useEffect(() => {
@@ -535,8 +564,8 @@ export default function ColectivoMap({
           .addTo(mapa);
 
         marcadoresRef.current.push(marcador);
-      } else {
-        // Modo Pasajero: "Tu Ubicación"
+      } else if (!estaAbordado) {
+        // Modo Pasajero: "Tu Ubicación" (solo visible antes de abordar)
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = 'position: relative; width: 28px; height: 28px; cursor: pointer;';
@@ -617,9 +646,19 @@ export default function ColectivoMap({
         }
 
         const textoPill = eta ? `${eta.textoTiempo} • ${textoAsientos}` : textoAsientos;
-        const textoBadge = esSeleccionado
+        let textoBadge = esSeleccionado
           ? (eta ? `${eta.textoTiempo} • Asignado` : 'Asignado')
           : textoPill;
+        let patenteParaRender = chofer.patente;
+        let iconoBadge: 'auto' | 'reloj' | 'ninguno' = esSeleccionado ? 'auto' : (eta ? 'reloj' : 'ninguno');
+
+        // Si el pasajero ya abordó este colectivo asignado:
+        // Quitar los dos párrafos confusos y mostrar únicamente "En ruta" sin texto duplicado de patente
+        if (estaAbordado && esSeleccionado) {
+          textoBadge = 'En ruta';
+          patenteParaRender = ''; // Oculta el rectángulo blanco de patente inferior para eliminar sobrecarga visual
+          iconoBadge = 'auto';
+        }
 
         const colorBadge = esSeleccionado ? '#FACC15' : colorAsientos;
         const colorAuto = '#000000';
@@ -635,14 +674,14 @@ export default function ColectivoMap({
           z-index: ${esSeleccionado ? 90 : 40};
         `;
         el.innerHTML = generarSvgColectivoHtml({
-          patente: chofer.patente,
+          patente: patenteParaRender,
           textoBadge,
           colorBadge,
           colorAuto,
           colorLetrero,
           esDestacado: esSeleccionado,
           idUnico: `flota_${chofer.conductorId.replace(/[^a-zA-Z0-9]/g, '_')}`,
-          iconoBadge: esSeleccionado ? 'auto' : (eta ? 'reloj' : 'ninguno'),
+          iconoBadge,
         });
 
         el.addEventListener('click', () => {
@@ -651,11 +690,15 @@ export default function ColectivoMap({
           }
         });
 
-        const infoEtaHtml = eta
+        const infoEtaHtml = estaAbordado && esSeleccionado
+          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-weight: 800;">A bordo • En viaje</div>`
+          : eta
           ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-weight: 800;">Llega en ${eta.textoTiempo} (${eta.textoDistancia})</div>`
           : '';
 
-        const tituloPopup = esSeleccionado
+        const tituloPopup = estaAbordado && esSeleccionado
+          ? `<b>Tu Colectivo (En ruta)</b> (${chofer.patente})`
+          : esSeleccionado
           ? `<b>Tu Colectivo Asignado</b> (${chofer.patente})`
           : `<b>${chofer.nombre}</b> (${chofer.patente})`;
 
@@ -721,6 +764,7 @@ export default function ColectivoMap({
     esModoConductor,
     miConductorId,
     pasajerosEnEspera,
+    estaAbordado,
   ]);
 
   // 4. Renderizar marcadores de puntos de referencia clave (Metro, Microbús y Malls)
@@ -812,6 +856,19 @@ export default function ColectivoMap({
       if (!conductorSeleccionadoId) return null;
       const chofer = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
       if (!chofer) return null;
+
+      // Si el pasajero ya abordó, mostrar "En ruta a destino" sin tiempos de llegada obsoletos
+      if (estaAbordado) {
+        return {
+          tipo: 'a_bordo',
+          titulo: `Colectivo ${chofer.patente}`,
+          textoTiempo: 'En ruta a destino',
+          textoDistancia: '',
+          color: '#FACC15',
+        };
+      }
+
+      if (!ubicacionUsuario) return null;
       const eta = calcularInfoLlegada(
         chofer.latitud,
         chofer.longitud,
@@ -827,7 +884,7 @@ export default function ColectivoMap({
         color: '#FACC15',
       };
     }
-  }, [ubicacionUsuario, esModoConductor, pasajerosEnEspera, conductorSeleccionadoId, conductoresEnVivo]);
+  }, [ubicacionUsuario, esModoConductor, pasajerosEnEspera, conductorSeleccionadoId, conductoresEnVivo, estaAbordado]);
 
   return (
     <div
@@ -872,13 +929,22 @@ export default function ColectivoMap({
             <polyline points="12 6 12 12 16 14" />
           </svg>
           <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#FFFFFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {etaDestacado.titulo}:{' '}
-            <span style={{ color: '#FACC15', fontWeight: '900' }}>
-              {etaDestacado.tipo === 'conductor' ? 'en ' : 'llega en '}{etaDestacado.textoTiempo}
-            </span>{' '}
-            <span style={{ color: '#A3A3A3', fontWeight: '600', fontSize: '11px' }}>
-              ({etaDestacado.textoDistancia})
-            </span>
+            {etaDestacado.tipo === 'a_bordo' ? (
+              <>
+                <span style={{ color: '#FFFFFF' }}>{etaDestacado.titulo}: </span>
+                <span style={{ color: '#FACC15', fontWeight: '900' }}>En ruta a destino</span>
+              </>
+            ) : (
+              <>
+                {etaDestacado.titulo}:{' '}
+                <span style={{ color: '#FACC15', fontWeight: '900' }}>
+                  {etaDestacado.tipo === 'conductor' ? 'en ' : 'llega en '}{etaDestacado.textoTiempo}
+                </span>{' '}
+                <span style={{ color: '#A3A3A3', fontWeight: '600', fontSize: '11px' }}>
+                  ({etaDestacado.textoDistancia})
+                </span>
+              </>
+            )}
           </span>
         </div>
       )}
