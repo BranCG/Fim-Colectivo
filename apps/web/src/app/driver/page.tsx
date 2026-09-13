@@ -12,7 +12,6 @@ import {
   IconoAsiento,
   IconoPasajero,
   IconoGps,
-  IconoSentido,
   IconoTarjeta,
   IconoTelefono,
   IconoCheck,
@@ -31,7 +30,7 @@ import {
 // Cargar mapa dinámico sin SSR para Leaflet
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
 import AlertaVozReserva, { DatosSolicitudDirigida } from '@/components/driver/AlertaVozReserva';
-import { reproducirSonido, hablarTexto, desbloquearAudioYVoz, iniciarEscuchaVoz, detenerVoz } from '@/lib/voice';
+import { reproducirSonido, hablarTexto, desbloquearAudioYVoz, iniciarEscuchaVoz, detenerVoz, bloquearAbordoTemporal } from '@/lib/voice';
 
 interface SolicitudPagoActiva {
   reservaId: string;
@@ -92,6 +91,12 @@ export default function PaginaConductorColectivo() {
   const [pagoPendiente, setPagoPendiente] = useState<SolicitudPagoActiva | null>(null);
   const [audioDesbloqueado, setAudioDesbloqueado] = useState<boolean>(false);
   const [cargandoAccion, setCargandoAccion] = useState<string | null>(null);
+
+  // Estados de retroalimentación de voz en tiempo real
+  const [textoDetectadoPago, setTextoDetectadoPago] = useState<string>('');
+  const [textoDetectadoAbordaje, setTextoDetectadoAbordaje] = useState<string>('');
+  const [anunciandoPagoVoz, setAnunciandoPagoVoz] = useState<boolean>(false);
+  const [anunciandoAbordajeVoz, setAnunciandoAbordajeVoz] = useState<boolean>(false);
 
   // Mensajes de alerta y feedback
   const [mensajeExito, setMensajeExito] = useState<string>('');
@@ -318,24 +323,42 @@ export default function PaginaConductorColectivo() {
         return;
       }
       setPagoPendiente(datos);
+      setTextoDetectadoPago('');
       reproducirSonido('alerta');
-      const primerNombre = (datos.pasajeroNombre || 'Pasajero').split(' ')[0];
-      const mensajeVoz = `${primerNombre} desciende. ¿Confirmas pago?`;
 
-      // Activar escucha de inmediato para capturar "SÍ" sin demora
       if (escuchaPagoRef.current) {
         try {
           escuchaPagoRef.current.detener();
         } catch {}
+        escuchaPagoRef.current = null;
       }
+
+      // Iniciar reconocimiento de voz de inmediato (segundo 0) para no perder la respuesta del conductor
       escuchaPagoRef.current = iniciarEscuchaVoz({
         id: 'escucha-pago-conductor',
         onSi: () => {
+          setTextoDetectadoPago('¡SÍ DETECTADO!');
           confirmarPagoPasajero(datos.reservaId);
+        },
+        onNo: () => {
+          setTextoDetectadoPago('¡NO DETECTADO!');
+          rechazarPagoPasajero();
+        },
+        onTextoDetectado: (txt) => {
+          setTextoDetectadoPago(txt);
         },
       });
 
-      hablarTexto(mensajeVoz);
+      // Frase clara sin incluir las palabras disparadoras "sí" o "no" para evitar auto-disparo del parlante
+      const mensajeVoz = 'Cliente solicita pagar. ¿Liberamos asiento?';
+      setAnunciandoPagoVoz(true);
+
+      // Esperar a que concluya el chime de alerta (350ms) antes de emitir la voz
+      setTimeout(() => {
+        hablarTexto(mensajeVoz, () => {
+          setAnunciandoPagoVoz(false);
+        });
+      }, 350);
     };
 
     // Evento: Pago confirmado
@@ -543,15 +566,6 @@ export default function PaginaConductorColectivo() {
     }
   };
 
-  const alternarAsientoDirecto = async (numeroAsiento: number) => {
-    const estaOcupado = numeroAsiento <= asientosOcupados;
-    if (estaOcupado) {
-      modificarAsientos(-1);
-    } else {
-      modificarAsientos(1);
-    }
-  };
-
   // Cambiar sentido de ruta (Ida <-> Vuelta)
   const alternarSentido = async () => {
     const nuevoSentido = sentidoRuta === 'ida' ? 'vuelta' : 'ida';
@@ -567,12 +581,28 @@ export default function PaginaConductorColectivo() {
 
   // Responder a la solicitud dirigida de asiento (Aceptar / Rechazar)
   const responderSolicitudDirigida = async (reservaId: string, accion: 'aceptar' | 'rechazar') => {
+    const pasajeroNombre = (solicitudActiva?.nombrePasajero || solicitudActiva?.pasajeroNombre || 'el pasajero').split(' ')[0];
     try {
       setSolicitudActiva(null);
       const res = await api.post(`/colectivos/reservas/${reservaId}/responder`, { accion });
       if (accion === 'aceptar') {
-        setMensajeExito('Reserva aceptada. Pasajero confirmado en tu ruta.');
+        const nombreConfirmado = (res.data?.reserva?.pasajero?.name || pasajeroNombre).split(' ')[0];
+        setMensajeExito(`Reserva aceptada: ${nombreConfirmado} confirmado.`);
         reproducirSonido('exito');
+
+        // Locución guiada: Di "A bordo" cuando suba el pasajero
+        const locucionConfirmada =
+          nombreConfirmado && nombreConfirmado !== 'el pasajero'
+            ? `Reserva aceptada. Di a bordo cuando suba ${nombreConfirmado}.`
+            : 'Reserva aceptada. Di a bordo cuando suba el pasajero.';
+
+        setAnunciandoAbordajeVoz(true);
+        setTimeout(() => {
+          bloquearAbordoTemporal(8000);
+          hablarTexto(locucionConfirmada, () => {
+            setAnunciandoAbordajeVoz(false);
+          });
+        }, 500);
 
         // Actualizar conteo de asientos inmediatamente en pantalla
         if (res.data?.asientosOcupados !== undefined) {
@@ -628,7 +658,10 @@ export default function PaginaConductorColectivo() {
       }
       setMensajeExito('Pasajero a bordo. Asiento registrado en rojo.');
       reproducirSonido('exito');
-      hablarTexto('Pasajero a bordo');
+      setTimeout(() => {
+        bloquearAbordoTemporal(3000);
+        hablarTexto('Pasajero a bordo');
+      }, 450);
     } catch (error) {
       console.error('Error al confirmar abordaje:', error);
       setMensajeError('No se pudo registrar el abordaje.');
@@ -644,12 +677,18 @@ export default function PaginaConductorColectivo() {
       const primerReservado = reservasPendientes.find((r) => r.estado === 'reservado');
       if (primerReservado) {
         escuchaAbordajeRef.current = iniciarEscuchaVoz({
+          id: 'escucha-abordaje-conductor',
           onAbordo: () => {
+            setTextoDetectadoAbordaje('¡A BORDO DETECTADO!');
             confirmarAbordaje(primerReservado.id);
+          },
+          onTextoDetectado: (txt) => {
+            setTextoDetectadoAbordaje(txt);
           },
         });
       }
     } else {
+      setTextoDetectadoAbordaje('');
       if (escuchaAbordajeRef.current) {
         try {
           escuchaAbordajeRef.current.detener();
@@ -659,6 +698,7 @@ export default function PaginaConductorColectivo() {
     }
 
     return () => {
+      setTextoDetectadoAbordaje('');
       if (escuchaAbordajeRef.current) {
         try {
           escuchaAbordajeRef.current.detener();
@@ -667,6 +707,19 @@ export default function PaginaConductorColectivo() {
       }
     };
   }, [reservasPendientes, solicitudActiva, pagoPendiente]);
+
+  // Rechazar o cancelar solicitud de pago del pasajero
+  const rechazarPagoPasajero = () => {
+    detenerVoz();
+    if (escuchaPagoRef.current) {
+      try {
+        escuchaPagoRef.current.detener();
+      } catch {}
+      escuchaPagoRef.current = null;
+    }
+    setPagoPendiente(null);
+    reproducirSonido('rechazo');
+  };
 
   // Confirmar pago del pasajero y liberar asiento
   const confirmarPagoPasajero = async (reservaId: string) => {
@@ -682,7 +735,9 @@ export default function PaginaConductorColectivo() {
       setPagoPendiente((prev) => (prev?.reservaId === reservaId ? null : prev));
       setMensajeExito(res.data.mensaje || 'Pago confirmado y asiento liberado.');
       reproducirSonido('exito');
-      hablarTexto('Pago confirmado. Asiento liberado.');
+      setTimeout(() => {
+        hablarTexto('Pago confirmado. Asiento liberado.');
+      }, 350);
 
       // Actualizar estado local de reservas y chofer
       setReservasPendientes((prev) => prev.filter((r) => r.id !== reservaId));
@@ -815,48 +870,8 @@ export default function PaginaConductorColectivo() {
 
   const asientosLibres = conteoAsientos.totalLibres;
 
-  const obtenerEstadoAsiento = (numeroAsiento: number) => {
-    if (numeroAsiento <= conteoAsientos.totalAbordados) {
-      return {
-        estado: 'abordado' as const,
-        color: '#000000',
-        bgColor: '#FACC15',
-        borderColor: '#FACC15',
-        boxShadow: '0 2px 10px rgba(250, 204, 21, 0.4)',
-        texto: 'A Bordo',
-        subtexto: 'Ocupado',
-        textColor: '#000000',
-        icono: <IconoPasajero size={22} color="#000000" />,
-      };
-    }
-    if (numeroAsiento <= conteoAsientos.totalAbordados + conteoAsientos.totalReservados) {
-      return {
-        estado: 'reservado' as const,
-        color: '#FACC15',
-        bgColor: 'rgba(250, 204, 21, 0.15)',
-        borderColor: '#FACC15',
-        boxShadow: '0 2px 10px rgba(250, 204, 21, 0.25)',
-        texto: 'Reservado',
-        subtexto: 'Por subir',
-        textColor: '#FACC15',
-        icono: <IconoAsiento size={22} color="#FACC15" />,
-      };
-    }
-    return {
-      estado: 'libre' as const,
-      color: '#A3A3A3',
-      bgColor: '#171717',
-      borderColor: 'rgba(255, 255, 255, 0.15)',
-      boxShadow: 'none',
-      texto: 'Disponible',
-      subtexto: 'Libre',
-      textColor: '#D4D4D4',
-      icono: <IconoAsiento size={22} color="#D4D4D4" />,
-    };
-  };
-
   return (
-    <div style={{ minHeight: '100vh', background: '#0A0A0A', color: '#FFFFFF', padding: '12px 10px', maxWidth: '800px', margin: '0 auto', width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
+    <div style={{ minHeight: '100vh', background: '#0A0A0A', color: '#FFFFFF', padding: '8px 10px', maxWidth: '800px', margin: '0 auto', width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
       {/* ── Encabezado Principal ── */}
       <header style={{
@@ -985,7 +1000,7 @@ export default function PaginaConductorColectivo() {
         borderRadius: '16px',
         overflow: 'hidden',
         border: '1px solid rgba(255, 255, 255, 0.12)',
-        marginBottom: '18px',
+        marginBottom: '10px',
         boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
         background: '#121212',
       }}>
@@ -1082,17 +1097,17 @@ export default function PaginaConductorColectivo() {
         </button>
 
         {/* Componente Leaflet del Mapa */}
-        <div style={{ height: '380px', width: '100%' }}>
+        <div style={{ height: '300px', width: '100%' }}>
           <ColectivoMap
             ubicacionUsuario={ubicacionChofer}
             lineaSeleccionada={lineaActual}
             conductoresEnVivo={conductoresEnVivo}
             esModoConductor={true}
             miConductorId={choferSesion?.id}
-            miPatente={choferSesion?.vehiculo?.patente || choferSesion?.patente || 'MI AUTO'}
+            miPatente={choferSesion?.vehiculo?.patente || choferSesion?.patente || ''}
             pasajerosEnEspera={pasajerosEnEspera}
             disparadorCentrado={disparadorCentrado}
-            altura="380px"
+            altura="300px"
           />
         </div>
       </section>
@@ -1101,14 +1116,14 @@ export default function PaginaConductorColectivo() {
       <section style={{
         background: '#121212',
         borderRadius: '16px',
-        padding: '18px',
+        padding: '12px 14px',
         border: '1px solid rgba(255, 255, 255, 0.12)',
-        marginBottom: '18px',
+        marginBottom: '10px',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: reservasPendientes.length === 0 ? '8px' : '12px', flexWrap: 'wrap', gap: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <IconoPasajero size={20} color="#FACC15" />
-            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#FFFFFF' }}>
+            <IconoPasajero size={18} color="#FACC15" />
+            <h2 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#FFFFFF' }}>
               Pasajeros en Ruta (Acción Rápida de Abordaje)
             </h2>
           </div>
@@ -1133,7 +1148,7 @@ export default function PaginaConductorColectivo() {
             <span style={{
               fontSize: '11px',
               fontWeight: '800',
-              padding: '3px 8px',
+              padding: '2px 8px',
               borderRadius: '10px',
               background: reservasPendientes.length > 0 ? '#FACC15' : '#262626',
               color: reservasPendientes.length > 0 ? '#000000' : '#A3A3A3',
@@ -1143,17 +1158,105 @@ export default function PaginaConductorColectivo() {
           </div>
         </div>
 
-        {reservasPendientes.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '20px 12px', color: '#A3A3A3', background: '#171717', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ marginBottom: '6px' }}>
-              <IconoParada size={28} color="#737373" />
+        {reservasPendientes.some((r) => r.estado === 'reservado') && (
+          <div
+            style={{
+              background: '#0D0D0D',
+              border: '2px solid #FACC15',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              marginBottom: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              boxShadow: textoDetectadoAbordaje.includes('BORDO')
+                ? '0 0 25px rgba(250, 204, 21, 0.7)'
+                : '0 4px 18px rgba(250, 204, 21, 0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  background: anunciandoAbordajeVoz ? 'rgba(59, 130, 246, 0.2)' : 'rgba(250, 204, 21, 0.2)',
+                  border: anunciandoAbordajeVoz ? '1.5px solid #3B82F6' : '1.5px solid #FACC15',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {anunciandoAbordajeVoz ? (
+                  <span style={{ fontSize: '18px' }}>🔊</span>
+                ) : (
+                  <IconoMicrofono size={18} color="#FACC15" />
+                )}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '11px', fontWeight: '800', color: anunciandoAbordajeVoz ? '#93C5FD' : '#FACC15', letterSpacing: '0.5px' }}>
+                  {anunciandoAbordajeVoz ? 'ANUNCIANDO INSTRUCCIONES DE ABORDAJE...' : 'CONTROL POR VOZ ACTIVO — DI "A BORDO" AL SUBIR'}
+                </div>
+                <div
+                  style={{
+                    fontSize: '15px',
+                    fontWeight: '900',
+                    color: anunciandoAbordajeVoz
+                      ? '#E5E5E5'
+                      : textoDetectadoAbordaje.includes('BORDO')
+                      ? '#FACC15'
+                      : textoDetectadoAbordaje
+                      ? '#FFFFFF'
+                      : '#A3A3A3',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    textShadow: (textoDetectadoAbordaje && !anunciandoAbordajeVoz) ? '0 0 10px rgba(250, 204, 21, 0.4)' : 'none',
+                  }}
+                >
+                  {anunciandoAbordajeVoz
+                    ? '🔊 "Reserva aceptada. Di a bordo cuando suba el pasajero"'
+                    : textoDetectadoAbordaje
+                    ? `Escuchado: "${textoDetectadoAbordaje}"`
+                    : 'Esperando tu voz ("A bordo", "Subió")...'}
+                </div>
+              </div>
             </div>
-            <p style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#D4D4D4' }}>
-              Sin pasajeros esperando en tu recorrido en este momento.
-            </p>
-            <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: '#737373' }}>
-              Al estar En Servicio, las solicitudes de pasajeros aparecerán aquí con botón gigante de Abordo.
-            </p>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '16px',
+                background: anunciandoAbordajeVoz ? 'rgba(59, 130, 246, 0.15)' : 'rgba(250, 204, 21, 0.15)',
+                border: anunciandoAbordajeVoz ? '1px solid #3B82F6' : '1px solid #FACC15',
+                fontSize: '11px',
+                fontWeight: '800',
+                color: anunciandoAbordajeVoz ? '#93C5FD' : '#FACC15',
+                flexShrink: 0,
+              }}
+            >
+              <span
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: anunciandoAbordajeVoz ? '#3B82F6' : '#FACC15',
+                  boxShadow: anunciandoAbordajeVoz ? '0 0 8px #3B82F6' : '0 0 8px #FACC15',
+                  animation: 'fimPulse 1s infinite ease-out',
+                }}
+              />
+              <span>{anunciandoAbordajeVoz ? 'ANUNCIANDO' : 'EN VIVO'}</span>
+            </div>
+          </div>
+        )}
+
+        {reservasPendientes.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '10px 12px', color: '#737373', background: '#171717', borderRadius: '10px', fontSize: '11.5px', fontWeight: '600' }}>
+            Sin pasajeros esperando en ruta en este momento.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1468,261 +1571,127 @@ export default function PaginaConductorColectivo() {
         )}
       </section>
 
-      {/* ── SECCIÓN 3: BOTÓN DE TURNO (EN SERVICIO) ── */}
-      <div style={{ marginBottom: '18px' }}>
+      {/* ── SECCIÓN 3: BOTÓN DE TURNO (PONER EN LÍNEA / DESCONECTARME) ── */}
+      <div style={{ marginBottom: '10px' }}>
         <button
           onClick={alternarServicio}
           style={{
             width: '100%',
-            padding: '16px 20px',
-            borderRadius: '14px',
-            border: 'none',
-            background: enServicio
-              ? '#FACC15'
-              : '#262626',
+            padding: '14px 18px',
+            borderRadius: '12px',
+            border: enServicio ? 'none' : '1.5px solid rgba(250, 204, 21, 0.4)',
+            background: enServicio ? '#FACC15' : '#1A1A1A',
             fontWeight: '900',
-            fontSize: '14px',
+            fontSize: '15px',
             cursor: 'pointer',
-            color: enServicio ? '#000000' : '#FFFFFF',
+            color: enServicio ? '#000000' : '#FACC15',
             boxShadow: enServicio
-              ? '0 6px 22px rgba(250, 204, 21, 0.45)'
-              : '0 4px 12px rgba(0, 0, 0, 0.3)',
+              ? '0 4px 18px rgba(250, 204, 21, 0.4)'
+              : '0 2px 8px rgba(0, 0, 0, 0.3)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '10px',
-            letterSpacing: '0.4px',
+            letterSpacing: '0.6px',
             transition: 'all 0.2s',
+            textTransform: 'uppercase',
           }}
         >
-          <IconoPuntoEstado activo={enServicio} size={14} />
-          <span>{enServicio ? 'EN SERVICIO (TRANSMITIENDO GPS A PASAJEROS)' : 'FUERA DE SERVICIO (TOCA PARA INICIAR TURNO)'}</span>
+          <IconoPuntoEstado activo={enServicio} size={12} />
+          <span>{enServicio ? 'DESCONECTARME' : 'PONER EN LÍNEA'}</span>
         </button>
       </div>
 
-      {/* ── SECCIÓN 4: CONTROL RÁPIDO DE LOS 4 ASIENTOS (NEGRO / AMARILLO) ── */}
-      <section style={{
-        background: '#121212',
-        borderRadius: '16px',
-        padding: '18px',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        marginBottom: '18px',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#FFFFFF' }}>
-              Control de Asientos en Tiempo Real
-            </h2>
-            <p style={{ margin: 0, fontSize: '11px', color: '#A3A3A3' }}>
-              Oscuro: Disponible • Borde Amarillo: Reservado • Amarillo Sólido: A Bordo
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <span style={{
-              fontSize: '11px',
-              fontWeight: '800',
-              padding: '4px 8px',
-              borderRadius: '8px',
-              background: '#262626',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              color: '#D4D4D4',
-            }}>
-              {conteoAsientos.totalLibres} Libres
-            </span>
-            {conteoAsientos.totalReservados > 0 && (
-              <span style={{
-                fontSize: '11px',
-                fontWeight: '800',
-                padding: '4px 8px',
-                borderRadius: '8px',
-                background: 'rgba(250, 204, 21, 0.15)',
-                border: '1px solid #FACC15',
-                color: '#FACC15',
-              }}>
-                {conteoAsientos.totalReservados} Reservados
-              </span>
-            )}
-            {conteoAsientos.totalAbordados > 0 && (
-              <span style={{
-                fontSize: '11px',
-                fontWeight: '800',
-                padding: '4px 8px',
-                borderRadius: '8px',
-                background: '#FACC15',
-                border: '1px solid #FACC15',
-                color: '#000000',
-              }}>
-                {conteoAsientos.totalAbordados} A Bordo
-              </span>
-            )}
-          </div>
+      {/* ── SECCIÓN 4: CONTROL RÁPIDO DE ASIENTOS (BARRA SIMPLE: ASIENTOS : + O -) ── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: '#121212',
+          border: '1.5px solid rgba(255, 255, 255, 0.15)',
+          borderRadius: '14px',
+          padding: '10px 16px',
+          marginBottom: '10px',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <IconoAsiento size={20} color="#FACC15" />
+          <span style={{ fontSize: '13px', fontWeight: '900', color: '#FACC15', letterSpacing: '0.5px' }}>
+            ASIENTOS:
+          </span>
+          <span style={{ fontSize: '17px', fontWeight: '900', color: '#FFFFFF', letterSpacing: '0.5px' }}>
+            {asientosOcupados}/4
+          </span>
+          <span style={{ fontSize: '11px', fontWeight: '700', color: '#A3A3A3' }}>
+            ({4 - asientosOcupados} {4 - asientosOcupados === 1 ? 'libre' : 'libres'})
+          </span>
         </div>
 
-        {/* Visualizador de los 4 Asientos (Táctiles interactivos) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px', marginBottom: '14px' }}>
-          {[1, 2, 3, 4].map((numeroAsiento) => {
-            const estadoInfo = obtenerEstadoAsiento(numeroAsiento);
-            return (
-              <div
-                key={numeroAsiento}
-                onClick={() => alternarAsientoDirecto(numeroAsiento)}
-                style={{
-                  height: '74px',
-                  borderRadius: '10px',
-                  background: estadoInfo.bgColor,
-                  border: `2px solid ${estadoInfo.borderColor}`,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '2px',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  transition: 'transform 0.12s, box-shadow 0.12s',
-                  boxShadow: estadoInfo.boxShadow,
-                  padding: '4px 2px',
-                  minWidth: 0,
-                  overflow: 'hidden',
-                }}
-                onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.95)')}
-                onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                title={`Asiento ${numeroAsiento}: ${estadoInfo.texto} (${estadoInfo.subtexto})`}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {estadoInfo.icono}
-                </div>
-                <span style={{ fontSize: '10.5px', fontWeight: '800', color: estadoInfo.textColor, whiteSpace: 'nowrap' }}>
-                  Asiento {numeroAsiento}
-                </span>
-                <span style={{ fontSize: '8.5px', fontWeight: '700', color: estadoInfo.textColor, textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {estadoInfo.texto}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Botones Grandes de + y - */}
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             onClick={() => modificarAsientos(-1)}
             disabled={asientosOcupados <= 0}
+            title="Restar pasajero"
+            aria-label="Disminuir asientos"
             style={{
-              flex: 1,
-              padding: '14px',
-              borderRadius: '12px',
-              background: '#171717',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
+              width: '46px',
+              height: '44px',
+              borderRadius: '10px',
+              background: '#262626',
               color: '#FFFFFF',
-              fontSize: '15px',
-              fontWeight: '800',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              fontSize: '24px',
+              fontWeight: '900',
               cursor: asientosOcupados <= 0 ? 'not-allowed' : 'pointer',
-              opacity: asientosOcupados <= 0 ? 0.35 : 1,
+              opacity: asientosOcupados <= 0 ? 0.3 : 1,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px',
+              transition: 'transform 0.1s, background 0.15s',
+              userSelect: 'none',
             }}
+            onMouseDown={(e) => {
+              if (asientosOcupados > 0) e.currentTarget.style.transform = 'scale(0.92)';
+            }}
+            onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
           >
-            <span>-</span> Bajó Pasajero
+            −
           </button>
+
           <button
             onClick={() => modificarAsientos(1)}
             disabled={asientosOcupados >= 4}
+            title="Sumar pasajero"
+            aria-label="Aumentar asientos"
             style={{
-              flex: 1,
-              padding: '14px',
-              borderRadius: '12px',
+              width: '46px',
+              height: '44px',
+              borderRadius: '10px',
               background: '#FACC15',
-              border: 'none',
               color: '#000000',
-              fontSize: '15px',
-              fontWeight: '800',
+              border: 'none',
+              fontSize: '24px',
+              fontWeight: '900',
               cursor: asientosOcupados >= 4 ? 'not-allowed' : 'pointer',
-              opacity: asientosOcupados >= 4 ? 0.35 : 1,
-              boxShadow: '0 4px 14px rgba(250, 204, 21, 0.35)',
+              opacity: asientosOcupados >= 4 ? 0.3 : 1,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px',
+              boxShadow: asientosOcupados >= 4 ? 'none' : '0 2px 10px rgba(250, 204, 21, 0.4)',
+              transition: 'transform 0.1s, background 0.15s',
+              userSelect: 'none',
             }}
+            onMouseDown={(e) => {
+              if (asientosOcupados < 4) e.currentTarget.style.transform = 'scale(0.92)';
+            }}
+            onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
           >
-            <span>+</span> Subió Pasajero
+            +
           </button>
         </div>
-      </section>
-
-      {/* ── SECCIÓN 5: CONTROL DE LÍNEA Y SENTIDO DE RUTA ── */}
-      <section style={{
-        background: '#121212',
-        borderRadius: '16px',
-        padding: '18px',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        marginBottom: '18px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '14px',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          <div style={{ flex: 1, minWidth: '200px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#A3A3A3', marginBottom: '6px', fontWeight: '600' }}>
-              Línea Asignada:
-            </label>
-            <select
-              value={lineaActual?.id || ''}
-              onChange={(e) => cambiarLineaColectivo(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: '10px',
-                background: '#171717',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                color: '#FFFFFF',
-                fontSize: '14px',
-                fontWeight: '700',
-              }}
-            >
-              {lineasDisponibles.map((linea) => (
-                <option key={linea.id} value={linea.id}>
-                  {linea.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', color: '#A3A3A3', marginBottom: '6px', fontWeight: '600' }}>
-              Sentido de Ruta:
-            </label>
-            <button
-              onClick={alternarSentido}
-              style={{
-                padding: '10px 16px',
-                borderRadius: '10px',
-                background: '#171717',
-                color: '#FACC15',
-                border: '1px solid #FACC15',
-                fontSize: '13px',
-                fontWeight: '800',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
-              <IconoSentido size={16} color="#FACC15" />
-              <span>Sentido {sentidoRuta === 'ida' ? 'IDA ->' : 'VUELTA ->'}</span>
-            </button>
-          </div>
-        </div>
-
-        {lineaActual && (
-          <div style={{ background: '#171717', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', color: '#A3A3A3', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Ruta activa: <b style={{ color: '#FFFFFF' }}>{lineaActual.nombre}</b></span>
-            <span>Paradas en ruta: <b style={{ color: '#FFFFFF' }}>{lineaActual.paradas?.length || 0} paradas</b></span>
-          </div>
-        )}
-      </section>
+      </div>
 
       {/* ── SECCIÓN 6: CONFIGURACIÓN DE COBROS (RUTPAY Y MERCADOPAGO) ── */}
       {mostrarConfigCobro && (
@@ -1926,75 +1895,128 @@ export default function PaginaConductorColectivo() {
               </div>
               <div style={{ width: '1px', height: '30px', background: 'rgba(255, 255, 255, 0.1)' }} />
               <div>
-                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Cupos a Liberar</span>
+                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Asientos a Liberar</span>
                 <span style={{ fontSize: '14px', fontWeight: '800', color: '#FACC15' }}>
                   {pagoPendiente.cantidadAsientos} Asiento{pagoPendiente.cantidadAsientos > 1 ? 's' : ''}
                 </span>
               </div>
             </div>
 
-            {/* INDICADOR DE CONFIRMACIÓN POR VOZ CON "SÍ" */}
+            {/* RETROALIMENTACIÓN DE VOZ EN TIEMPO REAL: SÍ / NO */}
             <div
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                flexDirection: 'column',
                 gap: '8px',
-                padding: '10px 14px',
-                background: 'rgba(250, 204, 21, 0.12)',
-                borderRadius: '12px',
-                border: '1px solid #FACC15',
-                color: '#FACC15',
-                fontSize: '13px',
-                fontWeight: '700',
+                padding: '12px 16px',
+                background: '#171717',
+                borderRadius: '14px',
+                border: '2px solid #FACC15',
+                boxShadow: textoDetectadoPago.includes('SÍ')
+                  ? '0 0 25px rgba(250, 204, 21, 0.7)'
+                  : textoDetectadoPago.includes('NO')
+                  ? '0 0 25px rgba(239, 68, 68, 0.7)'
+                  : '0 0 16px rgba(250, 204, 21, 0.2)',
               }}
             >
-              <span
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: textoDetectadoPago.includes('SÍ')
+                      ? '#22C55E'
+                      : textoDetectadoPago.includes('NO')
+                      ? '#EF4444'
+                      : anunciandoPagoVoz
+                      ? '#3B82F6'
+                      : '#FACC15',
+                    boxShadow: '0 0 10px currentColor',
+                    animation: 'fimPulse 1s infinite ease-out',
+                  }}
+                />
+                <span style={{ fontSize: '11px', fontWeight: '800', color: '#FACC15', letterSpacing: '0.6px', textTransform: 'uppercase' }}>
+                  {textoDetectadoPago ? 'VOZ DETECTADA' : anunciandoPagoVoz ? 'ANUNCIANDO COBRO...' : 'MICRÓFONO EN VIVO — DI TU RESPUESTA:'}
+                </span>
+              </div>
+              <div
                 style={{
-                  display: 'inline-block',
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  background: '#FACC15',
-                  boxShadow: '0 0 10px #FACC15',
+                  fontSize: '18px',
+                  fontWeight: '900',
+                  color: textoDetectadoPago.includes('SÍ')
+                    ? '#FACC15'
+                    : textoDetectadoPago.includes('NO')
+                    ? '#EF4444'
+                    : anunciandoPagoVoz
+                    ? '#E5E5E5'
+                    : textoDetectadoPago
+                    ? '#FFFFFF'
+                    : '#FACC15',
+                  textAlign: 'center',
+                  textShadow: (textoDetectadoPago || !anunciandoPagoVoz) ? '0 0 12px rgba(250, 204, 21, 0.5)' : 'none',
                 }}
-              />
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IconoMicrofono size={16} color="#FACC15" />
-                <span>Di &quot;SÍ&quot; para confirmar por voz o toca el botón</span>
-              </span>
+              >
+                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? '🔊 Cliente solicita pagar. ¿Liberamos asiento?' : '🎙️ Escuchando... Di "SÍ" o "NO"'}
+              </div>
             </div>
 
-            {/* BOTÓN GIGANTE DE ACEPTACIÓN */}
-            <button
-              onClick={() => confirmarPagoPasajero(pagoPendiente.reservaId)}
-              disabled={cargandoAccion === pagoPendiente.reservaId}
-              style={{
-                width: '100%',
-                padding: '18px 20px',
-                borderRadius: '14px',
-                background: '#FACC15',
-                border: 'none',
-                color: '#000000',
-                fontSize: '18px',
-                fontWeight: '900',
-                letterSpacing: '0.5px',
-                cursor: 'pointer',
-                boxShadow: '0 6px 20px rgba(250, 204, 21, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '10px',
-                textTransform: 'uppercase',
-              }}
-            >
-              <IconoCheck size={26} color="#000000" />
-              <span>
-                {cargandoAccion === pagoPendiente.reservaId
-                  ? 'Liberando Asiento...'
-                  : 'ACEPTAR PAGO Y LIBERAR ASIENTO'}
-              </span>
-            </button>
+            {/* BOTONES GIGANTES: SÍ / NO */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+              <button
+                onClick={() => confirmarPagoPasajero(pagoPendiente.reservaId)}
+                disabled={cargandoAccion === pagoPendiente.reservaId}
+                style={{
+                  width: '100%',
+                  padding: '16px 20px',
+                  borderRadius: '14px',
+                  background: '#FACC15',
+                  border: 'none',
+                  color: '#000000',
+                  fontSize: '17px',
+                  fontWeight: '900',
+                  letterSpacing: '0.5px',
+                  cursor: 'pointer',
+                  boxShadow: '0 6px 20px rgba(250, 204, 21, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  textTransform: 'uppercase',
+                }}
+              >
+                <IconoCheck size={24} color="#000000" />
+                <span>
+                  {cargandoAccion === pagoPendiente.reservaId
+                    ? 'Liberando Asiento...'
+                    : 'ACEPTAR PAGO Y LIBERAR'}
+                </span>
+              </button>
+
+              <button
+                onClick={rechazarPagoPasajero}
+                disabled={cargandoAccion === pagoPendiente.reservaId}
+                style={{
+                  width: '100%',
+                  padding: '14px 20px',
+                  borderRadius: '14px',
+                  background: '#1A1A1A',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  color: '#FFFFFF',
+                  fontSize: '15px',
+                  fontWeight: '800',
+                  letterSpacing: '0.5px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span>CANCELAR / MANTENER ASIENTO</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

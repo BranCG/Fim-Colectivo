@@ -11,6 +11,8 @@ export interface DatosSolicitudDirigida {
   distanciaMetros: number;
   tiempoLimiteSegundos?: number;
   direccionSubida?: string;
+  pasajeroNombre?: string;
+  asientos?: number;
 }
 
 interface Props {
@@ -29,6 +31,9 @@ export default function AlertaVozReserva({
   const tiempoTotal = solicitud.tiempoLimiteSegundos || 15;
   const [segundosRestantes, setSegundosRestantes] = useState(tiempoTotal);
   const [escuchandoVoz, setEscuchandoVoz] = useState(false);
+  const [anunciandoVoz, setAnunciandoVoz] = useState(true);
+  const [textoDetectado, setTextoDetectado] = useState('');
+  const [comandoDetectado, setComandoDetectado] = useState<'si' | 'no' | null>(null);
   const [respondido, setRespondido] = useState(false);
 
   const escuchaRef = useRef<{ detener: () => void } | null>(null);
@@ -39,45 +44,45 @@ export default function AlertaVozReserva({
     ? `${(solicitud.distanciaMetros / 1000).toFixed(1)} km`
     : `${solicitud.distanciaMetros} m`;
 
+  const nombre = (solicitud.nombrePasajero || 'Pasajero').split(' ')[0];
+  const asientos = solicitud.cantidadAsientos || 1;
+  const textoAsientos = asientos === 1 ? 'un asiento' : `${asientos} asientos`;
+  const textoVoz = `${nombre}, ${textoAsientos}. ¿Tomamos?`;
+
   // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS), luego activar micrófono
   useEffect(() => {
     // Sonido de alerta chime inicial
     reproducirSonido('alerta');
 
-    // Locución ultra-concisa de 1 segundo ("JUAN, UN ASIENTO. ¿TOMAMOS?")
-    const nombre = (solicitud.nombrePasajero || 'Pasajero').split(' ')[0];
-    const asientos = solicitud.cantidadAsientos || 1;
-    const textoAsientos = asientos === 1 ? 'un asiento' : `${asientos} asientos`;
-    const textoVoz = `${nombre}, ${textoAsientos}. ¿Tomamos?`;
-
-    let microfonoIniciado = false;
-    const activarMicrofono = () => {
-      if (microfonoIniciado || respondido) return;
-      microfonoIniciado = true;
-      escuchaRef.current = iniciarEscuchaVoz({
-        onSi: () => {
-          manejarAceptar();
-        },
-        onNo: () => {
-          manejarRechazar();
-        },
-        onEscuchando: (activo) => {
-          setEscuchandoVoz(activo);
-        },
-      });
-    };
-
-    // Hablar inmediatamente; al terminar la frase (o a los 1.3s), se enciende el micrófono
-    hablarTexto(textoVoz, () => {
-      activarMicrofono();
+    // Iniciar escucha del micrófono
+    escuchaRef.current = iniciarEscuchaVoz({
+      onSi: () => {
+        setComandoDetectado('si');
+        setTextoDetectado('¡SÍ TOMAR!');
+        manejarAceptar();
+      },
+      onNo: () => {
+        setComandoDetectado('no');
+        setTextoDetectado('¡NO PASAR!');
+        manejarRechazar();
+      },
+      onEscuchando: (activo) => {
+        setEscuchandoVoz(activo);
+      },
+      onTextoDetectado: (texto) => {
+        setTextoDetectado(texto);
+      },
     });
 
-    const timerSeguridadMic = setTimeout(() => {
-      activarMicrofono();
-    }, 1300);
+    // Permitir que el doble tono de aviso de reserva suene limpio antes de iniciar la locución
+    const timerInicioVoz = setTimeout(() => {
+      hablarTexto(textoVoz, () => {
+        setAnunciandoVoz(false);
+      });
+    }, 300);
 
     return () => {
-      clearTimeout(timerSeguridadMic);
+      clearTimeout(timerInicioVoz);
       detenerVoz();
       if (escuchaRef.current) {
         try {
@@ -120,7 +125,6 @@ export default function AlertaVozReserva({
 
     try {
       reproducirSonido('exito');
-      hablarTexto('Reserva aceptada');
     } catch {}
 
     try {
@@ -231,19 +235,24 @@ export default function AlertaVozReserva({
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            background: escuchandoVoz ? 'rgba(250, 204, 21, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-            border: escuchandoVoz ? '1px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.1)',
-            padding: '4px 10px',
+            background: anunciandoVoz ? 'rgba(255, 255, 255, 0.08)' : escuchandoVoz ? 'rgba(250, 204, 21, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+            border: anunciandoVoz ? '1px solid rgba(255, 255, 255, 0.2)' : escuchandoVoz ? '1.5px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.1)',
+            padding: '5px 12px',
             borderRadius: '20px',
+            maxWidth: '60%',
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={escuchandoVoz ? '#FACC15' : '#A3A3A3'} strokeWidth="2.5">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="22" />
-          </svg>
-          <span style={{ fontSize: '11px', fontWeight: '700', color: escuchandoVoz ? '#FACC15' : '#A3A3A3' }}>
-            {escuchandoVoz ? 'DI "SÍ" O "NO"' : 'AUDIO ACTIVO'}
+          {anunciandoVoz ? (
+            <span style={{ fontSize: '13px' }}>🔊</span>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={escuchandoVoz ? '#FACC15' : '#A3A3A3'} strokeWidth="2.5">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="22" />
+            </svg>
+          )}
+          <span style={{ fontSize: '11px', fontWeight: '800', color: anunciandoVoz ? '#D4D4D4' : escuchandoVoz ? '#FACC15' : '#A3A3A3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {anunciandoVoz ? 'ANUNCIANDO...' : textoDetectado ? `"${textoDetectado}"` : 'DI "SÍ" O "NO"'}
           </span>
         </div>
       </div>
@@ -325,47 +334,111 @@ export default function AlertaVozReserva({
         </div>
       </button>
 
-      {/* ── FRANJA CENTRAL DE CUENTA REGRESIVA ── */}
+      {/* ── FRANJA CENTRAL: RETROALIMENTACIÓN DE VOZ EN VIVO + TEMPORIZADOR ── */}
       <div
         style={{
-          background: '#000000',
-          padding: '8px 20px',
+          background: '#0D0D0D',
+          padding: '12px 20px',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderTop: '2px solid rgba(255, 255, 255, 0.1)',
-          borderBottom: '2px solid rgba(255, 255, 255, 0.1)',
+          flexDirection: 'column',
+          gap: '8px',
+          borderTop: '2px solid #FACC15',
+          borderBottom: '2px solid #FACC15',
+          boxShadow: comandoDetectado === 'si'
+            ? '0 0 35px rgba(250, 204, 21, 0.7)'
+            : comandoDetectado === 'no'
+            ? '0 0 35px rgba(239, 68, 68, 0.7)'
+            : '0 0 20px rgba(0, 0, 0, 0.9)',
+          zIndex: 20,
         }}
       >
-        <div style={{ flex: 1, marginRight: '16px' }}>
-          <div
-            style={{
-              height: '8px',
-              borderRadius: '4px',
-              background: 'rgba(255, 255, 255, 0.15)',
-              overflow: 'hidden',
-            }}
-          >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
             <div
               style={{
-                height: '100%',
-                width: `${porcentajeTiempo}%`,
-                background: '#FACC15',
-                transition: 'width 1s linear',
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%',
+                background: comandoDetectado === 'si' ? '#22C55E' : comandoDetectado === 'no' ? '#EF4444' : anunciandoVoz ? '#3B82F6' : '#FACC15',
+                boxShadow: comandoDetectado ? '0 0 14px currentColor' : anunciandoVoz ? '0 0 10px #3B82F6' : '0 0 10px #FACC15',
+                flexShrink: 0,
+                animation: 'fimPulse 1s infinite ease-out',
               }}
             />
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <div style={{ fontSize: '10px', fontWeight: '800', color: '#A3A3A3', letterSpacing: '0.6px', textTransform: 'uppercase' }}>
+                {comandoDetectado
+                  ? 'COMANDO RECONOCIDO'
+                  : anunciandoVoz
+                  ? 'ANUNCIANDO PASAJERO:'
+                  : 'MICRÓFONO EN VIVO (DI TU RESPUESTA):'}
+              </div>
+              <div
+                style={{
+                  fontSize: '17px',
+                  fontWeight: '900',
+                  color: comandoDetectado === 'si'
+                    ? '#FACC15'
+                    : comandoDetectado === 'no'
+                    ? '#EF4444'
+                    : anunciandoVoz
+                    ? '#E5E5E5'
+                    : textoDetectado
+                    ? '#FFFFFF'
+                    : '#FACC15',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  textShadow: (textoDetectado || !anunciandoVoz) ? '0 0 10px rgba(250, 204, 21, 0.4)' : 'none',
+                }}
+              >
+                {comandoDetectado === 'si'
+                  ? '✓ ¡SÍ DETECTADO!'
+                  : comandoDetectado === 'no'
+                  ? '✕ ¡PASO DETECTADO!'
+                  : anunciandoVoz
+                  ? `🔊 ${nombre}, ${textoAsientos}. ¿Tomamos?`
+                  : textoDetectado
+                  ? `"${textoDetectado}"`
+                  : '🎙️ Escuchando... Di "SÍ" o "NO"'}
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              fontSize: '18px',
+              fontWeight: '900',
+              color: '#FACC15',
+              padding: '4px 10px',
+              borderRadius: '8px',
+              background: 'rgba(250, 204, 21, 0.15)',
+              border: '1px solid #FACC15',
+              flexShrink: 0,
+            }}
+          >
+            {segundosRestantes}s
           </div>
         </div>
+
+        {/* Barra de progreso de tiempo restante */}
         <div
           style={{
-            fontSize: '16px',
-            fontWeight: '900',
-            color: '#FACC15',
-            minWidth: '45px',
-            textAlign: 'right',
+            height: '6px',
+            borderRadius: '3px',
+            background: 'rgba(255, 255, 255, 0.15)',
+            overflow: 'hidden',
+            width: '100%',
           }}
         >
-          {segundosRestantes}s
+          <div
+            style={{
+              height: '100%',
+              width: `${porcentajeTiempo}%`,
+              background: '#FACC15',
+              transition: 'width 1s linear',
+            }}
+          />
         </div>
       </div>
 
