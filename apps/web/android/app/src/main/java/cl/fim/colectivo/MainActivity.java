@@ -45,14 +45,16 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onStart() {
         super.onStart();
-        // Limpiar caché de WebView y habilitar GPS nativo en WebView
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebView webView = getBridge().getWebView();
-            webView.clearCache(true);
             WebSettings settings = webView.getSettings();
-            settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
             settings.setGeolocationEnabled(true);
-            settings.setGeolocationDatabasePath(getFilesDir().getPath());
+            webView.setWebChromeClient(new com.getcapacitor.BridgeWebChromeClient(getBridge()) {
+                @Override
+                public void onGeolocationPermissionsShowPrompt(String origin, android.webkit.GeolocationPermissions.Callback callback) {
+                    callback.invoke(origin, true, false);
+                }
+            });
         }
     }
 }

@@ -34,14 +34,6 @@ export default function Home() {
         router.replace('/passenger/');
         return;
       }
-    } else {
-      // En la aplicación nativa (APK), si no hay sesión activa, ir directo al login
-      if (typeof window !== 'undefined') {
-        const isNative = Capacitor.isNativePlatform() || window.location.protocol === 'capacitor:';
-        if (isNative) {
-          router.replace('/login/');
-        }
-      }
     }
   }, [router]);
 

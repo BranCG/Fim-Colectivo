@@ -111,7 +111,15 @@ export default function PaginaPasajeroColectivo() {
     latitud: number;
     longitud: number;
     direccion?: string;
-  } | null>(null);
+  } | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const guardada = localStorage.getItem('fim_passenger_last_loc');
+        if (guardada) return JSON.parse(guardada);
+      } catch {}
+    }
+    return { latitud: -33.5513, longitud: -70.6192 }; // Fallback inicial La Granja / Ruta Folio 233012
+  });
   const [disparadorCentrado, setDisparadorCentrado] = useState(0);
   const [disparadorEncuadrarRuta, setDisparadorEncuadrarRuta] = useState(0);
 
@@ -139,6 +147,7 @@ export default function PaginaPasajeroColectivo() {
     const latPasajero = ubicacionPasajero?.latitud ?? reservaActiva.latitudSubida;
     const lngPasajero = ubicacionPasajero?.longitud ?? reservaActiva.longitudSubida;
 
+    if (!latChofer || !lngChofer || !latPasajero || !lngPasajero) return null;
     return calcularInfoLlegada(latChofer, lngChofer, latPasajero, lngPasajero);
   }, [reservaActiva, conductoresEnVivo, ubicacionPasajero]);
 
@@ -165,20 +174,39 @@ export default function PaginaPasajeroColectivo() {
 
   // 2. Obtener geolocalización en tiempo real del pasajero y auto-centrar el mapa
   const centrarGpsOEncuadrarRuta = useCallback(() => {
+    setDisparadorCentrado((prev) => prev + 1);
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      // 1. Lectura rápida de red/cache
       navigator.geolocation.getCurrentPosition(
         (posicion: GeolocationPosition) => {
           const lat = posicion.coords.latitude;
           const lng = posicion.coords.longitude;
           setUbicacionPasajero({ latitud: lat, longitud: lng });
+          try {
+            localStorage.setItem('fim_passenger_last_loc', JSON.stringify({ latitud: lat, longitud: lng }));
+          } catch {}
           setDisparadorCentrado((prev) => prev + 1);
         },
-        (error: GeolocationPositionError) => {
-          console.warn('GPS no disponible en el dispositivo:', error.message);
-          // Si el GPS falla o está deshabilitado en el teléfono, encuadrar la ruta para que el usuario no quede desorientado
-          setDisparadorEncuadrarRuta((prev) => prev + 1);
+        () => {
+          // 2. Fallback a alta precisión satelital
+          navigator.geolocation.getCurrentPosition(
+            (posicion: GeolocationPosition) => {
+              const lat = posicion.coords.latitude;
+              const lng = posicion.coords.longitude;
+              setUbicacionPasajero({ latitud: lat, longitud: lng });
+              try {
+                localStorage.setItem('fim_passenger_last_loc', JSON.stringify({ latitud: lat, longitud: lng }));
+              } catch {}
+              setDisparadorCentrado((prev) => prev + 1);
+            },
+            (error: GeolocationPositionError) => {
+              console.warn('GPS no disponible en el dispositivo:', error.message);
+              setDisparadorEncuadrarRuta((prev) => prev + 1);
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+          );
         },
-        { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+        { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 }
       );
     } else {
       setDisparadorEncuadrarRuta((prev) => prev + 1);
@@ -195,6 +223,9 @@ export default function PaginaPasajeroColectivo() {
       const lng = posicion.coords.longitude;
 
       setUbicacionPasajero({ latitud: lat, longitud: lng });
+      try {
+        localStorage.setItem('fim_passenger_last_loc', JSON.stringify({ latitud: lat, longitud: lng }));
+      } catch {}
 
       if (primerExito) {
         primerExito = false;
@@ -203,21 +234,21 @@ export default function PaginaPasajeroColectivo() {
     };
 
     const alFallarUbicacion = (error: GeolocationPositionError) => {
-      console.warn('GPS inicial no disponible, mostrando trazado oficial:', error.message);
-      // No asignar coordenadas falsas de Santiago Centro para no alejar la cámara de La Granja
+      console.warn('GPS inicial no disponible, aguardando señal:', error.message);
     };
 
-    // Intentar obtener rápidamente la posición actual
+    // Intentar obtener rápidamente la posición actual por red o caché
     navigator.geolocation.getCurrentPosition(alObtenerUbicacion, alFallarUbicacion, {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 3000,
+      enableHighAccuracy: false,
+      timeout: 5000,
+      maximumAge: 60000,
     });
 
     // Suscribir rastreo continuo para actualizar ubicación mientras la app se usa
     const watchId = navigator.geolocation.watchPosition(alObtenerUbicacion, alFallarUbicacion, {
       enableHighAccuracy: true,
-      maximumAge: 2000,
+      maximumAge: 3000,
+      timeout: 15000,
     });
 
     return () => {

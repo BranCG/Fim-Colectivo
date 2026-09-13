@@ -486,12 +486,13 @@ export default function ColectivoMap({
       maplibreModuleRef.current = mod;
       const { Map, NavigationControl } = mod;
 
-      // Centro inicial: si el usuario tiene ubicación válida en Santiago Sur, usarla; si no, ir directo a la zona del recorrido oficial (La Granja / Folio 233012)
+      // Centro inicial: si el usuario tiene ubicación válida, usarla; si no, ir directo a la zona del recorrido oficial (La Granja / Folio 233012)
       const tieneGpsValido =
         ubicacionUsuario &&
         typeof ubicacionUsuario.latitud === 'number' &&
         typeof ubicacionUsuario.longitud === 'number' &&
-        ubicacionUsuario.latitud < -33.48; // Evitar saltar a Santiago Centro si el GPS falló
+        !isNaN(ubicacionUsuario.latitud) &&
+        !isNaN(ubicacionUsuario.longitud);
 
       const centroInicial: [number, number] = tieneGpsValido
         ? [ubicacionUsuario!.longitud, ubicacionUsuario!.latitud]
@@ -581,7 +582,7 @@ export default function ColectivoMap({
     const esBotonGpsPresionado = disparadorCentrado > ultimoDisparadorRef.current;
     if (esBotonGpsPresionado) {
       ultimoDisparadorRef.current = disparadorCentrado;
-      if (ubicacionUsuario && ubicacionUsuario.latitud && ubicacionUsuario.longitud) {
+      if (ubicacionUsuario && typeof ubicacionUsuario.latitud === 'number' && typeof ubicacionUsuario.longitud === 'number') {
         mapaRef.current.flyTo({
           center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
           zoom: 16,
@@ -589,24 +590,27 @@ export default function ColectivoMap({
           duration: 1000,
         });
       } else {
-        // Si no hay señal de GPS en el dispositivo, centrar en la ruta
+        // Si aún no hay señal de GPS en el dispositivo, centrar en la ruta
         encuadrarRutaActual();
       }
       return;
     }
 
-    // En la primera carga
+    // Auto-centrar en la ubicación del usuario/chofer en cuanto esté disponible por primera vez
+    if (ubicacionUsuario && typeof ubicacionUsuario.latitud === 'number' && typeof ubicacionUsuario.longitud === 'number' && !haCentradoInicialmenteRef.current) {
+      haCentradoInicialmenteRef.current = true;
+      mapaRef.current.flyTo({
+        center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
+        zoom: 16,
+        duration: 1000,
+      });
+      return;
+    }
+
+    // En la primera carga sin GPS aún, encuadrar el recorrido oficial
     if (!haCentradoInicialmenteRef.current) {
       haCentradoInicialmenteRef.current = true;
-      if (esModoConductor && ubicacionUsuario) {
-        mapaRef.current.flyTo({
-          center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
-          zoom: 16,
-          duration: 1000,
-        });
-      } else {
-        encuadrarRutaActual();
-      }
+      encuadrarRutaActual();
     }
   }, [
     disparadorCentrado,
@@ -843,14 +847,20 @@ export default function ColectivoMap({
     }
 
     // C. Marcador: Ubicación del usuario o Mi Colectivo
-    if (ubicacionUsuario) {
+    let uLoc = ubicacionUsuario;
+    if (!uLoc && esModoConductor) {
+      // Si el GPS del chofer todavía no responde, posicionar en el inicio de la línea para que el auto siempre esté presente
+      uLoc = { latitud: -33.5513, longitud: -70.6192 };
+    }
+
+    if (uLoc && typeof uLoc.latitud === 'number' && typeof uLoc.longitud === 'number') {
       if (esModoConductor) {
         // Modo Conductor: Ícono de colectivo limpio sin badges confusos
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = 'display: flex; flex-direction: column; align-items: center; z-index: 100; cursor: pointer;';
         el.innerHTML = generarSvgColectivoHtml({
-          patente: '',
+          patente: miPatente || '',
           textoBadge: '',
           colorBadge: '#FACC15',
           colorAuto: '#000000',
@@ -861,7 +871,7 @@ export default function ColectivoMap({
         });
 
         const marcador = new Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([ubicacionUsuario.longitud, ubicacionUsuario.latitud])
+          .setLngLat([uLoc.longitud, uLoc.latitud])
           .setPopup(
             new Popup({ offset: 22, closeButton: false, className: 'fim-map-popup' }).setHTML(
               '<b>Tu Colectivo en tiempo real</b><br/><span style="color: #FACC15; font-size: 10.5px;">GPS activo y en servicio</span>'
@@ -881,7 +891,7 @@ export default function ColectivoMap({
         `;
 
         const marcador = new Marker({ element: el, anchor: 'center' })
-          .setLngLat([ubicacionUsuario.longitud, ubicacionUsuario.latitud])
+          .setLngLat([uLoc.longitud, uLoc.latitud])
           .setPopup(
             new Popup({ offset: 15, closeButton: false, className: 'fim-map-popup' }).setHTML(
               '<b>Tu ubicación actual</b>'
