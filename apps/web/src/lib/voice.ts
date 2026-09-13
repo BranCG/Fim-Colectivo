@@ -366,12 +366,13 @@ function ejecutarLecturaSintesis(texto: string, alFinalizar?: () => void) {
   }
 }
 
-interface OpcionesEscucha {
+export interface OpcionesEscucha {
   id?: string;
   onSi?: () => void;
   onNo?: () => void;
   onAbordo?: () => void;
   onEscuchando?: (estado: boolean) => void;
+  onTextoDetectado?: (texto: string) => void;
   onError?: (error: string) => void;
 }
 
@@ -399,152 +400,7 @@ class GestorReconocimientoVoz {
   }
 
   private constructor() {
-    if (typeof window === 'undefined') return;
-    this.inicializarReconocimiento();
-  }
-
-  private inicializarReconocimiento() {
-    if (typeof window === 'undefined') return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const windowAny = window as any;
-    const SpeechRecognition = windowAny.SpeechRecognition || windowAny.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      console.info('[Voz Chofer] SpeechRecognition no soportado en este navegador');
-      return;
-    }
-
-    try {
-      this.reconocimiento = new SpeechRecognition();
-      this.reconocimiento.lang = 'es-CL';
-      this.reconocimiento.continuous = true;
-      this.reconocimiento.interimResults = true;
-      this.reconocimiento.maxAlternatives = 5;
-
-      this.reconocimiento.onstart = () => {
-        this.estaCorriendo = true;
-        this.notificarEstadoEscucha(true);
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.reconocimiento.onresult = (evento: any) => {
-        const ahora = Date.now();
-        const resultados = evento.results;
-
-        // Antirrebote mínimo de 350ms entre comandos aceptados
-        if (ahora - this.ultimoDisparoComando < 350) {
-          return;
-        }
-
-        for (let i = evento.resultIndex; i < resultados.length; i++) {
-          const item = resultados[i];
-          const numAlternativas = item.length || 1;
-
-          for (let altIdx = 0; altIdx < numAlternativas; altIdx++) {
-            const rawTranscript = (item[altIdx]?.transcript || '').trim();
-            if (!rawTranscript) continue;
-
-            // Normalizar quitando tildes, signos y puntuaciones
-            const normalizado = rawTranscript
-              .normalize('NFD')
-              .replace(/[\u0300-\u036f]/g, '')
-              .toLowerCase()
-              .replace(/[^a-z0-9\s]/g, ' ')
-              .replace(/\s+/g, ' ')
-              .trim();
-
-            if (!normalizado) continue;
-
-            console.log('[Voz Chofer] Escuchado:', normalizado, item.isFinal ? '(final)' : '(interim)');
-
-            // 1. Comando: SÍ (confirmar/aceptar reserva o pago)
-            // No incluye "tomamos" para que la pregunta del sistema nunca se auto-confirme.
-            // Alta tolerancia fonética para el dialecto chileno y ruido ambiente en cabina.
-            const matchSi =
-              normalizado === 'si' ||
-              normalizado === 'sip' ||
-              normalizado === 'dale' ||
-              normalizado === 'ya' ||
-              normalizado === 'bueno' ||
-              normalizado.split(' ').includes('si') ||
-              normalizado.split(' ').includes('sip') ||
-              normalizado.split(' ').includes('dale') ||
-              /(^|\s)(s+i+|s+i+p+o*|dale|ya|yapo|ya po|bueno|ok|oka|okay|acepto|aceptar|toma|tomar|tomalo|tomala|claro|confirmo|confirmar|afirmativo|positivo|libera|liberar|pagado|pago|vale|vamos|listo|correcto|exacto|aja|chi|shi|ci)($|\s)/i.test(
-                normalizado
-              );
-
-            if (matchSi) {
-              this.ultimoDisparoComando = ahora;
-              detenerVoz();
-              const ejecutado = this.despacharComando('onSi');
-              if (ejecutado) return;
-            }
-
-            // 2. Comando: A BORDO (sube pasajero)
-            // Tolera "a bordo", "bordo", "subió", "ya subió", "sube", "al auto", "arriba"
-            const matchAbordo =
-              normalizado.includes('bordo') ||
-              normalizado.includes('subio') ||
-              normalizado.includes('sube') ||
-              normalizado.includes('arriba') ||
-              normalizado.includes('adentro') ||
-              /(a\s*bordo|bordo|subi[oó]|sube|subieron|subir|ya\s+subi|arriba|adentro|al\s*auto|aborde)/i.test(
-                normalizado
-              );
-
-            if (matchAbordo && ahora > this.bloqueoAbordoHasta) {
-              this.ultimoDisparoComando = ahora;
-              detenerVoz();
-              const ejecutado = this.despacharComando('onAbordo');
-              if (ejecutado) return;
-            }
-
-            // 3. Comando: NO (rechazar/pasar/cancelar)
-            const matchNo =
-              normalizado === 'no' ||
-              normalizado === 'nop' ||
-              normalizado === 'paso' ||
-              normalizado.split(' ').includes('no') ||
-              /(^|\s)(n+o+|nop|nopo|no po|paso|rechazo|rechazar|dejalo|dejala|no puedo|cancelar|cancela|negativo)($|\s)/i.test(
-                normalizado
-              );
-
-            if (matchNo) {
-              this.ultimoDisparoComando = ahora;
-              detenerVoz();
-              const ejecutado = this.despacharComando('onNo');
-              if (ejecutado) return;
-            }
-          }
-        }
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.reconocimiento.onerror = (err: any) => {
-        console.warn('[Voz Chofer] Evento onerror SpeechRecognition:', err?.error);
-        if (err?.error === 'not-allowed' || err?.error === 'service-not-allowed') {
-          this.escuchandoDeseado = false;
-          this.notificarError('Permiso de micrófono denegado');
-          return;
-        }
-        this.estaCorriendo = false;
-      };
-
-      this.reconocimiento.onend = () => {
-        this.estaCorriendo = false;
-        this.notificarEstadoEscucha(false);
-
-        // Si el conductor tiene oyentes activos (ruta o modal), reiniciar de inmediato en 100ms
-        if (this.escuchandoDeseado && this.suscriptores.size > 0) {
-          if (this.timerReintento) clearTimeout(this.timerReintento);
-          this.timerReintento = setTimeout(() => {
-            this.iniciarCiclo();
-          }, 100);
-        }
-      };
-    } catch (e) {
-      console.warn('[Voz Chofer] No se pudo instanciar SpeechRecognition:', e);
-    }
+    // Inicialización bajo demanda
   }
 
   pausarPorHabla() {
@@ -593,6 +449,12 @@ class GestorReconocimientoVoz {
     });
   }
 
+  private notificarTextoDetectado(texto: string) {
+    this.suscriptores.forEach((s) => {
+      if (s.onTextoDetectado) s.onTextoDetectado(texto);
+    });
+  }
+
   private notificarError(msg: string) {
     this.suscriptores.forEach((s) => {
       if (s.onError) s.onError(msg);
@@ -600,21 +462,224 @@ class GestorReconocimientoVoz {
   }
 
   private iniciarCiclo() {
-    if (!this.reconocimiento) {
-      this.inicializarReconocimiento();
+    if (!this.escuchandoDeseado || this.suscriptores.size === 0) return;
+
+    // Destruir instancia previa de forma limpia para que Android no bloquee el micrófono
+    if (this.reconocimiento) {
+      try {
+        this.reconocimiento.onstart = null;
+        this.reconocimiento.onresult = null;
+        this.reconocimiento.onerror = null;
+        this.reconocimiento.onend = null;
+        this.reconocimiento.abort();
+      } catch {}
+      this.reconocimiento = null;
     }
-    if (!this.reconocimiento || this.estaCorriendo) return;
+
+    const windowAny = typeof window !== 'undefined' ? (window as any) : {};
+    const SpeechRecognitionClass = windowAny.SpeechRecognition || windowAny.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionClass) {
+      console.info('[Voz Chofer] SpeechRecognition no soportado en este navegador');
+      return;
+    }
 
     try {
-      this.reconocimiento.start();
-    } catch (e: any) {
+      const rec = new SpeechRecognitionClass();
+      rec.lang = 'es-CL';
+      // continuous = true mantiene el micrófono abierto en Android sin destruirlo cada 1.5 segundos
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.maxAlternatives = 5;
+
+      rec.onstart = () => {
+        this.estaCorriendo = true;
+        this.notificarEstadoEscucha(true);
+      };
+
+      rec.onresult = (evento: any) => {
+        const ahora = Date.now();
+        const resultados = evento.results;
+        if (!resultados || resultados.length === 0) return;
+
+        let textoDetectadoReciente = '';
+
+        for (let i = evento.resultIndex; i < resultados.length; i++) {
+          const item = resultados[i];
+          const numAlternativas = item.length || 1;
+
+          for (let altIdx = 0; altIdx < numAlternativas; altIdx++) {
+            const rawTranscript = (item[altIdx]?.transcript || '').trim();
+            if (!rawTranscript) continue;
+
+            // Notificar de inmediato al suscriptor/UI para que el conductor vea en pantalla lo que dice en tiempo real
+            this.notificarTextoDetectado(rawTranscript);
+
+            if (!textoDetectadoReciente) {
+              textoDetectadoReciente = rawTranscript;
+            }
+
+            // Normalizar quitando acentos y caracteres especiales
+            const normalizado = rawTranscript
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            if (!normalizado) continue;
+
+            console.log('[Voz Chofer] Escuchado:', normalizado, item.isFinal ? '(final)' : '(interim)');
+
+            const palabras = normalizado.split(' ');
+
+            // 1. Comando: SÍ (confirmar/aceptar reserva o pago)
+            const esSi =
+              normalizado === 'si' ||
+              normalizado === 'sip' ||
+              normalizado === 'se' ||
+              normalizado === 'sin' ||
+              normalizado === 'ci' ||
+              normalizado === 'chi' ||
+              normalizado === 'dale' ||
+              normalizado === 'ya' ||
+              normalizado === 'bueno' ||
+              normalizado === 'ok' ||
+              normalizado === 'toma' ||
+              normalizado === 'tomar' ||
+              normalizado === 'tomamos' ||
+              normalizado === 'tomalo' ||
+              palabras.includes('si') ||
+              palabras.includes('sip') ||
+              palabras.includes('sipo') ||
+              palabras.includes('se') ||
+              palabras.includes('sin') ||
+              palabras.includes('ci') ||
+              palabras.includes('chi') ||
+              palabras.includes('dale') ||
+              palabras.includes('ya') ||
+              palabras.includes('bueno') ||
+              palabras.includes('ok') ||
+              palabras.includes('oka') ||
+              palabras.includes('okay') ||
+              palabras.includes('vale') ||
+              palabras.includes('vamos') ||
+              palabras.includes('listo') ||
+              palabras.includes('acepto') ||
+              palabras.includes('confirmo') ||
+              palabras.includes('confirmar') ||
+              palabras.includes('toma') ||
+              palabras.includes('tomar') ||
+              palabras.includes('tomamos') ||
+              palabras.includes('tomalo') ||
+              palabras.includes('libera') ||
+              palabras.includes('liberar') ||
+              palabras.includes('pago') ||
+              palabras.includes('pagado') ||
+              /(^|\s)(s+i+|s+e+|s+i+p+o*|dale|ya|yapo|bueno|ok|oka|okay|acepto|aceptar|confirmo|confirmar|toma|tomar|tomamos|tomalo|vale|vamos|listo|libera|liberar|pagado|pago|claro|afirmativo|positivo|chi|shi|ci|sin)($|\s)/i.test(
+                normalizado
+              );
+
+            if (esSi && ahora - this.ultimoDisparoComando > 300) {
+              this.ultimoDisparoComando = ahora;
+              this.notificarTextoDetectado('¡SÍ DETECTADO!');
+              detenerVoz();
+              const ejecutado = this.despacharComando('onSi');
+              if (ejecutado) return;
+            }
+
+            // 2. Comando: A BORDO (sube pasajero)
+            const esAbordo =
+              normalizado.includes('bordo') ||
+              normalizado.includes('subio') ||
+              normalizado.includes('sube') ||
+              normalizado.includes('arriba') ||
+              normalizado.includes('adentro') ||
+              normalizado.includes('auto') ||
+              palabras.includes('bordo') ||
+              palabras.includes('subio') ||
+              palabras.includes('sube') ||
+              palabras.includes('arriba') ||
+              palabras.includes('listo') ||
+              /(^|\s)(a\s*bordo|bordo|subi[oó]|sube|subieron|subir|arriba|adentro|al\s*auto|aborde|listo)($|\s)/i.test(
+                normalizado
+              );
+
+            if (esAbordo && ahora - this.ultimoDisparoComando > 300 && ahora > this.bloqueoAbordoHasta) {
+              this.ultimoDisparoComando = ahora;
+              this.notificarTextoDetectado('¡A BORDO DETECTADO!');
+              detenerVoz();
+              const ejecutado = this.despacharComando('onAbordo');
+              if (ejecutado) return;
+            }
+
+            // 3. Comando: NO (rechazar/pasar/cancelar)
+            const esNo =
+              normalizado === 'no' ||
+              normalizado === 'nop' ||
+              normalizado === 'paso' ||
+              normalizado === 'rechazo' ||
+              palabras.includes('no') ||
+              palabras.includes('nop') ||
+              palabras.includes('nopo') ||
+              palabras.includes('paso') ||
+              palabras.includes('cancelar') ||
+              palabras.includes('cancela') ||
+              palabras.includes('rechazar') ||
+              palabras.includes('rechazo') ||
+              palabras.includes('dejalo') ||
+              /(^|\s)(no|nop|nopo|paso|rechazo|rechazar|dejalo|dejala|cancelar|cancela|negativo)($|\s)/i.test(
+                normalizado
+              );
+
+            if (esNo && ahora - this.ultimoDisparoComando > 300) {
+              this.ultimoDisparoComando = ahora;
+              this.notificarTextoDetectado('¡NO DETECTADO!');
+              detenerVoz();
+              const ejecutado = this.despacharComando('onNo');
+              if (ejecutado) return;
+            }
+          }
+        }
+
+        if (textoDetectadoReciente) {
+          this.notificarTextoDetectado(textoDetectadoReciente);
+        }
+      };
+
+      rec.onerror = (err: any) => {
+        console.warn('[Voz Chofer] Evento onerror SpeechRecognition:', err?.error);
+        if (err?.error === 'not-allowed' || err?.error === 'service-not-allowed') {
+          this.escuchandoDeseado = false;
+          this.notificarError('Permiso de micrófono denegado');
+          return;
+        }
+        this.estaCorriendo = false;
+      };
+
+      rec.onend = () => {
+        this.estaCorriendo = false;
+        this.notificarEstadoEscucha(false);
+
+        // Reinicio automático con instancia limpia para Android
+        if (this.escuchandoDeseado && this.suscriptores.size > 0) {
+          if (this.timerReintento) clearTimeout(this.timerReintento);
+          this.timerReintento = setTimeout(() => {
+            this.iniciarCiclo();
+          }, 100);
+        }
+      };
+
+      rec.start();
+      this.reconocimiento = rec;
+      this.estaCorriendo = true;
+    } catch (e) {
       this.estaCorriendo = false;
       if (this.timerReintento) clearTimeout(this.timerReintento);
       this.timerReintento = setTimeout(() => {
-        if (this.escuchandoDeseado && this.suscriptores.size > 0 && !this.estaCorriendo) {
-          try {
-            this.reconocimiento?.start();
-          } catch {}
+        if (this.escuchandoDeseado && this.suscriptores.size > 0) {
+          this.iniciarCiclo();
         }
       }, 200);
     }
@@ -624,14 +689,12 @@ class GestorReconocimientoVoz {
     const id = opciones.id || Math.random().toString(36).slice(2);
     this.suscriptores.set(id, opciones);
     this.escuchandoDeseado = true;
-    this.ultimoDisparoComando = 0; // Permitir que la primera respuesta del chofer se procese de inmediato
+    this.ultimoDisparoComando = 0;
 
-    if (!this.silenciadoPorHabla) {
-      if (!this.estaCorriendo) {
-        this.iniciarCiclo();
-      } else {
-        if (opciones.onEscuchando) opciones.onEscuchando(true);
-      }
+    if (!this.estaCorriendo) {
+      this.iniciarCiclo();
+    } else {
+      if (opciones.onEscuchando) opciones.onEscuchando(true);
     }
 
     return {
@@ -641,10 +704,13 @@ class GestorReconocimientoVoz {
           this.escuchandoDeseado = false;
           if (this.timerReintento) clearTimeout(this.timerReintento);
           try {
-            if (this.reconocimiento && this.estaCorriendo) {
+            if (this.reconocimiento) {
+              this.reconocimiento.onend = null;
               this.reconocimiento.stop();
             }
           } catch {}
+          this.reconocimiento = null;
+          this.estaCorriendo = false;
         }
       },
     };

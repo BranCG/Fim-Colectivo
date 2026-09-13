@@ -93,6 +93,10 @@ export default function PaginaConductorColectivo() {
   const [audioDesbloqueado, setAudioDesbloqueado] = useState<boolean>(false);
   const [cargandoAccion, setCargandoAccion] = useState<string | null>(null);
 
+  // Estados de retroalimentación de voz en tiempo real
+  const [textoDetectadoPago, setTextoDetectadoPago] = useState<string>('');
+  const [textoDetectadoAbordaje, setTextoDetectadoAbordaje] = useState<string>('');
+
   // Mensajes de alerta y feedback
   const [mensajeExito, setMensajeExito] = useState<string>('');
   const [mensajeError, setMensajeError] = useState<string>('');
@@ -285,10 +289,8 @@ export default function PaginaConductorColectivo() {
         return;
       }
       setPagoPendiente(datos);
+      setTextoDetectadoPago('');
       reproducirSonido('alerta');
-
-      // Frase solicitada para la alerta de cobro
-      const mensajeVoz = 'Cliente paga, ¿aceptar pago y liberar? ¿Sí o no?';
 
       if (escuchaPagoRef.current) {
         try {
@@ -297,20 +299,28 @@ export default function PaginaConductorColectivo() {
         escuchaPagoRef.current = null;
       }
 
+      // Iniciar reconocimiento de voz de inmediato (segundo 0) para no perder la respuesta del conductor
+      escuchaPagoRef.current = iniciarEscuchaVoz({
+        id: 'escucha-pago-conductor',
+        onSi: () => {
+          setTextoDetectadoPago('¡SÍ DETECTADO!');
+          confirmarPagoPasajero(datos.reservaId);
+        },
+        onNo: () => {
+          setTextoDetectadoPago('¡NO DETECTADO!');
+          rechazarPagoPasajero();
+        },
+        onTextoDetectado: (txt) => {
+          setTextoDetectadoPago(txt);
+        },
+      });
+
+      // Frase clara sin incluir las palabras disparadoras "sí" o "no" para evitar auto-disparo del parlante
+      const mensajeVoz = 'Cliente solicita pagar. ¿Liberamos asiento?';
+
       // Esperar a que concluya el chime de alerta (350ms) antes de emitir la voz
       setTimeout(() => {
-        hablarTexto(mensajeVoz, () => {
-          // Activar escucha de voz únicamente cuando la locución termine
-          escuchaPagoRef.current = iniciarEscuchaVoz({
-            id: 'escucha-pago-conductor',
-            onSi: () => {
-              confirmarPagoPasajero(datos.reservaId);
-            },
-            onNo: () => {
-              rechazarPagoPasajero();
-            },
-          });
-        });
+        hablarTexto(mensajeVoz);
       }, 350);
     };
 
@@ -632,12 +642,18 @@ export default function PaginaConductorColectivo() {
       const primerReservado = reservasPendientes.find((r) => r.estado === 'reservado');
       if (primerReservado) {
         escuchaAbordajeRef.current = iniciarEscuchaVoz({
+          id: 'escucha-abordaje-conductor',
           onAbordo: () => {
+            setTextoDetectadoAbordaje('¡A BORDO DETECTADO!');
             confirmarAbordaje(primerReservado.id);
+          },
+          onTextoDetectado: (txt) => {
+            setTextoDetectadoAbordaje(txt);
           },
         });
       }
     } else {
+      setTextoDetectadoAbordaje('');
       if (escuchaAbordajeRef.current) {
         try {
           escuchaAbordajeRef.current.detener();
@@ -647,6 +663,7 @@ export default function PaginaConductorColectivo() {
     }
 
     return () => {
+      setTextoDetectadoAbordaje('');
       if (escuchaAbordajeRef.current) {
         try {
           escuchaAbordajeRef.current.detener();
@@ -1145,6 +1162,92 @@ export default function PaginaConductorColectivo() {
             </span>
           </div>
         </div>
+
+        {reservasPendientes.some((r) => r.estado === 'reservado') && (
+          <div
+            style={{
+              background: '#0D0D0D',
+              border: '2px solid #FACC15',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              marginBottom: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              boxShadow: textoDetectadoAbordaje.includes('BORDO')
+                ? '0 0 25px rgba(250, 204, 21, 0.7)'
+                : '0 4px 18px rgba(250, 204, 21, 0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  background: 'rgba(250, 204, 21, 0.2)',
+                  border: '1.5px solid #FACC15',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <IconoMicrofono size={18} color="#FACC15" />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '11px', fontWeight: '800', color: '#FACC15', letterSpacing: '0.5px' }}>
+                  CONTROL POR VOZ ACTIVO — DI &quot;A BORDO&quot; AL SUBIR
+                </div>
+                <div
+                  style={{
+                    fontSize: '15px',
+                    fontWeight: '900',
+                    color: textoDetectadoAbordaje.includes('BORDO')
+                      ? '#FACC15'
+                      : textoDetectadoAbordaje
+                      ? '#FFFFFF'
+                      : '#A3A3A3',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    textShadow: textoDetectadoAbordaje ? '0 0 10px rgba(250, 204, 21, 0.4)' : 'none',
+                  }}
+                >
+                  {textoDetectadoAbordaje ? `Escuchado: "${textoDetectadoAbordaje}"` : 'Esperando tu voz ("A bordo", "Subió")...'}
+                </div>
+              </div>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '16px',
+                background: 'rgba(250, 204, 21, 0.15)',
+                border: '1px solid #FACC15',
+                fontSize: '11px',
+                fontWeight: '800',
+                color: '#FACC15',
+                flexShrink: 0,
+              }}
+            >
+              <span
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: '#FACC15',
+                  boxShadow: '0 0 8px #FACC15',
+                  animation: 'fimPulse 1s infinite ease-out',
+                }}
+              />
+              <span>EN VIVO</span>
+            </div>
+          </div>
+        )}
 
         {reservasPendientes.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '20px 12px', color: '#A3A3A3', background: '#171717', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -1936,36 +2039,60 @@ export default function PaginaConductorColectivo() {
               </div>
             </div>
 
-            {/* INDICADOR DE CONFIRMACIÓN POR VOZ CON "SÍ" O "NO" */}
+            {/* RETROALIMENTACIÓN DE VOZ EN TIEMPO REAL: SÍ / NO */}
             <div
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                flexDirection: 'column',
                 gap: '8px',
-                padding: '10px 14px',
-                background: 'rgba(250, 204, 21, 0.12)',
-                borderRadius: '12px',
-                border: '1px solid #FACC15',
-                color: '#FACC15',
-                fontSize: '13px',
-                fontWeight: '700',
+                padding: '12px 16px',
+                background: '#171717',
+                borderRadius: '14px',
+                border: '2px solid #FACC15',
+                boxShadow: textoDetectadoPago.includes('SÍ')
+                  ? '0 0 25px rgba(250, 204, 21, 0.7)'
+                  : textoDetectadoPago.includes('NO')
+                  ? '0 0 25px rgba(239, 68, 68, 0.7)'
+                  : '0 0 16px rgba(250, 204, 21, 0.2)',
               }}
             >
-              <span
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: textoDetectadoPago.includes('SÍ')
+                      ? '#22C55E'
+                      : textoDetectadoPago.includes('NO')
+                      ? '#EF4444'
+                      : '#FACC15',
+                    boxShadow: '0 0 10px currentColor',
+                    animation: 'fimPulse 1s infinite ease-out',
+                  }}
+                />
+                <span style={{ fontSize: '11px', fontWeight: '800', color: '#FACC15', letterSpacing: '0.6px', textTransform: 'uppercase' }}>
+                  {textoDetectadoPago ? 'VOZ DETECTADA' : 'MICRÓFONO EN VIVO — DI TU RESPUESTA:'}
+                </span>
+              </div>
+              <div
                 style={{
-                  display: 'inline-block',
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  background: '#FACC15',
-                  boxShadow: '0 0 10px #FACC15',
+                  fontSize: '18px',
+                  fontWeight: '900',
+                  color: textoDetectadoPago.includes('SÍ')
+                    ? '#FACC15'
+                    : textoDetectadoPago.includes('NO')
+                    ? '#EF4444'
+                    : textoDetectadoPago
+                    ? '#FFFFFF'
+                    : '#A3A3A3',
+                  textAlign: 'center',
+                  textShadow: textoDetectadoPago ? '0 0 12px rgba(250, 204, 21, 0.5)' : 'none',
                 }}
-              />
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IconoMicrofono size={16} color="#FACC15" />
-                <span>Di &quot;SÍ&quot; para liberar o &quot;NO&quot; para cancelar</span>
-              </span>
+              >
+                {textoDetectadoPago ? `"${textoDetectadoPago}"` : 'Di "SÍ" para liberar o "NO" para cancelar'}
+              </div>
             </div>
 
             {/* BOTONES GIGANTES: SÍ / NO */}
