@@ -42,6 +42,8 @@ interface ReservaActiva {
     mercadoPagoLink?: string | null;
     lastLat?: number;
     lastLng?: number;
+    mttValidada?: boolean;
+    folioRuta?: string | null;
   };
   cantidadAsientos: number;
   tarifa: number;
@@ -56,6 +58,7 @@ export default function PaginaPasajeroColectivo() {
   // Estados de líneas y colectivos
   const [listaLineas, setListaLineas] = useState<Linea[]>([]);
   const [lineaSeleccionada, setLineaSeleccionada] = useState<Linea | null>(null);
+  const [sentidoSeleccionado, setSentidoSeleccionado] = useState<'ida' | 'regreso'>('ida');
   const [conductoresEnVivo, setConductoresEnVivo] = useState<ConductorColectivo[]>([]);
   const [conductorElegido, setConductorElegido] = useState<ConductorColectivo | null>(null);
 
@@ -220,6 +223,8 @@ export default function PaginaPasajeroColectivo() {
           sentidoRuta: c.sentidoRuta,
           telefonoRutPay: c.telefonoRutPay,
           mercadoPagoLink: c.mercadoPagoLink,
+          mttValidada: c.mttValidada,
+          folioRuta: c.folioRuta,
         }));
         setConductoresEnVivo(mapeados);
       });
@@ -238,6 +243,8 @@ export default function PaginaPasajeroColectivo() {
           asientosOcupados: datos.asientosOcupados,
           asientosTotales: datos.asientosTotales,
           sentidoRuta: datos.sentidoRuta,
+          mttValidada: datos.mttValidada !== undefined ? datos.mttValidada : (indice >= 0 ? prev[indice].mttValidada : true),
+          folioRuta: datos.folioRuta || (indice >= 0 ? prev[indice].folioRuta : null),
         };
         if (indice >= 0) {
           const copia = [...prev];
@@ -530,7 +537,7 @@ export default function PaginaPasajeroColectivo() {
         longitudSubida: ubicacionPasajero?.longitud || -70.6506,
         cantidadAsientos,
         metodoPago,
-        sentido: 'ida',
+        sentido: sentidoSeleccionado,
       });
       if (res.data?.conductorAsignado) {
         setMovilAsignadoPreview(res.data.conductorAsignado);
@@ -637,6 +644,109 @@ export default function PaginaPasajeroColectivo() {
         })}
       </div>
 
+      {/* ── Selector de Sentido (IDA / REGRESO) y Ficha Oficial MTT ── */}
+      {lineaSeleccionada && (
+        <div style={{
+          padding: '8px 14px',
+          background: '#0D0D0D',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          zIndex: 5,
+        }}>
+          {/* Ficha oficial MTT del Recorrido */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                background: '#FACC15',
+                color: '#000000',
+                fontSize: '11px',
+                fontWeight: '900',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                letterSpacing: '0.4px',
+              }}>
+                FOLIO {lineaSeleccionada.folio || '233012'}
+              </span>
+              <span style={{ fontSize: '12.5px', fontWeight: '800', color: '#FFFFFF' }}>
+                {lineaSeleccionada.nombreRecorrido || 'Recorrido T'} • {lineaSeleccionada.tipoTrazado || 'Principal'}
+              </span>
+            </div>
+            <span style={{ fontSize: '11px', color: '#A3A3A3', fontWeight: '600' }}>
+              {lineaSeleccionada.comunas || 'La Granja - La Pintana - La Florida'}
+            </span>
+          </div>
+
+          {/* Selector de Sentido IDA / REGRESO */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <button
+              onClick={() => setSentidoSeleccionado('ida')}
+              style={{
+                padding: '8px 10px',
+                borderRadius: '10px',
+                border: sentidoSeleccionado === 'ida' ? '1.5px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: sentidoSeleccionado === 'ida' ? 'rgba(250, 204, 21, 0.15)' : '#171717',
+                color: sentidoSeleccionado === 'ida' ? '#FACC15' : '#A3A3A3',
+                fontSize: '11px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                textAlign: 'left',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: sentidoSeleccionado === 'ida' ? '#FACC15' : '#525252',
+                }} />
+                <span>IDA • A METRO BELLAVISTA</span>
+              </div>
+              <span style={{ fontSize: '9.5px', color: sentidoSeleccionado === 'ida' ? '#D4D4D4' : '#737373', fontWeight: '500', paddingLeft: '13px' }}>
+                Los Pensamientos → Serafín Zamora
+              </span>
+            </button>
+
+            <button
+              onClick={() => setSentidoSeleccionado('regreso')}
+              style={{
+                padding: '8px 10px',
+                borderRadius: '10px',
+                border: sentidoSeleccionado === 'regreso' ? '1.5px solid #4ADE80' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: sentidoSeleccionado === 'regreso' ? 'rgba(74, 222, 128, 0.15)' : '#171717',
+                color: sentidoSeleccionado === 'regreso' ? '#4ADE80' : '#A3A3A3',
+                fontSize: '11px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                textAlign: 'left',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: sentidoSeleccionado === 'regreso' ? '#4ADE80' : '#525252',
+                }} />
+                <span>REGRESO • A LA GRANJA</span>
+              </div>
+              <span style={{ fontSize: '9.5px', color: sentidoSeleccionado === 'regreso' ? '#D4D4D4' : '#737373', fontWeight: '500', paddingLeft: '13px' }}>
+                Serafín Zamora → Los Pensamientos
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Banner de Alerta o Error ── */}
       {mensajeAlerta && (
         <div style={{
@@ -713,6 +823,7 @@ export default function PaginaPasajeroColectivo() {
           alSeleccionarConductor={(chofer) => setConductorElegido(chofer)}
           disparadorCentrado={disparadorCentrado}
           estaAbordado={reservaActiva?.estado === 'abordado' || reservaActiva?.estado === 'pagando'}
+          sentidoSeleccionado={sentidoSeleccionado}
         />
 
         {/* Botón flotante para recentrar ubicación */}
@@ -780,6 +891,23 @@ export default function PaginaPasajeroColectivo() {
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: '800', color: '#FFFFFF' }}>
                   {reservaActiva.conductor.name} ({reservaActiva.conductor.vehiclePlate})
                 </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: 'rgba(74, 222, 128, 0.15)',
+                    border: '1px solid #4ADE80',
+                    color: '#4ADE80',
+                    borderRadius: '10px',
+                    padding: '2px 8px',
+                    fontSize: '10.5px',
+                    fontWeight: '800',
+                  }}>
+                    <IconoCheck size={11} color="#4ADE80" />
+                    Patente Verificada MTT ({reservaActiva.conductor.vehiclePlate})
+                  </span>
+                </div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <span style={{
@@ -991,13 +1119,30 @@ export default function PaginaPasajeroColectivo() {
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: '800', color: '#FFFFFF' }}>
                   {conductorElegido.nombre} — {conductorElegido.patente}
                 </h3>
-                <span style={{
-                  fontSize: '11px',
-                  color: conductorElegido.asientosOcupados >= 4 ? '#A3A3A3' : '#FACC15',
-                  fontWeight: '700',
-                }}>
-                  {4 - conductorElegido.asientosOcupados} de 4 asientos disponibles
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '11px',
+                    color: conductorElegido.asientosOcupados >= 4 ? '#A3A3A3' : '#FACC15',
+                    fontWeight: '700',
+                  }}>
+                    {4 - conductorElegido.asientosOcupados} de 4 asientos disponibles
+                  </span>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: 'rgba(74, 222, 128, 0.15)',
+                    border: '1px solid #4ADE80',
+                    color: '#4ADE80',
+                    borderRadius: '10px',
+                    padding: '2px 7px',
+                    fontSize: '10px',
+                    fontWeight: '800',
+                  }}>
+                    <IconoCheck size={10} color="#4ADE80" />
+                    Patente Verificada MTT
+                  </span>
+                </div>
               </div>
               <button
                 onClick={() => setConductorElegido(null)}

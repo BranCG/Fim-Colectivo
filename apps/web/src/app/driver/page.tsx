@@ -65,7 +65,13 @@ export default function PaginaConductorColectivo() {
   const [lineaActual, setLineaActual] = useState<Linea | null>(null);
   const [enServicio, setEnServicio] = useState<boolean>(false);
   const [asientosOcupados, setAsientosOcupados] = useState<number>(0);
-  const [sentidoRuta, setSentidoRuta] = useState<'ida' | 'vuelta'>('ida');
+  const [sentidoRuta, setSentidoRuta] = useState<'ida' | 'regreso'>('ida');
+
+  // Validación MTT de Patente y Folio
+  const [patenteInput, setPatenteInput] = useState<string>('');
+  const [validandoMtt, setValidandoMtt] = useState<boolean>(false);
+  const [mttDetalle, setMttDetalle] = useState<any>(null);
+  const [mostrarConfigPatente, setMostrarConfigPatente] = useState<boolean>(false);
 
   // Ubicación y mapa en tiempo real
   const [ubicacionChofer, setUbicacionChofer] = useState<{
@@ -156,9 +162,22 @@ export default function PaginaConductorColectivo() {
         const datos = resEstado.data.chofer;
         setEnServicio(datos.isOnline || false);
         setAsientosOcupados(datos.asientosOcupados || 0);
-        setSentidoRuta(datos.sentidoRuta || 'ida');
+        setSentidoRuta(datos.sentidoRuta === 'regreso' ? 'regreso' : 'ida');
         setTelefonoRutPay(datos.telefonoRutPay || '');
         setLinkMercadoPago(datos.mercadoPagoLink || '');
+
+        if (datos.vehiclePlate) {
+          setPatenteInput(datos.vehiclePlate);
+        }
+        if (datos.mttDetalle) {
+          try {
+            setMttDetalle(typeof datos.mttDetalle === 'string' ? JSON.parse(datos.mttDetalle) : datos.mttDetalle);
+          } catch {}
+        }
+        setChoferSesion((prev: any) => ({
+          ...prev,
+          ...datos,
+        }));
 
         if (datos.lastLat && datos.lastLng) {
           setUbicacionChofer((prev) => prev || {
@@ -533,16 +552,48 @@ export default function PaginaConductorColectivo() {
     }
   };
 
-  // Cambiar sentido de ruta (Ida <-> Vuelta)
-  const alternarSentido = async () => {
-    const nuevoSentido = sentidoRuta === 'ida' ? 'vuelta' : 'ida';
+  // Cambiar sentido de ruta (IDA <-> REGRESO)
+  const alternarSentido = async (sentidoObjetivo?: 'ida' | 'regreso') => {
+    const nuevoSentido = sentidoObjetivo || (sentidoRuta === 'ida' ? 'regreso' : 'ida');
     setSentidoRuta(nuevoSentido);
     try {
       await api.post('/colectivos/conductor/sentido', { sentidoRuta: nuevoSentido });
-      setMensajeExito(`Sentido cambiado a ${nuevoSentido.toUpperCase()}`);
+      setMensajeExito(`Sentido cambiado a ${nuevoSentido === 'ida' ? 'IDA (A Metro Bellavista)' : 'REGRESO (A La Granja)'}`);
     } catch (error) {
       console.error('Error al cambiar sentido:', error);
       setMensajeError('No se pudo cambiar el sentido de la ruta.');
+    }
+  };
+
+  // Validar patente vehicular contra MTT Consulta Web (https://apps.mtt.cl/consultaweb/)
+  const validarPatenteMtt = async () => {
+    if (!patenteInput.trim()) {
+      setMensajeError('Por favor ingresa una patente vehicular.');
+      return;
+    }
+    setValidandoMtt(true);
+    setMensajeError('');
+    try {
+      const res = await api.post('/colectivos/validar-patente-mtt', { patente: patenteInput.trim() });
+      if (res.data?.mttValidada) {
+        setChoferSesion((prev: any) => ({
+          ...prev,
+          vehiclePlate: res.data.patente,
+          patente: res.data.patente,
+          mttValidada: true,
+          mttDetalle: res.data.detalle,
+        }));
+        setMttDetalle(res.data.detalle);
+        setMensajeExito(`✓ Patente ${res.data.patente} verificada exitosamente en el Ministerio de Transportes (MTT).`);
+        reproducirSonido('exito');
+      } else {
+        setMensajeError(`La patente ${patenteInput} no pudo ser validada ante el registro MTT.`);
+      }
+    } catch (error: any) {
+      console.error('Error al validar patente MTT:', error);
+      setMensajeError(error.response?.data?.error || 'Error al conectar con la plataforma MTT.');
+    } finally {
+      setValidandoMtt(false);
     }
   };
 
@@ -961,6 +1012,216 @@ export default function PaginaConductorColectivo() {
         </div>
       )}
 
+      {/* ── PANEL DE RECORRIDO OFICIAL MTT Y SENTIDO DE OPERACIÓN ── */}
+      <div style={{
+        background: '#121212',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
+        borderRadius: '16px',
+        padding: '12px 14px',
+        marginBottom: '10px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+      }}>
+        {/* Ficha Folio y Patente MTT */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              background: '#FACC15',
+              color: '#000000',
+              fontSize: '11px',
+              fontWeight: '900',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              letterSpacing: '0.5px',
+            }}>
+              FOLIO {lineaActual?.folio || '233012'}
+            </span>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>
+                {lineaActual?.nombreRecorrido || 'Recorrido T'} • {lineaActual?.tipoTrazado || 'Principal'}
+              </div>
+              <div style={{ fontSize: '11px', color: '#A3A3A3' }}>
+                {lineaActual?.comunas || 'La Granja - La Pintana - La Florida'}
+              </div>
+            </div>
+          </div>
+
+          {/* Patente y Estado MTT */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div
+              onClick={() => setMostrarConfigPatente(!mostrarConfigPatente)}
+              style={{
+                cursor: 'pointer',
+                background: '#171717',
+                border: choferSesion?.mttValidada ? '1px solid #4ADE80' : '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '8px',
+                padding: '4px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+              title="Haz clic para verificar o cambiar tu patente ante el MTT"
+            >
+              <span style={{ fontSize: '12px', fontWeight: '900', color: '#FFFFFF' }}>
+                {choferSesion?.vehiculo?.patente || choferSesion?.vehiclePlate || choferSesion?.patente || patenteInput || 'SIN PATENTE'}
+              </span>
+              {choferSesion?.mttValidada ? (
+                <span style={{
+                  background: 'rgba(74, 222, 128, 0.15)',
+                  color: '#4ADE80',
+                  fontSize: '9.5px',
+                  fontWeight: '800',
+                  padding: '2px 5px',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                }}>
+                  <IconoCheck size={9} color="#4ADE80" />
+                  MTT OK
+                </span>
+              ) : (
+                <span style={{
+                  background: 'rgba(250, 204, 21, 0.15)',
+                  color: '#FACC15',
+                  fontSize: '9.5px',
+                  fontWeight: '800',
+                  padding: '2px 5px',
+                  borderRadius: '4px',
+                }}>
+                  VALIDAR
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Acordeón para registrar o validar patente con https://apps.mtt.cl/consultaweb/ */}
+        {mostrarConfigPatente && (
+          <div style={{
+            background: '#171717',
+            border: '1px solid rgba(250, 204, 21, 0.3)',
+            borderRadius: '10px',
+            padding: '10px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}>
+            <div style={{ fontSize: '11px', color: '#A3A3A3' }}>
+              Valida tu patente vehicular en tiempo real con el <b>Ministerio de Transportes (MTT Consulta Web)</b>:
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                placeholder="Ej: COL202 o BBCL12"
+                value={patenteInput}
+                onChange={(e) => setPatenteInput(e.target.value.toUpperCase())}
+                style={{
+                  flex: 1,
+                  background: '#000000',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  color: '#FFFFFF',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  letterSpacing: '1px',
+                  outline: 'none',
+                }}
+              />
+              <button
+                onClick={validarPatenteMtt}
+                disabled={validandoMtt}
+                style={{
+                  background: validandoMtt ? '#262626' : '#FACC15',
+                  color: validandoMtt ? '#737373' : '#000000',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 14px',
+                  fontWeight: '800',
+                  fontSize: '12px',
+                  cursor: validandoMtt ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {validandoMtt ? 'Validando...' : 'Validar MTT'}
+              </button>
+            </div>
+            {mttDetalle && (
+              <div style={{ fontSize: '10.5px', color: '#4ADE80', background: 'rgba(74, 222, 128, 0.08)', padding: '6px 8px', borderRadius: '6px' }}>
+                {mttDetalle.resultado || 'Vehículo registrado y autorizado para servicio de transporte colectivo'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SELECTOR DE SENTIDO DE RECORRIDO (IDA / REGRESO) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          <button
+            onClick={() => alternarSentido('ida')}
+            style={{
+              padding: '8px 10px',
+              borderRadius: '10px',
+              border: sentidoRuta === 'ida' ? '2px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.12)',
+              background: sentidoRuta === 'ida' ? 'rgba(250, 204, 21, 0.15)' : '#171717',
+              color: sentidoRuta === 'ida' ? '#FACC15' : '#A3A3A3',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+              textAlign: 'left',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: sentidoRuta === 'ida' ? '#FACC15' : '#525252',
+              }} />
+              <span style={{ fontSize: '11.5px', fontWeight: '900' }}>IDA • A METRO BELLAVISTA</span>
+            </div>
+            <span style={{ fontSize: '9.5px', color: sentidoRuta === 'ida' ? '#D4D4D4' : '#737373', fontWeight: '500', paddingLeft: '14px' }}>
+              Los Pensamientos → Serafín Zamora
+            </span>
+          </button>
+
+          <button
+            onClick={() => alternarSentido('regreso')}
+            style={{
+              padding: '8px 10px',
+              borderRadius: '10px',
+              border: sentidoRuta === 'regreso' ? '2px solid #4ADE80' : '1px solid rgba(255, 255, 255, 0.12)',
+              background: sentidoRuta === 'regreso' ? 'rgba(74, 222, 128, 0.15)' : '#171717',
+              color: sentidoRuta === 'regreso' ? '#4ADE80' : '#A3A3A3',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+              textAlign: 'left',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: sentidoRuta === 'regreso' ? '#4ADE80' : '#525252',
+              }} />
+              <span style={{ fontSize: '11.5px', fontWeight: '900' }}>REGRESO • A LA GRANJA</span>
+            </div>
+            <span style={{ fontSize: '9.5px', color: sentidoRuta === 'regreso' ? '#D4D4D4' : '#737373', fontWeight: '500', paddingLeft: '14px' }}>
+              Serafín Zamora → Los Pensamientos
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* ── SECCIÓN 1: MAPA EN VIVO DEL CONDUCTOR ── */}
       <section style={{
         position: 'relative',
@@ -1074,6 +1335,7 @@ export default function PaginaConductorColectivo() {
             miPatente={choferSesion?.vehiculo?.patente || choferSesion?.patente || ''}
             pasajerosEnEspera={pasajerosEnEspera}
             disparadorCentrado={disparadorCentrado}
+            sentidoSeleccionado={sentidoRuta === 'regreso' ? 'regreso' : 'ida'}
             altura="300px"
           />
         </div>

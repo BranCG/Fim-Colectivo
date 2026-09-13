@@ -58,18 +58,33 @@ function ContenidoLogin() {
 
       let res;
       try {
-        res = await api.post(endpoint, { email, password });
+        res = await api.post(endpoint, {
+          email,
+          identifier: email,
+          folio: email,
+          password,
+        });
       } catch (firstErr) {
         if (activeRole === 'passenger') {
           try {
-            res = await api.post('/auth/driver/login', { email, password });
+            res = await api.post('/auth/driver/login', {
+              email,
+              identifier: email,
+              folio: email,
+              password,
+            });
             activeRole = 'driver';
           } catch {
             throw firstErr;
           }
         } else if (activeRole === 'driver') {
           try {
-            res = await api.post('/auth/passenger/login', { email, password });
+            res = await api.post('/auth/passenger/login', {
+              email,
+              identifier: email,
+              folio: email,
+              password,
+            });
             activeRole = 'passenger';
           } catch {
             throw firstErr;
@@ -203,12 +218,12 @@ function ContenidoLogin() {
       <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div>
           <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#D4D4D4', fontWeight: 600 }}>
-            Correo Electrónico
+            {role === 'driver' ? 'Folio de Recorrido o Correo Electrónico' : 'Correo Electrónico'}
           </label>
           <input
             id="login-email"
-            type="email"
-            placeholder={role === 'driver' ? 'conductor@fimchile.cl' : 'pasajero@fimchile.cl'}
+            type="text"
+            placeholder={role === 'driver' ? 'Ej: 233012 o conductor@fimchile.cl' : 'pasajero@fimchile.cl'}
             value={email}
             onChange={e => setEmail(e.target.value)}
             required

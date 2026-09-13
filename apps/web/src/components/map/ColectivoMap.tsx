@@ -17,10 +17,19 @@ export interface Linea {
   id: string;
   nombre: string;
   codigo: string;
+  folio?: string | null;
+  region?: number | null;
+  tipoServicio?: string | null;
+  nombreRecorrido?: string | null;
+  tipoTrazado?: string | null;
+  comunas?: string | null;
   descripcion?: string | null;
   color: string;
   tarifa: number;
-  puntosRuta?: string | null;
+  puntosRuta?: string | null; // IDA
+  puntosRutaRegreso?: string | null; // REGRESO
+  callesIda?: string | null;
+  callesRegreso?: string | null;
   paradas?: Parada[];
 }
 
@@ -35,6 +44,8 @@ export interface ConductorColectivo {
   sentidoRuta: string;
   telefonoRutPay?: string | null;
   mercadoPagoLink?: string | null;
+  mttValidada?: boolean;
+  folioRuta?: string | null;
 }
 
 export interface PasajeroEnEspera {
@@ -52,6 +63,7 @@ export interface PasajeroEnEspera {
 interface Props {
   ubicacionUsuario: { latitud: number; longitud: number; direccion?: string } | null;
   lineaSeleccionada: Linea | null;
+  sentidoSeleccionado?: 'ida' | 'regreso';
   conductoresEnVivo: ConductorColectivo[];
   conductorSeleccionadoId?: string | null;
   alSeleccionarConductor?: (conductor: ConductorColectivo) => void;
@@ -250,6 +262,7 @@ function generarSvgColectivoHtml({
 export default function ColectivoMap({
   ubicacionUsuario,
   lineaSeleccionada,
+  sentidoSeleccionado = 'ida',
   conductoresEnVivo,
   conductorSeleccionadoId,
   alSeleccionarConductor,
@@ -384,14 +397,19 @@ export default function ColectivoMap({
     marcadoresRef.current.forEach((m) => m.remove());
     marcadoresRef.current = [];
 
-    // B. Trazado de ruta GeoJSON nativo de la línea
+    // B. Trazado de ruta GeoJSON nativo de la línea (IDA o REGRESO según sentidoSeleccionado)
     const idFuenteRuta = 'fuente-linea-colectivo';
     const idCapaRutaGlow = 'capa-linea-glow';
     const idCapaRutaLinea = 'capa-linea-principal';
 
-    if (lineaSeleccionada && lineaSeleccionada.puntosRuta) {
+    const puntosJson =
+      sentidoSeleccionado === 'regreso' && lineaSeleccionada?.puntosRutaRegreso
+        ? lineaSeleccionada.puntosRutaRegreso
+        : lineaSeleccionada?.puntosRuta;
+
+    if (lineaSeleccionada && puntosJson) {
       try {
-        const puntosRaw = JSON.parse(lineaSeleccionada.puntosRuta);
+        const puntosRaw = JSON.parse(puntosJson);
         if (Array.isArray(puntosRaw) && puntosRaw.length > 1) {
           // Convertir de [lat, lng] a estándar GeoJSON [lng, lat]
           const coordenadasGeoJson = puntosRaw.map(([lat, lng]: [number, number]) => [lng, lat]);
@@ -508,9 +526,15 @@ export default function ColectivoMap({
       }
     }
 
-    // D. Marcador: Paradas de la línea
+    // D. Marcador: Paradas de la línea (filtradas por sentido activo)
     if (lineaSeleccionada?.paradas && lineaSeleccionada.paradas.length > 0) {
-      lineaSeleccionada.paradas.forEach((parada) => {
+      const paradasFiltradas = lineaSeleccionada.paradas.filter(
+        (parada) =>
+          !parada.sentido ||
+          parada.sentido.toLowerCase() === sentidoSeleccionado ||
+          parada.sentido === 'ambos'
+      );
+      paradasFiltradas.forEach((parada) => {
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = `
@@ -623,11 +647,15 @@ export default function ColectivoMap({
           ? `<b>Tu Colectivo Asignado</b> (${chofer.patente})`
           : `<b>${chofer.nombre}</b> (${chofer.patente})`;
 
+        const mttBadgeHtml = chofer.mttValidada
+          ? `<div style="margin-top: 3px; font-size: 9.5px; font-weight: 800; color: #4ADE80; display: flex; align-items: center; gap: 4px;">✓ Patente Verificada MTT</div>`
+          : '';
+
         const marcador = new Marker({ element: el, anchor: 'bottom' })
           .setLngLat([chofer.longitud, chofer.latitud])
           .setPopup(
             new Popup({ offset: 22, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              `${tituloPopup}<br/>Sentido: ${chofer.sentidoRuta.toUpperCase()}<br/>Disponibles: ${asientosDisponibles}/4${infoEtaHtml}`
+              `${tituloPopup}<br/>Sentido: ${chofer.sentidoRuta.toUpperCase()}<br/>Disponibles: ${asientosDisponibles}/4${mttBadgeHtml}${infoEtaHtml}`
             )
           )
           .addTo(mapa);
@@ -686,6 +714,7 @@ export default function ColectivoMap({
     miConductorId,
     pasajerosEnEspera,
     estaAbordado,
+    sentidoSeleccionado,
   ]);
 
   // ETA destacado para mostrar en el HUD flotante superior del mapa
