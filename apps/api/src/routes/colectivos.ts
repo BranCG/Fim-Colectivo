@@ -563,14 +563,16 @@ router.post('/conductor/sentido', requireAuth, requireRole('driver', 'admin'), a
   try {
     const conductorId = peticion.user!.id;
     const { sentidoRuta } = peticion.body;
+    let sentidoNormalizado = (sentidoRuta || '').toLowerCase().trim();
+    if (sentidoNormalizado === 'regreso') sentidoNormalizado = 'vuelta';
 
-    if (!['ida', 'vuelta'].includes(sentidoRuta)) {
-      return respuesta.status(400).json({ error: 'Sentido no válido (debe ser "ida" o "vuelta")' });
+    if (!['ida', 'vuelta'].includes(sentidoNormalizado)) {
+      return respuesta.status(400).json({ error: 'Sentido no válido (debe ser "ida", "vuelta" o "regreso")' });
     }
 
     const choferActualizado = await prisma.driver.update({
       where: { id: conductorId },
-      data: { sentidoRuta },
+      data: { sentidoRuta: sentidoNormalizado },
       select: { id: true, lineaId: true, sentidoRuta: true },
     });
 

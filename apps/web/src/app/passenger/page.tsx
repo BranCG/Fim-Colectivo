@@ -107,19 +107,12 @@ export default function PaginaPasajeroColectivo() {
   } | null>(null);
 
   // Ubicación del pasajero
+  // Ubicación del pasajero (inicializada en null como en commit 6c9d5ba)
   const [ubicacionPasajero, setUbicacionPasajero] = useState<{
     latitud: number;
     longitud: number;
     direccion?: string;
-  } | null>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const guardada = localStorage.getItem('fim_passenger_last_loc');
-        if (guardada) return JSON.parse(guardada);
-      } catch {}
-    }
-    return { latitud: -33.5513, longitud: -70.6192 }; // Fallback inicial La Granja / Ruta Folio 233012
-  });
+  } | null>(null);
   const [disparadorCentrado, setDisparadorCentrado] = useState(0);
   const [disparadorEncuadrarRuta, setDisparadorEncuadrarRuta] = useState(0);
 
@@ -172,7 +165,7 @@ export default function PaginaPasajeroColectivo() {
     setUsuarioSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener geolocalización en tiempo real del pasajero y auto-centrar el mapa
+  // 2. Obtener geolocalización en tiempo real del pasajero y auto-centrar el mapa (igual que en 6c9d5ba)
   const centrarGpsOEncuadrarRuta = useCallback(() => {
     setDisparadorCentrado((prev) => prev + 1);
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
@@ -181,19 +174,13 @@ export default function PaginaPasajeroColectivo() {
           const lat = posicion.coords.latitude;
           const lng = posicion.coords.longitude;
           setUbicacionPasajero({ latitud: lat, longitud: lng });
-          try {
-            localStorage.setItem('fim_passenger_last_loc', JSON.stringify({ latitud: lat, longitud: lng }));
-          } catch {}
           setDisparadorCentrado((prev) => prev + 1);
         },
         (error: GeolocationPositionError) => {
           console.warn('GPS pasajero:', error.message);
-          setDisparadorEncuadrarRuta((prev) => prev + 1);
         },
-        { enableHighAccuracy: true, timeout: 8000 }
+        { enableHighAccuracy: true }
       );
-    } else {
-      setDisparadorEncuadrarRuta((prev) => prev + 1);
     }
   }, []);
 
@@ -207,9 +194,6 @@ export default function PaginaPasajeroColectivo() {
       const lng = posicion.coords.longitude;
 
       setUbicacionPasajero({ latitud: lat, longitud: lng });
-      try {
-        localStorage.setItem('fim_passenger_last_loc', JSON.stringify({ latitud: lat, longitud: lng }));
-      } catch {}
 
       if (primerExito) {
         primerExito = false;
@@ -218,21 +202,19 @@ export default function PaginaPasajeroColectivo() {
     };
 
     const alFallarUbicacion = (error: GeolocationPositionError) => {
-      console.warn('GPS inicial no disponible, aguardando señal:', error.message);
+      console.warn('Geolocalización desactivada o denegada:', error.message);
+      if (primerExito) {
+        setUbicacionPasajero((prev) => prev || { latitud: -33.4489, longitud: -70.6693 });
+      }
     };
 
-    // Intentar obtener rápidamente la posición actual por red o caché
     navigator.geolocation.getCurrentPosition(alObtenerUbicacion, alFallarUbicacion, {
-      enableHighAccuracy: false,
-      timeout: 5000,
-      maximumAge: 60000,
+      enableHighAccuracy: true,
     });
 
-    // Suscribir rastreo continuo para actualizar ubicación mientras la app se usa
     const watchId = navigator.geolocation.watchPosition(alObtenerUbicacion, alFallarUbicacion, {
       enableHighAccuracy: true,
       maximumAge: 3000,
-      timeout: 15000,
     });
 
     return () => {

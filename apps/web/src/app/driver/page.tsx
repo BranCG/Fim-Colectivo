@@ -73,19 +73,11 @@ export default function PaginaConductorColectivo() {
   const [mttDetalle, setMttDetalle] = useState<any>(null);
   const [mostrarConfigPatente, setMostrarConfigPatente] = useState<boolean>(false);
 
-  // Ubicación y mapa en tiempo real
+  // Ubicación y mapa en tiempo real (inicializada en null como en 6c9d5ba)
   const [ubicacionChofer, setUbicacionChofer] = useState<{
     latitud: number;
     longitud: number;
-  } | null>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const guardada = localStorage.getItem('fim_driver_last_loc');
-        if (guardada) return JSON.parse(guardada);
-      } catch {}
-    }
-    return { latitud: -33.5513, longitud: -70.6192 }; // Fallback inicial La Granja / Ruta Folio 233012
-  });
+  } | null>(null);
   const [disparadorCentrado, setDisparadorCentrado] = useState(0);
   const [disparadorEncuadrarRuta, setDisparadorEncuadrarRuta] = useState(0);
 
@@ -97,16 +89,12 @@ export default function PaginaConductorColectivo() {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           setUbicacionChofer({ latitud: lat, longitud: lng });
-          try {
-            localStorage.setItem('fim_driver_last_loc', JSON.stringify({ latitud: lat, longitud: lng }));
-          } catch {}
           setDisparadorCentrado((prev) => prev + 1);
         },
         (err) => {
           console.warn('GPS chofer:', err.message);
-          setDisparadorCentrado((prev) => prev + 1);
         },
-        { enableHighAccuracy: true, timeout: 8000 }
+        { enableHighAccuracy: true }
       );
     }
   }, []);
@@ -160,35 +148,36 @@ export default function PaginaConductorColectivo() {
     setChoferSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener ubicación GPS en tiempo real del chofer y mantener rastreo continuo
+  // 2. Obtener ubicación GPS en tiempo real del chofer y mantener rastreo continuo (igual que en 6c9d5ba)
   useEffect(() => {
     if (typeof window === 'undefined' || !('geolocation' in navigator)) return;
 
-    const actualizarGps = (pos: GeolocationPosition) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      setUbicacionChofer({ latitud: lat, longitud: lng });
-      try {
-        localStorage.setItem('fim_driver_last_loc', JSON.stringify({ latitud: lat, longitud: lng }));
-      } catch {}
-    };
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUbicacionChofer({
+          latitud: pos.coords.latitude,
+          longitud: pos.coords.longitude,
+        });
+      },
+      (err) => {
+        console.warn('GPS chofer inicial:', err.message);
+      },
+      { enableHighAccuracy: true }
+    );
 
-    // Lectura inicial rápida
-    navigator.geolocation.getCurrentPosition(actualizarGps, () => {}, {
-      enableHighAccuracy: false,
-      timeout: 5000,
-      maximumAge: 60000,
-    });
-
-    // Rastreo satelital continuo
-    const wId = navigator.geolocation.watchPosition(
-      actualizarGps,
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setUbicacionChofer({
+          latitud: pos.coords.latitude,
+          longitud: pos.coords.longitude,
+        });
+      },
       (err) => console.warn('Rastreo GPS chofer:', err.message),
-      { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 3000 }
     );
 
     return () => {
-      navigator.geolocation.clearWatch(wId);
+      navigator.geolocation.clearWatch(watchId);
     };
   }, []);
 

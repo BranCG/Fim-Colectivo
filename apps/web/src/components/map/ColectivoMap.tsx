@@ -486,23 +486,15 @@ export default function ColectivoMap({
       maplibreModuleRef.current = mod;
       const { Map, NavigationControl } = mod;
 
-      // Centro inicial: si el usuario tiene ubicación válida, usarla; si no, ir directo a la zona del recorrido oficial (La Granja / Folio 233012)
-      const tieneGpsValido =
-        ubicacionUsuario &&
-        typeof ubicacionUsuario.latitud === 'number' &&
-        typeof ubicacionUsuario.longitud === 'number' &&
-        !isNaN(ubicacionUsuario.latitud) &&
-        !isNaN(ubicacionUsuario.longitud);
-
-      const centroInicial: [number, number] = tieneGpsValido
-        ? [ubicacionUsuario!.longitud, ubicacionUsuario!.latitud]
-        : [-70.6192, -33.5513]; // La Granja, RM (Recorrido Folio 233012)
+      const centroInicial: [number, number] = ubicacionUsuario
+        ? [ubicacionUsuario.longitud, ubicacionUsuario.latitud]
+        : [-70.6506, -33.4372]; // Santiago Centro
 
       const mapa = new Map({
         container: contenedorRef.current,
         style: ESTILO_MAPLIBRE,
         center: centroInicial,
-        zoom: tieneGpsValido ? 15.5 : 13.8,
+        zoom: ubicacionUsuario ? 15.5 : 14.8,
         pitch: 0,
         bearing: 0,
         attributionControl: false,
@@ -528,7 +520,6 @@ export default function ColectivoMap({
         setMapaCargado(true);
         setTimeout(() => {
           mapa.resize();
-          encuadrarRutaActual();
         }, 200);
       };
 
@@ -550,38 +541,31 @@ export default function ColectivoMap({
   }, []);
 
   const haCentradoInicialmenteRef = useRef(false);
-  const ultimoDisparadorRef = useRef(0);
   const ultimoDisparadorEncuadreRef = useRef(0);
-  const ultimaRutaEncuadradaRef = useRef('');
 
-  // 2. Centrar mapa: Al presionar botón GPS, al solicitar encuadre de ruta o al abordar
+  // 2. Centrar mapa con animación suave cuando se dispare `disparadorCentrado` (igual que en commit 6c9d5ba)
   useEffect(() => {
     if (!mapaCargado || !mapaRef.current) return;
 
-    if (estaAbordado && conductorSeleccionadoId) {
-      const choferAsignado = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
-      if (choferAsignado && choferAsignado.latitud && choferAsignado.longitud) {
-        mapaRef.current.flyTo({
-          center: [choferAsignado.longitud, choferAsignado.latitud],
-          zoom: 16.5,
-          essential: true,
-          duration: 1000,
-        });
-        return;
-      }
-    }
-
-    // Si se presiona el botón de ver recorrido completo
-    if (disparadorEncuadrarRuta > ultimoDisparadorEncuadreRef.current) {
+    if (disparadorEncuadrarRuta > 0 && disparadorEncuadrarRuta > ultimoDisparadorEncuadreRef.current) {
       ultimoDisparadorEncuadreRef.current = disparadorEncuadrarRuta;
       encuadrarRutaActual();
       return;
     }
 
-    // Si se presiona el botón de centrar GPS
-    const esBotonGpsPresionado = disparadorCentrado > ultimoDisparadorRef.current;
-    if (esBotonGpsPresionado) {
-      ultimoDisparadorRef.current = disparadorCentrado;
+    if (disparadorCentrado > 0) {
+      if (estaAbordado && conductorSeleccionadoId) {
+        const choferAsignado = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
+        if (choferAsignado && choferAsignado.latitud && choferAsignado.longitud) {
+          mapaRef.current.flyTo({
+            center: [choferAsignado.longitud, choferAsignado.latitud],
+            zoom: 16.5,
+            essential: true,
+            duration: 1000,
+          });
+          return;
+        }
+      }
       if (ubicacionUsuario && typeof ubicacionUsuario.latitud === 'number' && typeof ubicacionUsuario.longitud === 'number') {
         mapaRef.current.flyTo({
           center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
@@ -590,27 +574,8 @@ export default function ColectivoMap({
           duration: 1000,
         });
       } else {
-        // Si aún no hay señal de GPS en el dispositivo, centrar en la ruta
         encuadrarRutaActual();
       }
-      return;
-    }
-
-    // Auto-centrar en la ubicación del usuario/chofer en cuanto esté disponible por primera vez
-    if (ubicacionUsuario && typeof ubicacionUsuario.latitud === 'number' && typeof ubicacionUsuario.longitud === 'number' && !haCentradoInicialmenteRef.current) {
-      haCentradoInicialmenteRef.current = true;
-      mapaRef.current.flyTo({
-        center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
-        zoom: 16,
-        duration: 1000,
-      });
-      return;
-    }
-
-    // En la primera carga sin GPS aún, encuadrar el recorrido oficial
-    if (!haCentradoInicialmenteRef.current) {
-      haCentradoInicialmenteRef.current = true;
-      encuadrarRutaActual();
     }
   }, [
     disparadorCentrado,
@@ -621,8 +586,20 @@ export default function ColectivoMap({
     conductorSeleccionadoId,
     conductoresEnVivo,
     encuadrarRutaActual,
-    esModoConductor,
   ]);
+
+  // Centrar automáticamente la primera vez que se obtenga la ubicación real del usuario
+  useEffect(() => {
+    if (!mapaCargado || !mapaRef.current) return;
+    if (ubicacionUsuario && typeof ubicacionUsuario.latitud === 'number' && typeof ubicacionUsuario.longitud === 'number' && !haCentradoInicialmenteRef.current) {
+      haCentradoInicialmenteRef.current = true;
+      mapaRef.current.flyTo({
+        center: [ubicacionUsuario.longitud, ubicacionUsuario.latitud],
+        zoom: 15.5,
+        duration: 1000,
+      });
+    }
+  }, [ubicacionUsuario, mapaCargado]);
 
   // 2b. Fijar y seguir netamente al GPS del conductor en tiempo real mientras el pasajero esté a bordo
   useEffect(() => {
@@ -771,35 +748,6 @@ export default function ColectivoMap({
           mapa.setPaintProperty(idCapaRutaLinea, 'line-color', colorRuta);
         }
 
-        // Encuadrar la cámara suavemente al trayecto una sola vez por ruta
-        const rutaKeyActual = `${lineaSeleccionada?.id || 'def'}-${sentidoSeleccionado}`;
-        if (!estaAbordado && ultimaRutaEncuadradaRef.current !== rutaKeyActual && coordenadasGeoJson.length > 1) {
-          ultimaRutaEncuadradaRef.current = rutaKeyActual;
-          try {
-            let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
-            for (const [lng, lat] of coordenadasGeoJson) {
-              if (lng < minLng) minLng = lng;
-              if (lng > maxLng) maxLng = lng;
-              if (lat < minLat) minLat = lat;
-              if (lat > maxLat) maxLat = lat;
-            }
-            if (minLng < maxLng && minLat < maxLat) {
-              mapa.fitBounds(
-                [
-                  [minLng, minLat],
-                  [maxLng, maxLat],
-                ],
-                {
-                  padding: { top: 100, bottom: 160, left: 40, right: 40 },
-                  duration: 1000,
-                  maxZoom: 15,
-                }
-              );
-            }
-          } catch (errFit) {
-            console.warn('Error al encuadrar ruta:', errFit);
-          }
-        }
       } catch (errRuta) {
         console.warn('Error al aplicar geometría de ruta:', errRuta);
       }
