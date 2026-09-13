@@ -97,6 +97,7 @@ export default function PaginaConductorColectivo() {
   const [textoDetectadoPago, setTextoDetectadoPago] = useState<string>('');
   const [textoDetectadoAbordaje, setTextoDetectadoAbordaje] = useState<string>('');
   const [anunciandoPagoVoz, setAnunciandoPagoVoz] = useState<boolean>(false);
+  const [anunciandoAbordajeVoz, setAnunciandoAbordajeVoz] = useState<boolean>(false);
 
   // Mensajes de alerta y feedback
   const [mensajeExito, setMensajeExito] = useState<string>('');
@@ -566,12 +567,19 @@ export default function PaginaConductorColectivo() {
         setMensajeExito(`Reserva aceptada: ${nombreConfirmado} confirmado.`);
         reproducirSonido('exito');
 
-        // Locución guiada solicitada: Di "A bordo" cuando [Nombre] suba al auto
-        const locucionConfirmada = `Reserva aceptada. Di a bordo cuando ${nombreConfirmado} suba al auto.`;
+        // Locución guiada: Di "A bordo" cuando suba el pasajero
+        const locucionConfirmada =
+          nombreConfirmado && nombreConfirmado !== 'el pasajero'
+            ? `Reserva aceptada. Di a bordo cuando suba ${nombreConfirmado}.`
+            : 'Reserva aceptada. Di a bordo cuando suba el pasajero.';
+
+        setAnunciandoAbordajeVoz(true);
         setTimeout(() => {
-          bloquearAbordoTemporal(4000);
-          hablarTexto(locucionConfirmada);
-        }, 350);
+          bloquearAbordoTemporal(8000);
+          hablarTexto(locucionConfirmada, () => {
+            setAnunciandoAbordajeVoz(false);
+          });
+        }, 500);
 
         // Actualizar conteo de asientos inmediatamente en pantalla
         if (res.data?.asientosOcupados !== undefined) {
@@ -630,7 +638,7 @@ export default function PaginaConductorColectivo() {
       setTimeout(() => {
         bloquearAbordoTemporal(3000);
         hablarTexto('Pasajero a bordo');
-      }, 350);
+      }, 450);
     } catch (error) {
       console.error('Error al confirmar abordaje:', error);
       setMensajeError('No se pudo registrar el abordaje.');
@@ -1190,25 +1198,31 @@ export default function PaginaConductorColectivo() {
                   width: '36px',
                   height: '36px',
                   borderRadius: '50%',
-                  background: 'rgba(250, 204, 21, 0.2)',
-                  border: '1.5px solid #FACC15',
+                  background: anunciandoAbordajeVoz ? 'rgba(59, 130, 246, 0.2)' : 'rgba(250, 204, 21, 0.2)',
+                  border: anunciandoAbordajeVoz ? '1.5px solid #3B82F6' : '1.5px solid #FACC15',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
                 }}
               >
-                <IconoMicrofono size={18} color="#FACC15" />
+                {anunciandoAbordajeVoz ? (
+                  <span style={{ fontSize: '18px' }}>🔊</span>
+                ) : (
+                  <IconoMicrofono size={18} color="#FACC15" />
+                )}
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '11px', fontWeight: '800', color: '#FACC15', letterSpacing: '0.5px' }}>
-                  CONTROL POR VOZ ACTIVO — DI &quot;A BORDO&quot; AL SUBIR
+                <div style={{ fontSize: '11px', fontWeight: '800', color: anunciandoAbordajeVoz ? '#93C5FD' : '#FACC15', letterSpacing: '0.5px' }}>
+                  {anunciandoAbordajeVoz ? 'ANUNCIANDO INSTRUCCIONES DE ABORDAJE...' : 'CONTROL POR VOZ ACTIVO — DI "A BORDO" AL SUBIR'}
                 </div>
                 <div
                   style={{
                     fontSize: '15px',
                     fontWeight: '900',
-                    color: textoDetectadoAbordaje.includes('BORDO')
+                    color: anunciandoAbordajeVoz
+                      ? '#E5E5E5'
+                      : textoDetectadoAbordaje.includes('BORDO')
                       ? '#FACC15'
                       : textoDetectadoAbordaje
                       ? '#FFFFFF'
@@ -1216,10 +1230,14 @@ export default function PaginaConductorColectivo() {
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    textShadow: textoDetectadoAbordaje ? '0 0 10px rgba(250, 204, 21, 0.4)' : 'none',
+                    textShadow: (textoDetectadoAbordaje && !anunciandoAbordajeVoz) ? '0 0 10px rgba(250, 204, 21, 0.4)' : 'none',
                   }}
                 >
-                  {textoDetectadoAbordaje ? `Escuchado: "${textoDetectadoAbordaje}"` : 'Esperando tu voz ("A bordo", "Subió")...'}
+                  {anunciandoAbordajeVoz
+                    ? '🔊 "Reserva aceptada. Di a bordo cuando suba el pasajero"'
+                    : textoDetectadoAbordaje
+                    ? `Escuchado: "${textoDetectadoAbordaje}"`
+                    : 'Esperando tu voz ("A bordo", "Subió")...'}
                 </div>
               </div>
             </div>
@@ -1230,11 +1248,11 @@ export default function PaginaConductorColectivo() {
                 gap: '6px',
                 padding: '4px 10px',
                 borderRadius: '16px',
-                background: 'rgba(250, 204, 21, 0.15)',
-                border: '1px solid #FACC15',
+                background: anunciandoAbordajeVoz ? 'rgba(59, 130, 246, 0.15)' : 'rgba(250, 204, 21, 0.15)',
+                border: anunciandoAbordajeVoz ? '1px solid #3B82F6' : '1px solid #FACC15',
                 fontSize: '11px',
                 fontWeight: '800',
-                color: '#FACC15',
+                color: anunciandoAbordajeVoz ? '#93C5FD' : '#FACC15',
                 flexShrink: 0,
               }}
             >
@@ -1243,12 +1261,12 @@ export default function PaginaConductorColectivo() {
                   width: '8px',
                   height: '8px',
                   borderRadius: '50%',
-                  background: '#FACC15',
-                  boxShadow: '0 0 8px #FACC15',
+                  background: anunciandoAbordajeVoz ? '#3B82F6' : '#FACC15',
+                  boxShadow: anunciandoAbordajeVoz ? '0 0 8px #3B82F6' : '0 0 8px #FACC15',
                   animation: 'fimPulse 1s infinite ease-out',
                 }}
               />
-              <span>EN VIVO</span>
+              <span>{anunciandoAbordajeVoz ? 'ANUNCIANDO' : 'EN VIVO'}</span>
             </div>
           </div>
         )}

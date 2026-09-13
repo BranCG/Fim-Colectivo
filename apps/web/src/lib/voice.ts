@@ -185,6 +185,7 @@ export function detenerVoz() {
       window.speechSynthesis.cancel();
     } catch {}
   }
+  GestorReconocimientoVoz.obtener().reanudarTrasHabla(60);
 }
 
 /**
@@ -216,6 +217,12 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
   detenerVoz();
   esParadaIntencional = false;
 
+  // Si la locución contiene instrucciones de abordaje ("a bordo", "suba"),
+  // bloquear el comando "A bordo" preventivamente por 10s para evitar eco del parlante
+  if (/bordo|suba|auto/i.test(textoLimpio)) {
+    GestorReconocimientoVoz.obtener().bloquearAbordoTemporal(10000);
+  }
+
   // Pausar reconocimiento mientras se emite voz para evitar que el hardware
   // de Android duckee el volumen o que el micrófono capture el parlante
   GestorReconocimientoVoz.obtener().pausarPorHabla();
@@ -224,8 +231,8 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
   const invocarFinal = () => {
     if (!finalizado) {
       finalizado = true;
-      // Reanudar la escucha tras un pequeño búfer de 120ms para que se limpie el eco acústico
-      GestorReconocimientoVoz.obtener().reanudarTrasHabla(120);
+      // Reanudar la escucha tras un pequeño búfer de 150ms para que se limpie el eco acústico
+      GestorReconocimientoVoz.obtener().reanudarTrasHabla(150);
       if (alFinalizar) alFinalizar();
     }
   };
@@ -238,12 +245,13 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
 
     const audio = new Audio();
     audioActual = audio;
-    audio.defaultPlaybackRate = 1.15;
-    audio.playbackRate = 1.15;
 
+    // Temporizador de seguridad generoso solo para emergencias si la red queda colgada.
+    // Un audio de TTS en español puede durar 8 a 12 segundos; nunca debe cortar antes de tiempo.
+    const duracionEstimadaMs = Math.max(15000, textoLimpio.length * 250);
     const timerSeguridad = setTimeout(() => {
       invocarFinal();
-    }, 4500);
+    }, duracionEstimadaMs);
 
     audio.onended = () => {
       clearTimeout(timerSeguridad);
@@ -291,7 +299,7 @@ function probarGoogleDirecto(urlGoogle: string, textoOriginal: string, onFin: ()
 
     const timer = setTimeout(() => {
       onFin();
-    }, 10000);
+    }, Math.max(15000, textoOriginal.length * 250));
 
     audioSecundario.onended = () => {
       clearTimeout(timer);
@@ -485,7 +493,7 @@ class GestorReconocimientoVoz {
   }
 
   private iniciarCiclo() {
-    if (!this.escuchandoDeseado || this.suscriptores.size === 0) return;
+    if (this.silenciadoPorHabla || !this.escuchandoDeseado || this.suscriptores.size === 0) return;
 
     // Destruir instancia previa de forma limpia para que Android no bloquee el micrófono
     if (this.reconocimiento) {
@@ -721,9 +729,9 @@ class GestorReconocimientoVoz {
     this.escuchandoDeseado = true;
     this.ultimoDisparoComando = 0;
 
-    if (!this.estaCorriendo) {
+    if (!this.silenciadoPorHabla && !this.estaCorriendo) {
       this.iniciarCiclo();
-    } else {
+    } else if (this.estaCorriendo) {
       if (opciones.onEscuchando) opciones.onEscuchando(true);
     }
 
