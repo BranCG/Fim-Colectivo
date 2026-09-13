@@ -6,68 +6,75 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Sembrando base de datos Fim Colectivo en español...');
 
-  // 1. Líneas de Colectivos iniciales
-  const linea10 = await prisma.lineaColectivo.upsert({
-    where: { codigo: '10' },
-    update: {},
-    create: {
-      nombre: 'Línea 10',
-      codigo: '10',
-      descripcion: 'Terminal Norte - Hospital - Centro - Costanera',
-      color: '#2563EB', // Azul
+  // 1. Limpieza de líneas previas de prueba
+  await prisma.lineaColectivo.deleteMany({
+    where: { codigo: { in: ['10', '21'] } },
+  });
+
+  // 1b. Carga de datos viales oficiales para Folio 233012
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const route233012Data = require('./data/route_233012.json');
+
+  const linea233012 = await prisma.lineaColectivo.upsert({
+    where: { codigo: '233012' },
+    update: {
+      nombre: 'Folio 233012 • Recorrido T',
+      folio: '233012',
+      region: 13,
+      tipoServicio: 'AUTOMOVIL URBANO TAXI COLECTIVO',
+      nombreRecorrido: 'T',
+      tipoTrazado: 'PRINCIPAL',
+      comunas: 'La Granja, La Pintana, La Florida',
+      descripcion: 'La Granja - La Pintana - La Florida (Metro Bellavista)',
+      color: '#FACC15',
       tarifa: 800,
       tarifaNoche: 1000,
-      origen: 'Terminal Norte',
-      destino: 'Costanera / Playa',
-      puntosRuta: JSON.stringify([
-        [-33.4372, -70.6506],
-        [-33.4400, -70.6480],
-        [-33.4440, -70.6450],
-        [-33.4500, -70.6400],
-      ]),
+      origen: 'Los Pensamientos (La Granja)',
+      destino: 'Serafín Zamora / Metro Bellavista (La Florida)',
+      puntosRuta: JSON.stringify(route233012Data.coordsIda),
+      puntosRutaRegreso: JSON.stringify(route233012Data.coordsRegreso),
+      callesIda: 'Los Pensamientos, Canto General, Av. Cardenal Raúl Silva Henríquez, Los Mayas, Los Olmecas, General Arriagada, Las Parcelas, San José de la Estrella, Joaquín Edwards Bello, Cristóbal Colón, Av. Manuel Rodríguez, Av. Trinidad, Punta Arenas, Av. Circunvalación Américo Vespucio, Av. Vicuña Mackenna Oriente, Serafín Zamora',
+      callesRegreso: 'Serafín Zamora, Av. Circunvalación Américo Vespucio, Punta Arenas, Isla Adelaida, Av. Trinidad, Av. Manuel Rodríguez, Enlace Alt. Pasaje Cunlahue, Av. Vicuña Mackenna, Av. Cardenal Raúl Silva Henríquez, Cristóbal Colón, Joaquín Edwards Bello, San José de la Estrella, Las Parcelas, General Arriagada, Av. Cardenal Raúl Silva Henríquez, Canto General, Los Pensamientos',
       activa: true,
-      paradas: {
-        create: [
-          { nombre: 'Terminal Norte', latitud: -33.4372, longitud: -70.6506, orden: 1, sentido: 'ida' },
-          { nombre: 'Hospital Regional', latitud: -33.4400, longitud: -70.6480, orden: 2, sentido: 'ida' },
-          { nombre: 'Plaza de Armas / Centro', latitud: -33.4440, longitud: -70.6450, orden: 3, sentido: 'ida' },
-          { nombre: 'Costanera / Playa', latitud: -33.4500, longitud: -70.6400, orden: 4, sentido: 'ida' },
-        ],
-      },
     },
-  });
-  console.log('✅ Línea creada:', linea10.nombre);
-
-  const linea21 = await prisma.lineaColectivo.upsert({
-    where: { codigo: '21' },
-    update: {},
     create: {
-      nombre: 'Línea 21',
-      codigo: '21',
-      descripcion: 'Sector Alto - Universidades - Mall - Centro',
-      color: '#10B981', // Verde
-      tarifa: 850,
-      tarifaNoche: 1100,
-      origen: 'Sector Alto',
-      destino: 'Centro',
-      puntosRuta: JSON.stringify([
-        [-33.4200, -70.6100],
-        [-33.4280, -70.6200],
-        [-33.4350, -70.6350],
-        [-33.4440, -70.6450],
-      ]),
+      nombre: 'Folio 233012 • Recorrido T',
+      codigo: '233012',
+      folio: '233012',
+      region: 13,
+      tipoServicio: 'AUTOMOVIL URBANO TAXI COLECTIVO',
+      nombreRecorrido: 'T',
+      tipoTrazado: 'PRINCIPAL',
+      comunas: 'La Granja, La Pintana, La Florida',
+      descripcion: 'La Granja - La Pintana - La Florida (Metro Bellavista)',
+      color: '#FACC15',
+      tarifa: 800,
+      tarifaNoche: 1000,
+      origen: 'Los Pensamientos (La Granja)',
+      destino: 'Serafín Zamora / Metro Bellavista (La Florida)',
+      puntosRuta: JSON.stringify(route233012Data.coordsIda),
+      puntosRutaRegreso: JSON.stringify(route233012Data.coordsRegreso),
+      callesIda: 'Los Pensamientos, Canto General, Av. Cardenal Raúl Silva Henríquez, Los Mayas, Los Olmecas, General Arriagada, Las Parcelas, San José de la Estrella, Joaquín Edwards Bello, Cristóbal Colón, Av. Manuel Rodríguez, Av. Trinidad, Punta Arenas, Av. Circunvalación Américo Vespucio, Av. Vicuña Mackenna Oriente, Serafín Zamora',
+      callesRegreso: 'Serafín Zamora, Av. Circunvalación Américo Vespucio, Punta Arenas, Isla Adelaida, Av. Trinidad, Av. Manuel Rodríguez, Enlace Alt. Pasaje Cunlahue, Av. Vicuña Mackenna, Av. Cardenal Raúl Silva Henríquez, Cristóbal Colón, Joaquín Edwards Bello, San José de la Estrella, Las Parcelas, General Arriagada, Av. Cardenal Raúl Silva Henríquez, Canto General, Los Pensamientos',
       activa: true,
       paradas: {
         create: [
-          { nombre: 'Sector Alto', latitud: -33.4200, longitud: -70.6100, orden: 1, sentido: 'ida' },
-          { nombre: 'Campus Universitario', latitud: -33.4280, longitud: -70.6200, orden: 2, sentido: 'ida' },
-          { nombre: 'Mall Plaza', latitud: -33.4350, longitud: -70.6350, orden: 3, sentido: 'ida' },
-          { nombre: 'Centro', latitud: -33.4440, longitud: -70.6450, orden: 4, sentido: 'ida' },
+          { nombre: 'Terminal Los Pensamientos', latitud: -33.55137, longitud: -70.61921, orden: 1, sentido: 'ida' },
+          { nombre: 'Los Olmecas / Silva Henríquez', latitud: -33.55973, longitud: -70.61673, orden: 2, sentido: 'ida' },
+          { nombre: 'Las Parcelas / General Arriagada', latitud: -33.55720, longitud: -70.61100, orden: 3, sentido: 'ida' },
+          { nombre: 'San José de la Estrella / Edwards Bello', latitud: -33.54600, longitud: -70.61140, orden: 4, sentido: 'ida' },
+          { nombre: 'Av. Manuel Rodríguez / Trinidad', latitud: -33.52600, longitud: -70.60300, orden: 5, sentido: 'ida' },
+          { nombre: 'Metro Bellavista La Florida / Serafín Zamora', latitud: -33.52000, longitud: -70.59750, orden: 6, sentido: 'ida' },
+          // Paradas de regreso
+          { nombre: 'Inicio Regreso Serafín Zamora', latitud: -33.52000, longitud: -70.59750, orden: 7, sentido: 'regreso' },
+          { nombre: 'Trinidad / Punta Arenas', latitud: -33.52600, longitud: -70.60300, orden: 8, sentido: 'regreso' },
+          { nombre: 'Edwards Bello / San José de la Estrella', latitud: -33.54600, longitud: -70.61140, orden: 9, sentido: 'regreso' },
+          { nombre: 'Retorno Los Pensamientos', latitud: -33.55137, longitud: -70.61921, orden: 10, sentido: 'regreso' },
         ],
       },
     },
   });
-  console.log('✅ Línea creada:', linea21.nombre);
+  console.log('✅ Línea oficial creada:', linea233012.nombre);
 
   // 2. Administrador
   const hashClaveAdmin = await bcrypt.hash('admin123', 12);
@@ -160,28 +167,36 @@ async function main() {
       vehicleYear: 2022,
       vehiclePlate: 'COL101',
       vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Linea+10',
-      tagNumber: 'COL-10-01',
+      tagNumber: 'COL-233-01',
       status: 'active',
       membershipPaid: true,
       membershipDate: new Date(),
       totalRating: 4.9,
       totalTrips: 120,
-      lineaId: linea10.id,
+      lineaId: linea233012.id,
+      folioRuta: '233012',
+      mttValidada: true,
       asientosTotales: 4,
       asientosOcupados: 1, // 3 disponibles
       sentidoRuta: 'ida',
       isOnline: true,
-      lastLat: -33.4385,
-      lastLng: -70.6495,
+      lastLat: -33.55137,
+      lastLng: -70.61921,
       telefonoRutPay: '+56922222222',
       mercadoPagoLink: 'https://mpago.li/test-chofer',
     },
   });
-  console.log('✅ Chofer colectivo activo:', chofer.email, `(${linea10.nombre})`);
+  console.log('✅ Chofer colectivo activo:', chofer.email, `(${linea233012.nombre})`);
 
   const conductor = await prisma.driver.upsert({
     where: { email: 'conductor@fimchile.cl' },
-    update: {},
+    update: {
+      lineaId: linea233012.id,
+      folioRuta: '233012',
+      mttValidada: true,
+      lastLat: -33.55031,
+      lastLng: -70.61908,
+    },
     create: {
       email: 'conductor@fimchile.cl',
       phone: '+56933333333',
@@ -199,28 +214,36 @@ async function main() {
       vehicleYear: 2023,
       vehiclePlate: 'COL202',
       vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Toyota',
-      tagNumber: 'COL-10-02',
+      tagNumber: 'COL-233-02',
       status: 'active',
       membershipPaid: true,
       membershipDate: new Date(),
       totalRating: 5.0,
       totalTrips: 85,
-      lineaId: linea10.id,
+      lineaId: linea233012.id,
+      folioRuta: '233012',
+      mttValidada: true,
       asientosTotales: 4,
       asientosOcupados: 0,
       sentidoRuta: 'ida',
       isOnline: true,
-      lastLat: -33.4380,
-      lastLng: -70.6490,
+      lastLat: -33.55031,
+      lastLng: -70.61908,
       telefonoRutPay: '+56933333333',
       mercadoPagoLink: 'https://mpago.li/test-conductor',
     },
   });
-  console.log('✅ Conductor colectivo activo:', conductor.email, `(${linea10.nombre})`);
+  console.log('✅ Conductor colectivo activo:', conductor.email, `(${linea233012.nombre})`);
 
   const conductor2 = await prisma.driver.upsert({
     where: { email: 'conductor2@fimchile.cl' },
-    update: {},
+    update: {
+      lineaId: linea233012.id,
+      folioRuta: '233012',
+      mttValidada: true,
+      lastLat: -33.54600,
+      lastLng: -70.61140,
+    },
     create: {
       email: 'conductor2@fimchile.cl',
       phone: '+56944444444',
@@ -233,33 +256,41 @@ async function main() {
       idBackUrl: 'https://via.placeholder.com/400x250?text=Cedula+Dorso',
       licenseNumber: 'C1122334',
       licenseUrl: 'https://via.placeholder.com/400x250?text=Licencia',
-      vehicleBrand: 'Hyundai',
-      vehicleModel: 'Accent Colectivo',
+      vehicleBrand: 'Chevrolet',
+      vehicleModel: 'Sail Colectivo',
       vehicleYear: 2021,
-      vehiclePlate: 'COL103',
-      vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Hyundai',
-      tagNumber: 'COL-10-03',
+      vehiclePlate: 'COL303',
+      vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Sail',
+      tagNumber: 'COL-233-03',
       status: 'active',
       membershipPaid: true,
       membershipDate: new Date(),
       totalRating: 4.8,
       totalTrips: 64,
-      lineaId: linea10.id,
+      lineaId: linea233012.id,
+      folioRuta: '233012',
+      mttValidada: true,
       asientosTotales: 4,
       asientosOcupados: 2, // 2 disponibles
       sentidoRuta: 'ida',
       isOnline: true,
-      lastLat: -33.4410,
-      lastLng: -70.6470,
+      lastLat: -33.54100,
+      lastLng: -70.61150,
       telefonoRutPay: '+56944444444',
       mercadoPagoLink: 'https://mpago.li/test-mario',
     },
   });
-  console.log('✅ Conductor 2 colectivo activo:', conductor2.email, `(${linea10.nombre})`);
+  console.log('✅ Conductor 2 colectivo activo:', conductor2.email, `(${linea233012.nombre})`);
 
   const conductor3 = await prisma.driver.upsert({
     where: { email: 'conductor3@fimchile.cl' },
-    update: {},
+    update: {
+      lineaId: linea233012.id,
+      folioRuta: '233012',
+      mttValidada: true,
+      lastLat: -33.52300,
+      lastLng: -70.60000,
+    },
     create: {
       email: 'conductor3@fimchile.cl',
       phone: '+56955555555',
@@ -277,24 +308,26 @@ async function main() {
       vehicleYear: 2022,
       vehiclePlate: 'COL201',
       vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Chevrolet',
-      tagNumber: 'COL-21-01',
+      tagNumber: 'COL-233-04',
       status: 'active',
       membershipPaid: true,
       membershipDate: new Date(),
       totalRating: 4.95,
       totalTrips: 110,
-      lineaId: linea21.id,
+      lineaId: linea233012.id,
+      folioRuta: '233012',
+      mttValidada: true,
       asientosTotales: 4,
       asientosOcupados: 0, // 4 disponibles
-      sentidoRuta: 'ida',
+      sentidoRuta: 'regreso',
       isOnline: true,
-      lastLat: -33.4250,
-      lastLng: -70.6150,
+      lastLat: -33.52300,
+      lastLng: -70.60000,
       telefonoRutPay: '+56955555555',
       mercadoPagoLink: 'https://mpago.li/test-roberto',
     },
   });
-  console.log('✅ Conductor 3 colectivo activo:', conductor3.email, `(${linea21.nombre})`);
+  console.log('✅ Conductor 3 colectivo activo:', conductor3.email, `(${linea233012.nombre})`);
 
   console.log('\nSeed completado exitosamente!\n');
   console.log('═══════════════════════════════════════════════════');
@@ -303,10 +336,10 @@ async function main() {
   console.log('  Pasajeros:   pasajero@fimchile.cl / test123');
   console.log('               pasajero2@fimchile.cl / test123 (María Pasajera)');
   console.log('               pasajero3@fimchile.cl / test123 (Andrés Pasajero)');
-  console.log('  Conductores: conductor@fimchile.cl / test123 (Línea 10)');
-  console.log('               chofer@fimchile.cl / test123 (Línea 10)');
-  console.log('               conductor2@fimchile.cl / test123 (Línea 10 - Mario)');
-  console.log('               conductor3@fimchile.cl / test123 (Línea 21 - Roberto)');
+  console.log('  Conductores: conductor@fimchile.cl / test123 (Folio 233012 - Carlos)');
+  console.log('               chofer@fimchile.cl / test123 (Folio 233012 - Pedro)');
+  console.log('               conductor2@fimchile.cl / test123 (Folio 233012 - Mario)');
+  console.log('               conductor3@fimchile.cl / test123 (Folio 233012 - Roberto)');
   console.log('═══════════════════════════════════════════════════\n');
 }
 

@@ -28,7 +28,7 @@ export default function AlertaVozReserva({
   alRechazar,
   alExpirar,
 }: Props) {
-  const tiempoTotal = solicitud.tiempoLimiteSegundos || 15;
+  const tiempoTotal = solicitud.tiempoLimiteSegundos || 30;
   const [segundosRestantes, setSegundosRestantes] = useState(tiempoTotal);
   const [escuchandoVoz, setEscuchandoVoz] = useState(false);
   const [anunciandoVoz, setAnunciandoVoz] = useState(true);
@@ -47,39 +47,46 @@ export default function AlertaVozReserva({
   const nombre = (solicitud.nombrePasajero || 'Pasajero').split(' ')[0];
   const asientos = solicitud.cantidadAsientos || 1;
   const textoAsientos = asientos === 1 ? 'un asiento' : `${asientos} asientos`;
-  const textoVoz = `${nombre}, ${textoAsientos}. ¿Tomamos?`;
+  // Frase limpia sin palabras clave disparadoras para evitar auto-aceptación por eco del parlante
+  const textoVoz = `${nombre}, solicita ${textoAsientos}. ¿Aceptas el viaje?`;
 
-  // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS), luego activar micrófono
+  // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS), y activar micrófono SOLO tras concluir la locución
   useEffect(() => {
     // Sonido de alerta chime inicial
     reproducirSonido('alerta');
-
-    // Iniciar escucha del micrófono
-    escuchaRef.current = iniciarEscuchaVoz({
-      onSi: () => {
-        setComandoDetectado('si');
-        setTextoDetectado('¡SÍ TOMAR!');
-        manejarAceptar();
-      },
-      onNo: () => {
-        setComandoDetectado('no');
-        setTextoDetectado('¡NO PASAR!');
-        manejarRechazar();
-      },
-      onEscuchando: (activo) => {
-        setEscuchandoVoz(activo);
-      },
-      onTextoDetectado: (texto) => {
-        setTextoDetectado(texto);
-      },
-    });
+    setAnunciandoVoz(true);
 
     // Permitir que el doble tono de aviso de reserva suene limpio antes de iniciar la locución
     const timerInicioVoz = setTimeout(() => {
       hablarTexto(textoVoz, () => {
         setAnunciandoVoz(false);
+
+        // Iniciar escucha del micrófono ÚNICAMENTE tras finalizar la locución del parlante
+        // con un búfer de seguridad acústica de 350ms para evitar auto-disparo
+        setTimeout(() => {
+          if (respondido) return;
+          escuchaRef.current = iniciarEscuchaVoz({
+            id: 'alerta-voz-reserva',
+            onSi: () => {
+              setComandoDetectado('si');
+              setTextoDetectado('¡SÍ!');
+              manejarAceptar();
+            },
+            onNo: () => {
+              setComandoDetectado('no');
+              setTextoDetectado('¡NO / PASO!');
+              manejarRechazar();
+            },
+            onEscuchando: (activo) => {
+              setEscuchandoVoz(activo);
+            },
+            onTextoDetectado: (texto) => {
+              setTextoDetectado(texto);
+            },
+          });
+        }, 350);
       });
-    }, 300);
+    }, 400);
 
     return () => {
       clearTimeout(timerInicioVoz);
@@ -88,6 +95,7 @@ export default function AlertaVozReserva({
         try {
           escuchaRef.current.detener();
         } catch {}
+        escuchaRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -568,51 +568,75 @@ class GestorReconocimientoVoz {
 
             const palabras = normalizado.split(' ');
 
-            // 1. Comando: SÍ (confirmar/aceptar reserva o pago)
-            const esSi =
-              normalizado === 'si' ||
-              normalizado === 'sip' ||
-              normalizado === 'se' ||
-              normalizado === 'sin' ||
-              normalizado === 'ci' ||
-              normalizado === 'chi' ||
-              normalizado === 'dale' ||
-              normalizado === 'ya' ||
-              normalizado === 'bueno' ||
-              normalizado === 'ok' ||
-              normalizado === 'toma' ||
-              normalizado === 'tomar' ||
-              normalizado === 'tomamos' ||
-              normalizado === 'tomalo' ||
-              palabras.includes('si') ||
-              palabras.includes('sip') ||
-              palabras.includes('sipo') ||
-              palabras.includes('se') ||
-              palabras.includes('sin') ||
-              palabras.includes('ci') ||
-              palabras.includes('chi') ||
-              palabras.includes('dale') ||
-              palabras.includes('ya') ||
-              palabras.includes('bueno') ||
-              palabras.includes('ok') ||
-              palabras.includes('oka') ||
-              palabras.includes('okay') ||
-              palabras.includes('vale') ||
-              palabras.includes('vamos') ||
-              palabras.includes('listo') ||
-              palabras.includes('acepto') ||
-              palabras.includes('confirmo') ||
-              palabras.includes('confirmar') ||
-              palabras.includes('toma') ||
-              palabras.includes('tomar') ||
-              palabras.includes('tomamos') ||
-              palabras.includes('tomalo') ||
-              palabras.includes('libera') ||
-              palabras.includes('liberar') ||
-              palabras.includes('pago') ||
-              palabras.includes('pagado') ||
-              /(^|\s)(s+i+|s+e+|s+i+p+o*|dale|ya|yapo|bueno|ok|oka|okay|acepto|aceptar|confirmo|confirmar|toma|tomar|tomamos|tomalo|vale|vamos|listo|libera|liberar|pagado|pago|claro|afirmativo|positivo|chi|shi|ci|sin)($|\s)/i.test(
+            // 3. Comando: NO (rechazar/pasar/cancelar)
+            const esNo =
+              normalizado === 'no' ||
+              normalizado === 'nop' ||
+              normalizado === 'nopo' ||
+              normalizado === 'paso' ||
+              normalizado === 'rechazo' ||
+              normalizado === 'rechazar' ||
+              normalizado === 'cancelar' ||
+              normalizado === 'cancela' ||
+              normalizado === 'dejalo' ||
+              palabras.includes('no') ||
+              palabras.includes('nop') ||
+              palabras.includes('nopo') ||
+              palabras.includes('paso') ||
+              palabras.includes('rechazo') ||
+              palabras.includes('rechazar') ||
+              palabras.includes('cancelar') ||
+              palabras.includes('cancela') ||
+              /(^|\s)(no|nop|nopo|paso|rechazo|rechazar|dejalo|dejala|cancelar|cancela|negativo)($|\s)/i.test(
                 normalizado
+              );
+
+            if (esNo && ahora - this.ultimoDisparoComando > 300) {
+              this.ultimoDisparoComando = ahora;
+              this.notificarTextoDetectado('¡NO DETECTADO!');
+              detenerVoz();
+              const ejecutado = this.despacharComando('onNo');
+              if (ejecutado) return;
+            }
+
+            // 1. Comando: SÍ (confirmar/aceptar reserva o pago)
+            // Asegurarse de que no contenga negación ni palabras ambiguas
+            const contieneNegacion = esNo || palabras.includes('no') || /(^|\s)no($|\s)/i.test(normalizado);
+
+            const esSi =
+              !contieneNegacion &&
+              (
+                normalizado === 'si' ||
+                normalizado === 'sí' ||
+                normalizado === 'sip' ||
+                normalizado === 'sipo' ||
+                normalizado === 'dale' ||
+                normalizado === 'bueno' ||
+                normalizado === 'ok' ||
+                normalizado === 'oka' ||
+                normalizado === 'okay' ||
+                normalizado === 'acepto' ||
+                normalizado === 'aceptar' ||
+                normalizado === 'confirmo' ||
+                normalizado === 'confirmar' ||
+                normalizado === 'claro' ||
+                normalizado === 'afirmativo' ||
+                palabras.includes('si') ||
+                palabras.includes('sí') ||
+                palabras.includes('sip') ||
+                palabras.includes('sipo') ||
+                palabras.includes('dale') ||
+                palabras.includes('bueno') ||
+                palabras.includes('ok') ||
+                palabras.includes('oka') ||
+                palabras.includes('okay') ||
+                palabras.includes('acepto') ||
+                palabras.includes('aceptar') ||
+                palabras.includes('confirmo') ||
+                palabras.includes('confirmar') ||
+                /(^|\s)(s+[ií]+|s+[ií]+p+o*|dale|bueno|ok|oka|okay|acepto|aceptar|confirmo|confirmar|claro|afirmativo)($|\s)/i.test(
+                  normalizado
+                )
               );
 
             if (esSi && ahora - this.ultimoDisparoComando > 300) {
@@ -645,33 +669,6 @@ class GestorReconocimientoVoz {
               this.notificarTextoDetectado('¡A BORDO DETECTADO!');
               detenerVoz();
               const ejecutado = this.despacharComando('onAbordo');
-              if (ejecutado) return;
-            }
-
-            // 3. Comando: NO (rechazar/pasar/cancelar)
-            const esNo =
-              normalizado === 'no' ||
-              normalizado === 'nop' ||
-              normalizado === 'paso' ||
-              normalizado === 'rechazo' ||
-              palabras.includes('no') ||
-              palabras.includes('nop') ||
-              palabras.includes('nopo') ||
-              palabras.includes('paso') ||
-              palabras.includes('cancelar') ||
-              palabras.includes('cancela') ||
-              palabras.includes('rechazar') ||
-              palabras.includes('rechazo') ||
-              palabras.includes('dejalo') ||
-              /(^|\s)(no|nop|nopo|paso|rechazo|rechazar|dejalo|dejala|cancelar|cancela|negativo)($|\s)/i.test(
-                normalizado
-              );
-
-            if (esNo && ahora - this.ultimoDisparoComando > 300) {
-              this.ultimoDisparoComando = ahora;
-              this.notificarTextoDetectado('¡NO DETECTADO!');
-              detenerVoz();
-              const ejecutado = this.despacharComando('onNo');
               if (ejecutado) return;
             }
           }

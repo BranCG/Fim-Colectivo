@@ -83,7 +83,11 @@ model Driver {
   linea               LineaColectivo?  @relation(fields: [lineaId], references: [id])
   asientosTotales     Int              @default(4)
   asientosOcupados    Int              @default(0)
-  sentidoRuta         String           @default("ida") // "ida" | "vuelta"
+  sentidoRuta         String           @default("ida") // "ida" | "vuelta" | "regreso"
+  folioRuta           String?          // Folio asignado al conductor (ej: "233012")
+  mttValidada         Boolean          @default(false) // Si la patente fue confirmada en apps.mtt.cl
+  mttFechaValidacion  DateTime?
+  mttDetalle          String?          // JSON o texto de respuesta del Registro Nacional MTT
 
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
@@ -96,22 +100,31 @@ model Driver {
 }
 
 model LineaColectivo {
-  id               String            @id @default(cuid())
-  nombre           String            // ej: "Línea 10"
-  codigo           String            @unique // ej: "10"
-  descripcion      String?           // ej: "Terminal Norte - Hospital - Centro - Playa"
-  color            String            @default("#2563EB") // Color distintivo en el mapa (hexadecimal)
-  tarifa           Int               @default(800) // Tarifa estándar CLP
-  tarifaNoche      Int?              // Tarifa nocturna opcional CLP
-  puntosRuta       String?           // JSON con array de coordenadas [lat, lng] del trazado
-  origen           String?           // Nombre de la cabecera o terminal de origen
-  destino          String?           // Nombre de la cabecera o terminal de destino
-  activa           Boolean           @default(true)
-  fechaCreacion    DateTime          @default(now())
-  fechaActualizacion DateTime        @updatedAt
-  conductores      Driver[]
-  paradas          ParadaColectivo[]
-  reservas         ReservaAsiento[]
+  id                  String            @id @default(cuid())
+  nombre              String            // ej: "Línea 233012 - Recorrido T"
+  codigo              String            @unique // ej: "233012" o "T"
+  folio               String?           // Folio oficial MTT (ej: "233012")
+  region              Int?              // Región (ej: 13 RM)
+  tipoServicio        String?           // "AUTOMOVIL URBANO TAXI COLECTIVO"
+  nombreRecorrido     String?           // "T"
+  tipoTrazado         String?           // "PRINCIPAL" | "ALTERNATIVO"
+  comunas             String?           // "La Granja, La Pintana, La Florida"
+  descripcion         String?           // "La Granja - La Pintana - La Florida (Metro Bellavista)"
+  color               String            @default("#FACC15") // Amarillo colectivo distintivo
+  tarifa              Int               @default(800) // Tarifa estándar CLP
+  tarifaNoche         Int?              // Tarifa nocturna opcional CLP
+  puntosRuta          String?           // JSON con array de coordenadas [lat, lng] del trazado de IDA
+  puntosRutaRegreso   String?           // JSON con array de coordenadas [lat, lng] del trazado de REGRESO
+  callesIda           String?           // Secuencia textual de calles de IDA
+  callesRegreso       String?           // Secuencia textual de calles de REGRESO
+  origen              String?           // Cabecera IDA: "Los Pensamientos (La Granja)"
+  destino             String?           // Destino IDA: "Serafín Zamora (La Florida)"
+  activa              Boolean           @default(true)
+  fechaCreacion       DateTime          @default(now())
+  fechaActualizacion  DateTime          @updatedAt
+  conductores         Driver[]
+  paradas             ParadaColectivo[]
+  reservas            ReservaAsiento[]
 
   @@map("lineas_colectivo")
 }

@@ -168,9 +168,27 @@ router.post('/driver/register', async (req: Request, res: Response) => {
 // ─── LOGIN CONDUCTOR ──────────────────────────────────────────────────────
 router.post('/driver/login', async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const identificador = (req.body.folio || req.body.email || '').trim();
+    const { password } = req.body;
 
-    const driver = await prisma.driver.findUnique({ where: { email } });
+    if (!identificador || !password) {
+      return res.status(400).json({ error: 'Debe ingresar su Folio / Correo y su contraseña' });
+    }
+
+    const driver = await prisma.driver.findFirst({
+      where: {
+        OR: [
+          { email: identificador },
+          { folioRuta: identificador },
+          { tagNumber: identificador },
+          { phone: identificador },
+        ],
+      },
+      include: {
+        linea: true,
+      },
+    });
+
     if (!driver) {
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }

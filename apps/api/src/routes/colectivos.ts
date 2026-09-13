@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { io } from '../index';
 import { calculateDistance } from '../utils/pricing';
 import { onlineDrivers } from '../socket/handlers';
+import { consultarPatenteMtt } from '../utils/mttValidator';
 
 // Mapa de solicitudes dirigidas en tránsito con cascada automática
 export interface SolicitudDirigidaActiva {
@@ -49,6 +50,8 @@ router.get('/lineas', async (peticion: Request, respuesta: Response) => {
             lastSeen: true,
             telefonoRutPay: true,
             mercadoPagoLink: true,
+            folioRuta: true,
+            mttValidada: true,
           },
         },
       },
@@ -101,6 +104,96 @@ router.get('/lineas/:id', async (peticion: Request, respuesta: Response) => {
   } catch (error) {
     console.error('Error al obtener detalle de la línea:', error);
     respuesta.status(500).json({ error: 'Error al obtener detalles de la línea' });
+  }
+});
+
+// ─── VALIDACIÓN MTT: Validar patente de colectivo contra apps.mtt.cl ────────
+router.post('/validar-patente-mtt', async (peticion: Request, respuesta: Response) => {
+  try {
+    const { patente, folio } = peticion.body;
+    if (!patente) {
+      return respuesta.status(400).json({ error: 'Debe ingresar una placa patente' });
+    }
+
+    const resultado = await consultarPatenteMtt(patente, folio);
+
+    // Si viene autenticado un conductor con token, actualizar su perfil
+    const authHeader = peticion.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const jwt = require('jsonwebtoken');
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'fim-colectivo-super-secret-jwt-key-2026');
+        if (decoded && decoded.role === 'driver') {
+          await prisma.driver.update({
+            where: { id: decoded.id },
+            data: {
+              vehiclePlate: resultado.patente,
+              mttValidada: resultado.valido,
+              mttFechaValidacion: resultado.fechaConsulta,
+              mttDetalle: JSON.stringify(resultado),
+              ...(resultado.folio ? { folioRuta: resultado.folio } : {}),
+            },
+          });
+        }
+      } catch (errAuth) {
+        // Ignorar si el token no es verificable
+      }
+    }
+
+    return respuesta.json({ resultado });
+  } catch (error: any) {
+    console.error('Error en validación MTT:', error);
+    return respuesta.status(500).json({ error: error.message || 'Error al validar patente en MTT' });
+  }
+});
+
+// ─── PÚBLICO / PASAJERO: Buscar líneas por Folio, Calle o Comuna ───────────
+router.get('/buscar', async (peticion: Request, respuesta: Response) => {
+  try {
+    const { q } = peticion.query;
+    const termino = q ? String(q).trim() : '';
+
+    const lineas = await prisma.lineaColectivo.findMany({
+      where: {
+        activa: true,
+        ...(termino ? {
+          OR: [
+            { folio: { contains: termino, mode: 'insensitive' } },
+            { codigo: { contains: termino, mode: 'insensitive' } },
+            { nombre: { contains: termino, mode: 'insensitive' } },
+            { comunas: { contains: termino, mode: 'insensitive' } },
+            { callesIda: { contains: termino, mode: 'insensitive' } },
+            { callesRegreso: { contains: termino, mode: 'insensitive' } },
+          ],
+        } : {}),
+      },
+      include: {
+        paradas: { orderBy: { orden: 'asc' } },
+        conductores: {
+          where: { isOnline: true, status: 'active' },
+          select: {
+            id: true,
+            name: true,
+            vehiclePlate: true,
+            asientosTotales: true,
+            asientosOcupados: true,
+            sentidoRuta: true,
+            lastLat: true,
+            lastLng: true,
+            mttValidada: true,
+            folioRuta: true,
+          },
+        },
+      },
+      orderBy: { codigo: 'asc' },
+    });
+
+    return respuesta.json({ lineas, total: lineas.length });
+  } catch (error) {
+    console.error('Error al buscar líneas:', error);
+    return respuesta.status(500).json({ error: 'Error al buscar recorridos de colectivo' });
   }
 });
 
@@ -217,7 +310,7 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
       nombrePasajero: nuevaReserva.pasajero.name,
       cantidadAsientos: nuevaReserva.cantidadAsientos,
       distanciaMetros,
-      tiempoLimiteSegundos: 20,
+      tiempoLimiteSegundos: 30,
       direccionSubida: nuevaReserva.direccionSubida,
     });
     if (lineaId) {
@@ -227,7 +320,7 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
         nombrePasajero: nuevaReserva.pasajero.name,
         cantidadAsientos: nuevaReserva.cantidadAsientos,
         distanciaMetros,
-        tiempoLimiteSegundos: 20,
+        tiempoLimiteSegundos: 30,
         direccionSubida: nuevaReserva.direccionSubida,
       });
     }
@@ -828,7 +921,7 @@ export function despacharASiguienteConductor(reservaId: string) {
       nombrePasajero: solicitud.nombrePasajero,
       cantidadAsientos: solicitud.cantidadAsientos,
       distanciaMetros,
-      tiempoLimiteSegundos: 15,
+      tiempoLimiteSegundos: 30,
       direccionSubida: solicitud.direccionSubida,
     });
     if (solicitud.lineaId) {
@@ -838,7 +931,7 @@ export function despacharASiguienteConductor(reservaId: string) {
         nombrePasajero: solicitud.nombrePasajero,
         cantidadAsientos: solicitud.cantidadAsientos,
         distanciaMetros,
-        tiempoLimiteSegundos: 15,
+        tiempoLimiteSegundos: 30,
         direccionSubida: solicitud.direccionSubida,
       });
     }
@@ -867,12 +960,14 @@ export function despacharASiguienteConductor(reservaId: string) {
       });
     }
 
-    // Temporizador de 15 segundos antes de cascada automática
+    // Temporizador de 30 segundos antes de cascada automática
     solicitud.timer = setTimeout(() => {
-      console.log(`[Colectivos] Conductor ${driverId} no respondió en 15s. Cascada hacia siguiente móvil en ruta...`);
+      console.log(`[Colectivos] Conductor ${driverId} no respondió en 30s. Cascada hacia siguiente móvil en ruta...`);
       io.to(`driver:${driverId}`).emit('colectivo:solicitud-expirada', { reservaId });
       solicitud.conductorActualIndex++;
       despacharASiguienteConductor(reservaId);
+    }, 30000);
+  }).catch((err) => {
     }, 15000);
   }).catch((err: any) => {
     console.error('Error al despachar a chofer:', err);
