@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { calcularInfoLlegada } from '@/lib/geo';
+import api from '@/lib/api';
 
 export interface Parada {
   id: string;
@@ -313,6 +314,26 @@ export default function ColectivoMap({
   const [mapaCargado, setMapaCargado] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marcadoresRef = useRef<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [trazadosLocales, setTrazadosLocales] = useState<{ [id: string]: any[] }>({});
+
+  // Auto-completar trazados en el mapa si lineaSeleccionada viene sin trazados embebidos
+  useEffect(() => {
+    if (!lineaSeleccionada) return;
+    if (lineaSeleccionada.trazados && lineaSeleccionada.trazados.length > 0) return;
+    const targetId = lineaSeleccionada.id;
+    if (!targetId || trazadosLocales[targetId]) return;
+
+    api.get('/colectivos/lineas')
+      .then((res) => {
+        const lineas = res.data?.lineas || [];
+        const match = lineas.find((l: any) => l.id === targetId || l.folio === lineaSeleccionada.folio);
+        if (match?.trazados && match.trazados.length > 0) {
+          setTrazadosLocales((prev) => ({ ...prev, [targetId]: match.trazados }));
+        }
+      })
+      .catch((e) => console.warn('Error al auto-completar trazados en mapa:', e));
+  }, [lineaSeleccionada, trazadosLocales]);
 
   // 1. Inicializar MapLibre GL
   useEffect(() => {
@@ -453,13 +474,19 @@ export default function ColectivoMap({
 
     // Prioridad 1: Trazado vial activo en la arquitectura GIS (PostGIS derivado de route_shapes)
     const sentidoNormalizado = (sentidoSeleccionado || 'ida').toLowerCase().trim();
+    const trazadosDisponibles =
+      (lineaSeleccionada?.trazados && lineaSeleccionada.trazados.length > 0)
+        ? lineaSeleccionada.trazados
+        : (lineaSeleccionada?.id ? trazadosLocales[lineaSeleccionada.id] : null);
+
     const trazadoActivo =
-      lineaSeleccionada?.trazados?.find(
-        (t) => t.sentido?.toLowerCase().trim() === sentidoNormalizado && t.esActivo !== false
+      trazadosDisponibles?.find(
+        (t: any) => t.sentido?.toLowerCase().trim() === sentidoNormalizado && t.esActivo !== false
       ) ||
-      lineaSeleccionada?.trazados?.find(
-        (t) => t.sentido?.toLowerCase().trim() === sentidoNormalizado
-      );
+      trazadosDisponibles?.find(
+        (t: any) => t.sentido?.toLowerCase().trim() === sentidoNormalizado
+      ) ||
+      (trazadosDisponibles && trazadosDisponibles.length > 0 ? trazadosDisponibles[0] : null);
 
     if (trazadoActivo?.puntos) {
       if (Array.isArray(trazadoActivo.puntos)) {
@@ -502,16 +529,15 @@ export default function ColectivoMap({
 
         if (mapa.getSource(idFuenteRuta)) {
           (mapa.getSource(idFuenteRuta) as any).setData(geojsonData);
-          if (mapa.getLayer(idCapaRutaLinea)) {
-            mapa.setPaintProperty(idCapaRutaLinea, 'line-color', colorRuta);
-          }
         } else {
           mapa.addSource(idFuenteRuta, {
             type: 'geojson',
             data: geojsonData,
           });
+        }
 
-          // Capa exterior de alto contraste (casing vial)
+        // Capa exterior de alto contraste (casing vial negro)
+        if (!mapa.getLayer(idCapaRutaGlow)) {
           mapa.addLayer({
             id: idCapaRutaGlow,
             type: 'line',
@@ -526,8 +552,10 @@ export default function ColectivoMap({
               'line-opacity': 0.85,
             },
           });
+        }
 
-          // Capa principal vial continua
+        // Capa principal vial continua
+        if (!mapa.getLayer(idCapaRutaLinea)) {
           mapa.addLayer({
             id: idCapaRutaLinea,
             type: 'line',
@@ -542,6 +570,8 @@ export default function ColectivoMap({
               'line-opacity': 0.95,
             },
           });
+        } else {
+          mapa.setPaintProperty(idCapaRutaLinea, 'line-color', colorRuta);
         }
 
         // Encuadrar la cámara suavemente al trayecto para que el usuario visualice la ruta de inmediato
@@ -823,6 +853,7 @@ export default function ColectivoMap({
     estaAbordado,
     sentidoSeleccionado,
     tramoSeleccionado,
+    trazadosLocales,
   ]);
 
   // ETA destacado para mostrar en el HUD flotante superior del mapa

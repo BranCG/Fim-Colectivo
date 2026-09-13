@@ -223,6 +223,8 @@ export default function PaginaPasajeroColectivo() {
           (l) => l.nombre === resv.linea?.nombre || l.id === (resv as any).lineaId
         );
         if (lRes) setLineaSeleccionada(lRes);
+      } else if (!lineaSeleccionada && lineasObtenidas.length > 0) {
+        setLineaSeleccionada(lineasObtenidas[0]);
       }
     } catch (error) {
       console.error('Error al cargar líneas:', error);
@@ -823,11 +825,16 @@ export default function PaginaPasajeroColectivo() {
                   </div>
 
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#FACC15' }}>
-                      ${linea.tarifa?.toLocaleString('es-CL') || '800'}
-                    </div>
-                    <div style={{ fontSize: '10px', color: '#4ADE80', fontWeight: '600' }}>
-                      Seleccionar ➔
+                    <div style={{
+                      fontSize: '11px',
+                      color: '#4ADE80',
+                      fontWeight: '700',
+                      background: 'rgba(74, 222, 128, 0.12)',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      Ver recorrido ➔
                     </div>
                   </div>
                 </div>

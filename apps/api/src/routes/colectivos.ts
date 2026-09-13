@@ -381,7 +381,25 @@ router.get('/reservas/mis-reservas', requireAuth, async (peticion: Request, resp
         estado: { in: ['reservado', 'pendiente_chofer', 'abordado', 'pagando'] },
       },
       include: {
-        linea: true,
+        linea: {
+          include: {
+            trazados: {
+              where: { esActivo: true },
+              select: {
+                id: true,
+                shapeId: true,
+                sentido: true,
+                origenTipo: true,
+                distanciaMetros: true,
+                confianza: true,
+                estadoValidacion: true,
+                esActivo: true,
+                puntos: true,
+                limites: true,
+              },
+            },
+          },
+        },
         conductor: {
           select: {
             id: true,
@@ -415,7 +433,24 @@ router.get('/conductor/estado', requireAuth, requireRole('driver', 'admin'), asy
       where: { id: conductorId },
       include: {
         linea: {
-          include: { paradas: { orderBy: { orden: 'asc' } } },
+          include: {
+            trazados: {
+              where: { esActivo: true },
+              select: {
+                id: true,
+                shapeId: true,
+                sentido: true,
+                origenTipo: true,
+                distanciaMetros: true,
+                confianza: true,
+                estadoValidacion: true,
+                esActivo: true,
+                puntos: true,
+                limites: true,
+              },
+            },
+            paradas: { orderBy: { orden: 'asc' } },
+          },
         },
         reservasAsiento: {
           where: { estado: { in: ['reservado', 'pendiente_chofer', 'abordado', 'pagando'] } },
@@ -452,7 +487,28 @@ router.post('/conductor/linea', requireAuth, requireRole('driver', 'admin'), asy
     const choferActualizado = await prisma.driver.update({
       where: { id: conductorId },
       data: { lineaId },
-      include: { linea: true },
+      include: {
+        linea: {
+          include: {
+            trazados: {
+              where: { esActivo: true },
+              select: {
+                id: true,
+                shapeId: true,
+                sentido: true,
+                origenTipo: true,
+                distanciaMetros: true,
+                confianza: true,
+                estadoValidacion: true,
+                esActivo: true,
+                puntos: true,
+                limites: true,
+              },
+            },
+            paradas: { orderBy: { orden: 'asc' } },
+          },
+        },
+      },
     });
 
     respuesta.json({ chofer: choferActualizado, mensaje: `Asignado correctamente a ${linea.nombre}` });

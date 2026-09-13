@@ -220,7 +220,11 @@ export default function PaginaConductorColectivo() {
         }
 
         if (datos.linea) {
-          setLineaActual(datos.linea);
+          const lineaEncontrada = lineas.find((l) => l.id === datos.linea.id || l.folio === datos.linea.folio);
+          const trazados = (lineaEncontrada?.trazados && lineaEncontrada.trazados.length > 0)
+            ? lineaEncontrada.trazados
+            : (datos.linea.trazados || []);
+          setLineaActual({ ...datos.linea, ...(lineaEncontrada || {}), trazados });
         } else if (lineas.length > 0) {
           setLineaActual(lineas[0]);
         }
