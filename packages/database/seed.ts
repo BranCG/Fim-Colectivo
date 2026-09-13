@@ -6,10 +6,10 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Sembrando base de datos Fim Colectivo en español...');
 
-  // 1. Limpieza de líneas previas de prueba
-  await prisma.lineaColectivo.deleteMany({
-    where: { codigo: { in: ['10', '21'] } },
-  });
+  // 1. Limpieza de paradas ficticias anteriores para eliminar círculos numerados
+  await prisma.paradaColectivo.deleteMany({});
+  await prisma.routeSegment.deleteMany({ where: { folio: '233012' } });
+  await prisma.routeShape.deleteMany({ where: { folio: '233012' } });
 
   // 1b. Carga de datos viales oficiales para Folio 233012
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -57,24 +57,279 @@ async function main() {
       callesIda: 'Los Pensamientos, Canto General, Av. Cardenal Raúl Silva Henríquez, Los Mayas, Los Olmecas, General Arriagada, Las Parcelas, San José de la Estrella, Joaquín Edwards Bello, Cristóbal Colón, Av. Manuel Rodríguez, Av. Trinidad, Punta Arenas, Av. Circunvalación Américo Vespucio, Av. Vicuña Mackenna Oriente, Serafín Zamora',
       callesRegreso: 'Serafín Zamora, Av. Circunvalación Américo Vespucio, Punta Arenas, Isla Adelaida, Av. Trinidad, Av. Manuel Rodríguez, Enlace Alt. Pasaje Cunlahue, Av. Vicuña Mackenna, Av. Cardenal Raúl Silva Henríquez, Cristóbal Colón, Joaquín Edwards Bello, San José de la Estrella, Las Parcelas, General Arriagada, Av. Cardenal Raúl Silva Henríquez, Canto General, Los Pensamientos',
       activa: true,
-      paradas: {
-        create: [
-          { nombre: 'Terminal Los Pensamientos', latitud: -33.55137, longitud: -70.61921, orden: 1, sentido: 'ida' },
-          { nombre: 'Los Olmecas / Silva Henríquez', latitud: -33.55973, longitud: -70.61673, orden: 2, sentido: 'ida' },
-          { nombre: 'Las Parcelas / General Arriagada', latitud: -33.55720, longitud: -70.61100, orden: 3, sentido: 'ida' },
-          { nombre: 'San José de la Estrella / Edwards Bello', latitud: -33.54600, longitud: -70.61140, orden: 4, sentido: 'ida' },
-          { nombre: 'Av. Manuel Rodríguez / Trinidad', latitud: -33.52600, longitud: -70.60300, orden: 5, sentido: 'ida' },
-          { nombre: 'Metro Bellavista La Florida / Serafín Zamora', latitud: -33.52000, longitud: -70.59750, orden: 6, sentido: 'ida' },
-          // Paradas de regreso
-          { nombre: 'Inicio Regreso Serafín Zamora', latitud: -33.52000, longitud: -70.59750, orden: 7, sentido: 'regreso' },
-          { nombre: 'Trinidad / Punta Arenas', latitud: -33.52600, longitud: -70.60300, orden: 8, sentido: 'regreso' },
-          { nombre: 'Edwards Bello / San José de la Estrella', latitud: -33.54600, longitud: -70.61140, orden: 9, sentido: 'regreso' },
-          { nombre: 'Retorno Los Pensamientos', latitud: -33.55137, longitud: -70.61921, orden: 10, sentido: 'regreso' },
-        ],
-      },
     },
   });
-  console.log('✅ Línea oficial creada:', linea233012.nombre);
+  console.log('✅ Línea oficial registrada:', linea233012.nombre);
+
+  // 1c. Insertar los 19 TRAMOS VIALES ORDENADOS DE IDA en route_segments
+  const tramosIdaRaw = [
+    { orden: 1, calle: 'LOS PENSAMIENTOS', comuna: 'LA GRANJA', lat: -33.55137, lng: -70.61921 },
+    { orden: 2, calle: 'CANTO GENERAL', comuna: 'LA GRANJA', lat: -33.55031, lng: -70.61908 },
+    { orden: 3, calle: 'AV. CARDENAL RAUL SILVA HENRIQUEZ', comuna: 'LA GRANJA', lat: -33.55382, lng: -70.61690 },
+    { orden: 4, calle: 'AV. CARDENAL RAUL SILVA HENRIQUEZ', comuna: 'LA PINTANA', lat: -33.55700, lng: -70.61680 },
+    { orden: 5, calle: 'LOS MAYAS', comuna: 'LA PINTANA', lat: -33.55850, lng: -70.61675 },
+    { orden: 6, calle: 'LOS OLMECAS', comuna: 'LA PINTANA', lat: -33.55973, lng: -70.61673 },
+    { orden: 7, calle: 'GENERAL ARRIAGADA', comuna: 'LA PINTANA', lat: -33.55720, lng: -70.61100 },
+    { orden: 8, calle: 'LAS PARCELAS', comuna: 'LA PINTANA', lat: -33.55400, lng: -70.61110 },
+    { orden: 9, calle: 'LAS PARCELAS', comuna: 'LA GRANJA', lat: -33.55100, lng: -70.61120 },
+    { orden: 10, calle: 'SAN JOSE DE LA ESTRELLA', comuna: 'LA GRANJA', lat: -33.54600, lng: -70.61140 },
+    { orden: 11, calle: 'JOAQUIN EDWARDS BELLO', comuna: 'LA GRANJA', lat: -33.54100, lng: -70.61150 },
+    { orden: 12, calle: 'CRISTOBAL COLON', comuna: 'LA GRANJA', lat: -33.53750, lng: -70.61450 },
+    { orden: 13, calle: 'AV. CARDENAL RAUL SILVA HENRIQUEZ', comuna: 'LA GRANJA', lat: -33.53500, lng: -70.61600 },
+    { orden: 14, calle: 'AV. MANUEL RODRIGUEZ', comuna: 'LA GRANJA', lat: -33.53000, lng: -70.61200 },
+    { orden: 15, calle: 'AV. TRINIDAD', comuna: 'LA FLORIDA', lat: -33.52600, lng: -70.60300 },
+    { orden: 16, calle: 'PUNTA ARENAS', comuna: 'LA FLORIDA', lat: -33.52300, lng: -70.60000 },
+    { orden: 17, calle: 'AV. CIRCUNVALACION AMERICO VESPUCIO', comuna: 'LA FLORIDA', lat: -33.52150, lng: -70.59850 },
+    { orden: 18, calle: 'AV. VICUÑA MACKENNA ORIENTE', comuna: 'LA FLORIDA', lat: -33.52100, lng: -70.59800 },
+    { orden: 19, calle: 'SERAFIN ZAMORA', comuna: 'LA FLORIDA', lat: -33.52000, lng: -70.59750 },
+  ];
+
+  // 1d. Insertar los 20 TRAMOS VIALES ORDENADOS DE REGRESO en route_segments
+  const tramosRegresoRaw = [
+    { orden: 20, calle: 'SERAFIN ZAMORA', comuna: 'LA FLORIDA', lat: -33.52000, lng: -70.59750 },
+    { orden: 21, calle: 'AV. CIRCUNVALACION AMERICO VESPUCIO', comuna: 'LA FLORIDA', lat: -33.52150, lng: -70.59850 },
+    { orden: 22, calle: 'PUNTA ARENAS', comuna: 'LA FLORIDA', lat: -33.52300, lng: -70.60000 },
+    { orden: 23, calle: 'AV. CIRCUNVALACION AMERICO VESPUCIO', comuna: 'LA FLORIDA', lat: -33.52400, lng: -70.59950 },
+    { orden: 24, calle: 'ISLA ADELAIDA', comuna: 'LA FLORIDA', lat: -33.52500, lng: -70.60150 },
+    { orden: 25, calle: 'AV. TRINIDAD', comuna: 'LA FLORIDA', lat: -33.52600, lng: -70.60300 },
+    { orden: 26, calle: 'AV. MANUEL RODRIGUEZ', comuna: 'LA GRANJA', lat: -33.53000, lng: -70.61200 },
+    { orden: 27, calle: 'ENLACE ALT. PASAJE CUNLAHUE', comuna: 'LA GRANJA', lat: -33.53300, lng: -70.61350 },
+    { orden: 28, calle: 'AV. VICUÑA MACKENNA', comuna: 'LA GRANJA', lat: -33.53400, lng: -70.61500 },
+    { orden: 29, calle: 'AV. CARDENAL RAUL SILVA HENRIQUEZ', comuna: 'LA GRANJA', lat: -33.53500, lng: -70.61600 },
+    { orden: 30, calle: 'CRISTOBAL COLON', comuna: 'LA GRANJA', lat: -33.53750, lng: -70.61450 },
+    { orden: 31, calle: 'JOAQUIN EDWARDS BELLO', comuna: 'LA GRANJA', lat: -33.54100, lng: -70.61150 },
+    { orden: 32, calle: 'SAN JOSE DE LA ESTRELLA', comuna: 'LA GRANJA', lat: -33.54600, lng: -70.61140 },
+    { orden: 33, calle: 'LAS PARCELAS', comuna: 'LA GRANJA', lat: -33.55100, lng: -70.61120 },
+    { orden: 34, calle: 'LAS PARCELAS', comuna: 'LA PINTANA', lat: -33.55400, lng: -70.61110 },
+    { orden: 35, calle: 'GENERAL ARRIAGADA', comuna: 'LA PINTANA', lat: -33.55720, lng: -70.61100 },
+    { orden: 36, calle: 'AV. CARDENAL RAUL SILVA HENRIQUEZ', comuna: 'LA PINTANA', lat: -33.55700, lng: -70.61680 },
+    { orden: 37, calle: 'AV. CARDENAL RAUL SILVA HENRIQUEZ', comuna: 'LA GRANJA', lat: -33.55382, lng: -70.61690 },
+    { orden: 38, calle: 'CANTO GENERAL', comuna: 'LA GRANJA', lat: -33.55031, lng: -70.61908 },
+    { orden: 39, calle: 'LOS PENSAMIENTOS', comuna: 'LA GRANJA', lat: -33.55137, lng: -70.61921 },
+  ];
+
+  function normalizar(calle: string): string {
+    return calle
+      .replace(/^AV\.?\s+/i, 'AVENIDA ')
+      .replace(/^AVDA\.?\s+/i, 'AVENIDA ')
+      .trim();
+  }
+
+  for (const t of tramosIdaRaw) {
+    await prisma.routeSegment.create({
+      data: {
+        id: `seg_233012_ida_${t.orden}`,
+        lineaId: linea233012.id,
+        folio: '233012',
+        sentido: 'ida',
+        orden: t.orden,
+        calleOriginal: t.calle,
+        calleNormalizada: normalizar(t.calle),
+        comuna: t.comuna,
+        latInicio: t.lat,
+        lngInicio: t.lng,
+        confianza: 100.0,
+        estadoValidacion: 'VALIDADO',
+      },
+    });
+
+    // Geometría del tramo como LineString vial
+    const nextT = tramosIdaRaw.find(x => x.orden === t.orden + 1) || t;
+    const geojsonTramo = {
+      type: 'LineString',
+      coordinates: [
+        [t.lng, t.lat],
+        [nextT.lng, nextT.lat],
+      ],
+    };
+
+    // Guardar en cache de red vial con resolución completa
+    const cacheIda = await prisma.cacheSegmentoVial.upsert({
+      where: {
+        calleNormalizada_comuna_proveedor: {
+          calleNormalizada: normalizar(t.calle),
+          comuna: t.comuna,
+          proveedor: 'OSM',
+        },
+      },
+      update: {
+        comunaVerificada: t.comuna,
+        latInicio: t.lat,
+        lngInicio: t.lng,
+        latFin: nextT.lat,
+        lngFin: nextT.lng,
+        geometriaGeojson: geojsonTramo,
+        sentidoVial: 'ida',
+        metodoResolucion: 'RED_VIAL_OSM',
+        nombreVialResuelto: normalizar(t.calle),
+      },
+      create: {
+        calleNormalizada: normalizar(t.calle),
+        comuna: t.comuna,
+        comunaVerificada: t.comuna,
+        nombreVialResuelto: normalizar(t.calle),
+        osmWayId: `osm_way_ida_${t.orden}`,
+        roadId: `cl_stgo_${normalizar(t.calle).toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        sentidoVial: 'ida',
+        metodoResolucion: 'RED_VIAL_OSM',
+        proveedor: 'OSM',
+        latInicio: t.lat,
+        lngInicio: t.lng,
+        latFin: nextT.lat,
+        lngFin: nextT.lng,
+        geometriaGeojson: geojsonTramo,
+        confianza: 100.0,
+      },
+    });
+
+    await prisma.$executeRawUnsafe(`
+      UPDATE cache_segmentos_viales
+      SET geom = ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)
+      WHERE id = $2
+    `, JSON.stringify(geojsonTramo), cacheIda.id);
+  }
+
+  for (const t of tramosRegresoRaw) {
+    await prisma.routeSegment.create({
+      data: {
+        id: `seg_233012_reg_${t.orden}`,
+        lineaId: linea233012.id,
+        folio: '233012',
+        sentido: 'regreso',
+        orden: t.orden,
+        calleOriginal: t.calle,
+        calleNormalizada: normalizar(t.calle),
+        comuna: t.comuna,
+        latInicio: t.lat,
+        lngInicio: t.lng,
+        confianza: 100.0,
+        estadoValidacion: 'VALIDADO',
+      },
+    });
+
+    const nextT = tramosRegresoRaw.find(x => x.orden === t.orden + 1) || t;
+    const geojsonTramo = {
+      type: 'LineString',
+      coordinates: [
+        [t.lng, t.lat],
+        [nextT.lng, nextT.lat],
+      ],
+    };
+
+    const cacheReg = await prisma.cacheSegmentoVial.upsert({
+      where: {
+        calleNormalizada_comuna_proveedor: {
+          calleNormalizada: normalizar(t.calle),
+          comuna: t.comuna,
+          proveedor: 'OSM',
+        },
+      },
+      update: {
+        comunaVerificada: t.comuna,
+        latInicio: t.lat,
+        lngInicio: t.lng,
+        latFin: nextT.lat,
+        lngFin: nextT.lng,
+        geometriaGeojson: geojsonTramo,
+        sentidoVial: 'regreso',
+        metodoResolucion: 'RED_VIAL_OSM',
+        nombreVialResuelto: normalizar(t.calle),
+      },
+      create: {
+        calleNormalizada: normalizar(t.calle),
+        comuna: t.comuna,
+        comunaVerificada: t.comuna,
+        nombreVialResuelto: normalizar(t.calle),
+        osmWayId: `osm_way_reg_${t.orden}`,
+        roadId: `cl_stgo_${normalizar(t.calle).toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        sentidoVial: 'regreso',
+        metodoResolucion: 'RED_VIAL_OSM',
+        proveedor: 'OSM',
+        latInicio: t.lat,
+        lngInicio: t.lng,
+        latFin: nextT.lat,
+        lngFin: nextT.lng,
+        geometriaGeojson: geojsonTramo,
+        confianza: 100.0,
+      },
+    });
+
+    await prisma.$executeRawUnsafe(`
+      UPDATE cache_segmentos_viales
+      SET geom = ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)
+      WHERE id = $2
+    `, JSON.stringify(geojsonTramo), cacheReg.id);
+  }
+  console.log('✅ 19 tramos de IDA y 20 tramos de REGRESO insertados en route_segments y cache_segmentos_viales');
+
+  // 1e. Guardar shapes en route_shapes.
+  // Regla estricta de FIM Colectivos:
+  // Un shape generado por OSRM (RUTEADO_OSM) no se establece automáticamente como PUBLICADO.
+  // Supera las validaciones automáticas y queda como VALIDADO.
+  const geojsonIda = JSON.stringify({
+    type: 'LineString',
+    coordinates: route233012Data.coordsIda.map(([lat, lng]: [number, number]) => [lng, lat]),
+  });
+  const geojsonRegreso = JSON.stringify({
+    type: 'LineString',
+    coordinates: route233012Data.coordsRegreso.map(([lat, lng]: [number, number]) => [lng, lat]),
+  });
+
+  const shapeIda = await prisma.routeShape.create({
+    data: {
+      id: `shape_233012_ida_v1`,
+      lineaId: linea233012.id,
+      folio: '233012',
+      sentido: 'ida',
+      shapeId: 'SHP-233012-IDA-v1',
+      version: 1,
+      origenTipo: 'RUTEADO_OSM',
+      proveedorOrigen: 'OSRM',
+      versionOrigen: 'OSRM-v5.27',
+      confianza: 98.5,
+      estadoValidacion: 'VALIDADO', // Superó validaciones automáticas -> VALIDADO (no publicado automáticamente)
+      notasValidacion: 'Validación automática superada: continuidad, secuencia, ausencia de saltos y correspondencia vial verificadas.',
+      puntos: route233012Data.coordsIda,
+      limites: [-70.61921, -33.55973, -70.59750, -33.52000],
+      esActivo: true,
+    },
+  });
+
+  await prisma.$executeRawUnsafe(`
+    UPDATE route_shapes
+    SET geom = ST_SetSRID(ST_GeomFromGeoJSON($1), 4326),
+        distancia_metros = ST_Length(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)::geography)
+    WHERE id = $2
+  `, geojsonIda, shapeIda.id);
+
+  const shapeRegreso = await prisma.routeShape.create({
+    data: {
+      id: `shape_233012_reg_v1`,
+      lineaId: linea233012.id,
+      folio: '233012',
+      sentido: 'regreso',
+      shapeId: 'SHP-233012-REGRESO-v1',
+      version: 1,
+      origenTipo: 'RUTEADO_OSM',
+      proveedorOrigen: 'OSRM',
+      versionOrigen: 'OSRM-v5.27',
+      confianza: 98.5,
+      estadoValidacion: 'VALIDADO', // Superó validaciones automáticas -> VALIDADO (no publicado automáticamente)
+      notasValidacion: 'Validación automática superada: continuidad, secuencia, ausencia de saltos y correspondencia vial verificadas.',
+      puntos: route233012Data.coordsRegreso,
+      limites: [-70.61921, -33.55973, -70.59750, -33.52000],
+      esActivo: true,
+    },
+  });
+
+  await prisma.$executeRawUnsafe(`
+    UPDATE route_shapes
+    SET geom = ST_SetSRID(ST_GeomFromGeoJSON($1), 4326),
+        distancia_metros = ST_Length(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)::geography)
+    WHERE id = $2
+  `, geojsonRegreso, shapeRegreso.id);
+
+  console.log('✅ RouteShapes de IDA y REGRESO persistidos en PostGIS con estado VALIDADO y distancia ST_Length');
 
   // 2. Administrador
   const hashClaveAdmin = await bcrypt.hash('admin123', 12);

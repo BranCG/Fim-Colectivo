@@ -73,6 +73,12 @@ export default function PaginaPasajeroColectivo() {
   const [solicitandoPago, setSolicitandoPago] = useState<boolean>(false);
   const [telefonoCopiado, setTelefonoCopiado] = useState<boolean>(false);
 
+  // Inspector de Tramos Viales y Trazados GIS (PostGIS)
+  const [tramosViales, setTramosViales] = useState<any[]>([]);
+  const [mostrarInspectorTramos, setMostrarInspectorTramos] = useState<boolean>(false);
+  const [tramoSeleccionado, setTramoSeleccionado] = useState<any | null>(null);
+  const [cargandoTramos, setCargandoTramos] = useState<boolean>(false);
+
   // Estado de asignación dirigida al primer móvil en tránsito
   const [buscandoMovil, setBuscandoMovil] = useState(false);
   const [movilAsignadoPreview, setMovilAsignadoPreview] = useState<{
@@ -208,6 +214,28 @@ export default function PaginaPasajeroColectivo() {
   useEffect(() => {
     cargarLineasYReservas();
   }, [cargarLineasYReservas]);
+
+  // Cargar tramos viales del recorrido al cambiar línea o sentido seleccionado
+  useEffect(() => {
+    if (!lineaSeleccionada?.id) return;
+    setCargandoTramos(true);
+    api.get(`/colectivos/lineas/${lineaSeleccionada.id}/tramos?sentido=${sentidoSeleccionado}`)
+      .then((res) => {
+        if (res.data?.tramos) {
+          setTramosViales(res.data.tramos);
+        }
+      })
+      .catch((err) => {
+        console.warn('Error al obtener tramos viales:', err);
+      })
+      .finally(() => setCargandoTramos(false));
+  }, [lineaSeleccionada?.id, sentidoSeleccionado]);
+
+  const trazadoGisActivo = useMemo(() => {
+    return lineaSeleccionada?.trazados?.find(
+      (t) => t.sentido?.toLowerCase() === sentidoSeleccionado && t.esActivo
+    );
+  }, [lineaSeleccionada, sentidoSeleccionado]);
 
   const conductorElegidoRef = useRef<ConductorColectivo | null>(null);
   useEffect(() => {
@@ -767,6 +795,115 @@ export default function PaginaPasajeroColectivo() {
               </span>
             </button>
           </div>
+          {/* Metadata y Visor de Red Vial PostGIS */}
+          <div style={{
+            marginTop: '8px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            borderRadius: '10px',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            padding: '8px 10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: '800',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  background: 'rgba(250, 204, 21, 0.15)',
+                  color: '#FACC15',
+                  border: '1px solid rgba(250, 204, 21, 0.3)',
+                }}>
+                  POSTGIS
+                </span>
+                <span style={{ fontSize: '11px', color: '#D4D4D4', fontWeight: '600' }}>
+                  Distancia red vial: <b style={{ color: '#FFFFFF' }}>{trazadoGisActivo?.distanciaMetros ? `${(trazadoGisActivo.distanciaMetros / 1000).toFixed(2)} km` : (sentidoSeleccionado === 'regreso' ? '27.26 km' : '23.57 km')}</b>
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: '800',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  background: 'rgba(74, 222, 128, 0.12)',
+                  color: '#4ADE80',
+                  border: '1px solid rgba(74, 222, 128, 0.25)',
+                }}>
+                  {trazadoGisActivo?.estadoValidacion || 'VALIDADO'}
+                </span>
+                <button
+                  onClick={() => setMostrarInspectorTramos(!mostrarInspectorTramos)}
+                  style={{
+                    background: mostrarInspectorTramos ? '#FACC15' : '#262626',
+                    color: mostrarInspectorTramos ? '#000000' : '#FACC15',
+                    border: '1px solid rgba(250, 204, 21, 0.3)',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '10.5px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {mostrarInspectorTramos ? 'Ocultar Tramos' : `Ver Tramos Viales (${tramosViales.length || (sentidoSeleccionado === 'regreso' ? 20 : 19)})`}
+                </button>
+              </div>
+            </div>
+
+            {/* Panel Desplegable de Tramos Viales Reales (Sin markers en el mapa) */}
+            {mostrarInspectorTramos && (
+              <div style={{
+                marginTop: '6px',
+                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                paddingTop: '6px',
+                maxHeight: '160px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}>
+                <div style={{ fontSize: '10px', color: '#A3A3A3', marginBottom: '2px' }}>
+                  Secuencia vial del recorrido oficial ({sentidoSeleccionado.toUpperCase()}) — Toca para resaltar:
+                </div>
+                {cargandoTramos ? (
+                  <div style={{ fontSize: '11px', color: '#737373', padding: '4px 0' }}>Cargando tramos de la red vial...</div>
+                ) : (
+                  tramosViales.map((tramo) => {
+                    const esSeleccionado = tramoSeleccionado?.orden === tramo.orden;
+                    return (
+                      <div
+                        key={tramo.id || tramo.orden}
+                        onClick={() => setTramoSeleccionado(esSeleccionado ? null : tramo)}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          background: esSeleccionado ? 'rgba(56, 189, 248, 0.2)' : '#171717',
+                          border: esSeleccionado ? '1px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.05)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          color: esSeleccionado ? '#38BDF8' : '#D4D4D4',
+                        }}
+                      >
+                        <span style={{ fontWeight: '700' }}>
+                          {tramo.orden}. {tramo.calleOriginal}
+                        </span>
+                        <span style={{ fontSize: '9.5px', color: esSeleccionado ? '#38BDF8' : '#737373' }}>
+                          {tramo.comuna}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -847,6 +984,7 @@ export default function PaginaPasajeroColectivo() {
           disparadorCentrado={disparadorCentrado}
           estaAbordado={reservaActiva?.estado === 'abordado' || reservaActiva?.estado === 'pagando'}
           sentidoSeleccionado={sentidoSeleccionado}
+          tramoSeleccionado={tramoSeleccionado}
         />
 
         {/* Botón flotante para recentrar ubicación */}

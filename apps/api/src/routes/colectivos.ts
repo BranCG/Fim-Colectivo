@@ -31,8 +31,22 @@ router.get('/lineas', async (peticion: Request, respuesta: Response) => {
     const lineas = await prisma.lineaColectivo.findMany({
       where: { activa: true },
       include: {
-        paradas: {
-          orderBy: { orden: 'asc' },
+        trazados: {
+          where: { esActivo: true },
+          select: {
+            id: true,
+            shapeId: true,
+            sentido: true,
+            origenTipo: true,
+            distanciaMetros: true,
+            confianza: true,
+            estadoValidacion: true,
+            puntos: true,
+            limites: true,
+          },
+        },
+        _count: {
+          select: { tramos: true },
         },
         conductores: {
           where: { isOnline: true, status: 'active' },
@@ -72,8 +86,11 @@ router.get('/lineas/:id', async (peticion: Request, respuesta: Response) => {
     const linea = await prisma.lineaColectivo.findUnique({
       where: { id: String(id) },
       include: {
-        paradas: {
-          orderBy: { orden: 'asc' },
+        trazados: {
+          where: { esActivo: true },
+        },
+        _count: {
+          select: { tramos: true },
         },
         conductores: {
           where: { isOnline: true, status: 'active' },
@@ -104,6 +121,27 @@ router.get('/lineas/:id', async (peticion: Request, respuesta: Response) => {
   } catch (error) {
     console.error('Error al obtener detalle de la línea:', error);
     respuesta.status(500).json({ error: 'Error al obtener detalles de la línea' });
+  }
+});
+
+// ─── PÚBLICO / INSPECTOR GIS: Obtener tramos viales ordenados de una línea ───
+router.get('/lineas/:id/tramos', async (peticion: Request, respuesta: Response) => {
+  try {
+    const { id } = peticion.params;
+    const sentido = typeof peticion.query.sentido === 'string' ? peticion.query.sentido : 'ida';
+
+    const tramos = await prisma.routeSegment.findMany({
+      where: {
+        lineaId: String(id),
+        sentido: String(sentido),
+      },
+      orderBy: { orden: 'asc' },
+    });
+
+    respuesta.json({ tramos, cantidad: tramos.length });
+  } catch (error) {
+    console.error('Error al obtener tramos viales de la línea:', error);
+    respuesta.status(500).json({ error: 'Error al obtener tramos viales de la línea' });
   }
 });
 
@@ -967,8 +1005,6 @@ export function despacharASiguienteConductor(reservaId: string) {
       solicitud.conductorActualIndex++;
       despacharASiguienteConductor(reservaId);
     }, 30000);
-  }).catch((err) => {
-    }, 15000);
   }).catch((err: any) => {
     console.error('Error al despachar a chofer:', err);
     solicitud.conductorActualIndex++;

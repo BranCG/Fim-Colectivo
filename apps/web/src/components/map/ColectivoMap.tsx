@@ -31,6 +31,21 @@ export interface Linea {
   callesIda?: string | null;
   callesRegreso?: string | null;
   paradas?: Parada[];
+  trazados?: {
+    id: string;
+    shapeId: string;
+    sentido: string;
+    origenTipo: string;
+    distanciaMetros?: number;
+    confianza?: number;
+    estadoValidacion?: string;
+    puntos?: [number, number][];
+    limites?: number[];
+    esActivo?: boolean;
+  }[];
+  _count?: {
+    tramos: number;
+  };
 }
 
 export interface ConductorColectivo {
@@ -60,6 +75,20 @@ export interface PasajeroEnEspera {
   distanciaTexto?: string;
 }
 
+export interface TramoVialInfo {
+  id?: string;
+  orden: number;
+  calleOriginal: string;
+  calleNormalizada: string;
+  comuna: string;
+  latInicio?: number;
+  lngInicio?: number;
+  latFin?: number;
+  lngFin?: number;
+  confianza?: number;
+  estadoValidacion?: string;
+}
+
 interface Props {
   ubicacionUsuario: { latitud: number; longitud: number; direccion?: string } | null;
   lineaSeleccionada: Linea | null;
@@ -74,6 +103,7 @@ interface Props {
   pasajerosEnEspera?: PasajeroEnEspera[];
   altura?: string;
   estaAbordado?: boolean;
+  tramoSeleccionado?: TramoVialInfo | null;
 }
 
 // Estilo MapLibre con teselas OpenStreetMap de alta disponibilidad: 100% libre, sin API key, sin marcas de agua
@@ -273,6 +303,7 @@ export default function ColectivoMap({
   pasajerosEnEspera = [],
   altura = '100%',
   estaAbordado = false,
+  tramoSeleccionado = null,
 }: Props) {
   const contenedorRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -408,88 +439,151 @@ export default function ColectivoMap({
     marcadoresRef.current.forEach((m) => m.remove());
     marcadoresRef.current = [];
 
-    // B. Trazado de ruta GeoJSON nativo de la línea (IDA o REGRESO según sentidoSeleccionado)
+    // B. Trazado continuo vial nativo de la línea (IDA o REGRESO según sentidoSeleccionado)
     const idFuenteRuta = 'fuente-linea-colectivo';
     const idCapaRutaGlow = 'capa-linea-glow';
     const idCapaRutaLinea = 'capa-linea-principal';
+    const idFuenteTramo = 'fuente-tramo-destacado';
+    const idCapaTramoGlow = 'capa-tramo-destacado-glow';
+    const idCapaTramoLinea = 'capa-tramo-destacado-linea';
 
-    const puntosJson =
-      sentidoSeleccionado === 'regreso' && lineaSeleccionada?.puntosRutaRegreso
-        ? lineaSeleccionada.puntosRutaRegreso
-        : lineaSeleccionada?.puntosRuta;
+    let puntosCoords: [number, number][] | null = null;
 
-    if (lineaSeleccionada && puntosJson) {
+    // Prioridad 1: Trazado vial activo en la arquitectura GIS (PostGIS derivado de route_shapes)
+    const trazadoActivo = lineaSeleccionada?.trazados?.find(
+      (t) => t.sentido?.toLowerCase() === sentidoSeleccionado && t.esActivo
+    );
+
+    if (trazadoActivo?.puntos) {
+      puntosCoords = Array.isArray(trazadoActivo.puntos)
+        ? (trazadoActivo.puntos as [number, number][])
+        : JSON.parse(trazadoActivo.puntos as any);
+    } else {
+      // Prioridad 2: Cadena JSON guardada en lineaColectivo (IDA / REGRESO)
+      const puntosJson =
+        sentidoSeleccionado === 'regreso' && lineaSeleccionada?.puntosRutaRegreso
+          ? lineaSeleccionada.puntosRutaRegreso
+          : lineaSeleccionada?.puntosRuta;
+      if (puntosJson) {
+        try {
+          puntosCoords = JSON.parse(puntosJson);
+        } catch (e) {
+          puntosCoords = null;
+        }
+      }
+    }
+
+    if (lineaSeleccionada && puntosCoords && Array.isArray(puntosCoords) && puntosCoords.length > 1) {
       try {
-        const puntosRaw = JSON.parse(puntosJson);
-        if (Array.isArray(puntosRaw) && puntosRaw.length > 1) {
-          // Convertir de [lat, lng] a estándar GeoJSON [lng, lat]
-          const coordenadasGeoJson = puntosRaw.map(([lat, lng]: [number, number]) => [lng, lat]);
-          const geojsonData = {
-            type: 'Feature' as const,
-            properties: {},
-            geometry: {
-              type: 'LineString' as const,
-              coordinates: coordenadasGeoJson,
-            },
-          };
+        const coordenadasGeoJson = puntosCoords.map(([lat, lng]: [number, number]) => [lng, lat]);
+        const geojsonData = {
+          type: 'Feature' as const,
+          properties: {},
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: coordenadasGeoJson,
+          },
+        };
 
-          const colorRuta = '#FACC15';
+        const colorRuta = sentidoSeleccionado === 'regreso' ? '#10B981' : '#FACC15';
 
-          if (mapa.getSource(idFuenteRuta)) {
-            mapa.getSource(idFuenteRuta).setData(geojsonData);
-          } else {
-            mapa.addSource(idFuenteRuta, {
-              type: 'geojson',
-              data: geojsonData,
-            });
-
-            // Capa exterior negra de contraste
-            mapa.addLayer({
-              id: idCapaRutaGlow,
-              type: 'line',
-              source: idFuenteRuta,
-              layout: {
-                'line-join': 'round',
-                'line-cap': 'round',
-              },
-              paint: {
-                'line-color': '#000000',
-                'line-width': 9,
-                'line-opacity': 0.8,
-              },
-            });
-
-            // Capa principal en amarillo colectivo
-            mapa.addLayer({
-              id: idCapaRutaLinea,
-              type: 'line',
-              source: idFuenteRuta,
-              layout: {
-                'line-join': 'round',
-                'line-cap': 'round',
-              },
-              paint: {
-                'line-color': colorRuta,
-                'line-width': 5,
-                'line-opacity': 0.95,
-              },
-            });
+        if (mapa.getSource(idFuenteRuta)) {
+          (mapa.getSource(idFuenteRuta) as any).setData(geojsonData);
+          if (mapa.getLayer(idCapaRutaLinea)) {
+            mapa.setPaintProperty(idCapaRutaLinea, 'line-color', colorRuta);
           }
+        } else {
+          mapa.addSource(idFuenteRuta, {
+            type: 'geojson',
+            data: geojsonData,
+          });
+
+          // Capa exterior de alto contraste (casing vial)
+          mapa.addLayer({
+            id: idCapaRutaGlow,
+            type: 'line',
+            source: idFuenteRuta,
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#000000',
+              'line-width': 8.5,
+              'line-opacity': 0.85,
+            },
+          });
+
+          // Capa principal vial continua
+          mapa.addLayer({
+            id: idCapaRutaLinea,
+            type: 'line',
+            source: idFuenteRuta,
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': colorRuta,
+              'line-width': 5,
+              'line-opacity': 0.95,
+            },
+          });
         }
       } catch (e) {
-        console.error('Error al procesar puntos de la ruta:', e);
+        console.error('Error al procesar trazado continuo de la ruta:', e);
       }
     } else {
-      // Si no hay línea, remover capas si existen
       if (mapa.getLayer(idCapaRutaLinea)) mapa.removeLayer(idCapaRutaLinea);
       if (mapa.getLayer(idCapaRutaGlow)) mapa.removeLayer(idCapaRutaGlow);
       if (mapa.getSource(idFuenteRuta)) mapa.removeSource(idFuenteRuta);
     }
 
+    // Resaltado de tramo vial individual seleccionado (si el usuario inspecciona una calle específica)
+    if (tramoSeleccionado && tramoSeleccionado.latInicio && tramoSeleccionado.lngInicio) {
+      const latFin = tramoSeleccionado.latFin || tramoSeleccionado.latInicio;
+      const lngFin = tramoSeleccionado.lngFin || tramoSeleccionado.lngInicio;
+      const geojsonTramo = {
+        type: 'Feature' as const,
+        properties: {},
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: [
+            [tramoSeleccionado.lngInicio, tramoSeleccionado.latInicio],
+            [lngFin, latFin],
+          ],
+        },
+      };
+
+      if (mapa.getSource(idFuenteTramo)) {
+        (mapa.getSource(idFuenteTramo) as any).setData(geojsonTramo);
+      } else {
+        mapa.addSource(idFuenteTramo, { type: 'geojson', data: geojsonTramo });
+        mapa.addLayer({
+          id: idCapaTramoGlow,
+          type: 'line',
+          source: idFuenteTramo,
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#000000', 'line-width': 12, 'line-opacity': 0.9 },
+        });
+        mapa.addLayer({
+          id: idCapaTramoLinea,
+          type: 'line',
+          source: idFuenteTramo,
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#38BDF8', 'line-width': 7, 'line-opacity': 1.0 },
+        });
+      }
+    } else {
+      if (mapa.getLayer(idCapaTramoLinea)) mapa.removeLayer(idCapaTramoLinea);
+      if (mapa.getLayer(idCapaTramoGlow)) mapa.removeLayer(idCapaTramoGlow);
+      if (mapa.getSource(idFuenteTramo)) mapa.removeSource(idFuenteTramo);
+    }
+
     // C. Marcador: Ubicación del usuario o Mi Colectivo
     if (ubicacionUsuario) {
       if (esModoConductor) {
-        // Modo Conductor: Ícono de colectivo limpio sin badges ni párrafos de "TU COLECTIVO" ni "MI AUTO"
+        // Modo Conductor: Ícono de colectivo limpio sin badges confusos
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = 'display: flex; flex-direction: column; align-items: center; z-index: 100; cursor: pointer;';
@@ -535,47 +629,6 @@ export default function ColectivoMap({
 
         marcadoresRef.current.push(marcador);
       }
-    }
-
-    // D. Marcador: Paradas de la línea (filtradas por sentido activo)
-    if (lineaSeleccionada?.paradas && lineaSeleccionada.paradas.length > 0) {
-      const paradasFiltradas = lineaSeleccionada.paradas.filter(
-        (parada) =>
-          !parada.sentido ||
-          parada.sentido.toLowerCase() === sentidoSeleccionado ||
-          parada.sentido === 'ambos'
-      );
-      paradasFiltradas.forEach((parada) => {
-        const el = document.createElement('div');
-        el.className = 'fim-marker-container';
-        el.style.cssText = `
-          background: #000000;
-          border: 2.5px solid #FACC15;
-          border-radius: 50%;
-          width: 22px;
-          height: 22px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 3px 8px rgba(0,0,0,0.7);
-          font-size: 11px;
-          font-weight: 900;
-          color: #FFFFFF;
-          cursor: pointer;
-        `;
-        el.innerText = String(parada.orden);
-
-        const marcador = new Marker({ element: el, anchor: 'center' })
-          .setLngLat([parada.longitud, parada.latitud])
-          .setPopup(
-            new Popup({ offset: 14, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              `<b>Parada ${parada.orden}: ${parada.nombre}</b><br/><span style="font-size: 10px; color: #A3A3A3;">Sentido: ${parada.sentido.toUpperCase()}</span>`
-            )
-          )
-          .addTo(mapa);
-
-        marcadoresRef.current.push(marcador);
-      });
     }
 
     // E. Marcadores: Colectivos en Vivo de la flota
@@ -726,6 +779,7 @@ export default function ColectivoMap({
     pasajerosEnEspera,
     estaAbordado,
     sentidoSeleccionado,
+    tramoSeleccionado,
   ]);
 
   // ETA destacado para mostrar en el HUD flotante superior del mapa

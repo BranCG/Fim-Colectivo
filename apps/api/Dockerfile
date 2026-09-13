@@ -14,9 +14,12 @@ COPY apps/api/package*.json ./apps/api/
 # Instalar dependencias completas para compilar
 RUN npm install
 
-# Copiar esquema de prisma y generar cliente
+# Variable de entorno para que el parser de Prisma no falle en getConfig durante el build
+ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+
+# Copiar esquema de prisma y generar cliente usando el binario local v5
 COPY packages/database ./packages/database
-RUN npx prisma generate --schema=./packages/database/schema.prisma
+RUN ./node_modules/.bin/prisma generate --schema=./packages/database/schema.prisma
 
 # Copiar código fuente de la API y compilar
 COPY apps/api ./apps/api
