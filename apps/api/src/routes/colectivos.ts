@@ -128,12 +128,12 @@ router.get('/lineas/:id', async (peticion: Request, respuesta: Response) => {
 router.get('/lineas/:id/tramos', async (peticion: Request, respuesta: Response) => {
   try {
     const { id } = peticion.params;
-    const sentido = (peticion.query.sentido as string) || 'ida';
+    const sentido = typeof peticion.query.sentido === 'string' ? peticion.query.sentido : 'ida';
 
     const tramos = await prisma.routeSegment.findMany({
       where: {
-        lineaId: id,
-        sentido,
+        lineaId: String(id),
+        sentido: String(sentido),
       },
       orderBy: { orden: 'asc' },
     });
@@ -1005,8 +1005,6 @@ export function despacharASiguienteConductor(reservaId: string) {
       solicitud.conductorActualIndex++;
       despacharASiguienteConductor(reservaId);
     }, 30000);
-  }).catch((err) => {
-    }, 15000);
   }).catch((err: any) => {
     console.error('Error al despachar a chofer:', err);
     solicitud.conductorActualIndex++;
