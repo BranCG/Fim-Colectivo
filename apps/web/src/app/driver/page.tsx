@@ -1121,7 +1121,7 @@ export default function PaginaConductorColectivo() {
             conductoresEnVivo={conductoresEnVivo}
             esModoConductor={true}
             miConductorId={choferSesion?.id}
-            miPatente={choferSesion?.vehiculo?.patente || choferSesion?.patente || 'MI AUTO'}
+            miPatente={choferSesion?.vehiculo?.patente || choferSesion?.patente || ''}
             pasajerosEnEspera={pasajerosEnEspera}
             disparadorCentrado={disparadorCentrado}
             altura="380px"

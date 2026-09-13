@@ -97,12 +97,12 @@ const ESTILO_MAPLIBRE: any = {
 
 // ─── Generador de Pin SVG de Colectivo Chileno Ultra-Visible ───
 interface OpcionesColectivoSvg {
-  patente: string;
-  textoBadge: string;
-  colorBadge: string;
-  colorAuto: string;
-  colorLetrero: string;
-  esDestacado: boolean;
+  patente?: string;
+  textoBadge?: string;
+  colorBadge?: string;
+  colorAuto?: string;
+  colorLetrero?: string;
+  esDestacado?: boolean;
   idUnico: string;
   iconoBadge?: 'auto' | 'reloj' | 'ninguno';
 }
@@ -110,10 +110,10 @@ interface OpcionesColectivoSvg {
 function generarSvgColectivoHtml({
   patente,
   textoBadge,
-  colorBadge,
+  colorBadge = '#FACC15',
   colorAuto,
   colorLetrero,
-  esDestacado,
+  esDestacado = false,
   idUnico,
   iconoBadge = 'ninguno',
 }: OpcionesColectivoSvg): string {
@@ -126,8 +126,10 @@ function generarSvgColectivoHtml({
     svgIconoHtml = `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>`;
   }
 
-  return `
-    <div class="fim-colectivo-pin" style="display: flex; flex-direction: column; align-items: center; cursor: pointer; user-select: none; z-index: ${zIndex}; pointer-events: auto;">
+  // Ocultar badge superior si está vacío o si contiene "TU COLECTIVO"
+  const tieneTextoBadge = Boolean(textoBadge && textoBadge.trim() && !textoBadge.includes('TU COLECTIVO'));
+  const badgeHtml = tieneTextoBadge
+    ? `
       <!-- Badge superior con tiempo o texto de identificación -->
       <div style="
         background: ${colorBadge};
@@ -148,6 +150,37 @@ function generarSvgColectivoHtml({
         ${svgIconoHtml}
         <span>${textoBadge}</span>
       </div>
+    `
+    : '';
+
+  // Ocultar placa patente si está vacía o si contiene "MI AUTO"
+  const tienePatenteValida = Boolean(patente && patente.trim() && patente !== 'MI AUTO');
+  const patenteHtml = tienePatenteValida
+    ? `
+      <!-- Placa Patente micro-formato -->
+      <div style="
+        margin-top: -2px;
+        background: #FFFFFF;
+        color: #000000;
+        border: 1px solid #000000;
+        border-radius: 3px;
+        padding: 0.5px 4px;
+        font-size: 7.5px;
+        font-weight: 900;
+        font-family: 'Courier New', Courier, monospace;
+        letter-spacing: 0.4px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+        z-index: 3;
+        white-space: nowrap;
+      ">
+        ${patente}
+      </div>
+    `
+    : '';
+
+  return `
+    <div class="fim-colectivo-pin" style="display: flex; flex-direction: column; align-items: center; cursor: pointer; user-select: none; z-index: ${zIndex}; pointer-events: auto;">
+      ${badgeHtml}
 
       <!-- Automóvil SVG tipo colectivo chileno compacto de tamaño fijo -->
       <div style="position: relative; width: 24px; height: 30px; display: flex; align-items: center; justify-content: center;">
@@ -209,24 +242,7 @@ function generarSvgColectivoHtml({
         </svg>
       </div>
 
-      <!-- Placa Patente micro-formato -->
-      <div style="
-        margin-top: -2px;
-        background: #FFFFFF;
-        color: #000000;
-        border: 1px solid #000000;
-        border-radius: 3px;
-        padding: 0.5px 4px;
-        font-size: 7.5px;
-        font-weight: 900;
-        font-family: 'Courier New', Courier, monospace;
-        letter-spacing: 0.4px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.5);
-        z-index: 3;
-        white-space: nowrap;
-      ">
-        ${patente}
-      </div>
+      ${patenteHtml}
     </div>
   `;
 }
@@ -494,19 +510,19 @@ export default function ColectivoMap({
     // C. Marcador: Ubicación del usuario o Mi Colectivo
     if (ubicacionUsuario) {
       if (esModoConductor) {
-        // Modo Conductor: "TU COLECTIVO" con automóvil SVG detallado
+        // Modo Conductor: Ícono de colectivo limpio sin badges ni párrafos de "TU COLECTIVO" ni "MI AUTO"
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = 'display: flex; flex-direction: column; align-items: center; z-index: 100; cursor: pointer;';
         el.innerHTML = generarSvgColectivoHtml({
-          patente: miPatente || 'MI AUTO',
-          textoBadge: 'TU COLECTIVO',
+          patente: '',
+          textoBadge: '',
           colorBadge: '#FACC15',
           colorAuto: '#000000',
           colorLetrero: '#FACC15',
           esDestacado: true,
           idUnico: 'chofer_propio',
-          iconoBadge: 'auto',
+          iconoBadge: 'ninguno',
         });
 
         const marcador = new Marker({ element: el, anchor: 'bottom' })
@@ -602,7 +618,7 @@ export default function ColectivoMap({
 
         const textoPill = eta ? `${eta.textoTiempo} • ${textoAsientos}` : textoAsientos;
         const textoBadge = esSeleccionado
-          ? (eta ? `TU COLECTIVO • ${eta.textoTiempo}` : 'TU COLECTIVO')
+          ? (eta ? `${eta.textoTiempo} • Asignado` : 'Asignado')
           : textoPill;
 
         const colorBadge = esSeleccionado ? '#FACC15' : colorAsientos;
