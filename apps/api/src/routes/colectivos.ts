@@ -703,7 +703,19 @@ router.post('/reservas/:id/cancelar', requireAuth, async (peticion: Request, res
 
     io.to(`driver:${reserva.conductorId}`).emit('colectivo:reserva-cancelada', { reservaId: id });
     io.to(`driver:${reserva.conductorId}`).emit('colectivo:solicitud-cancelada', { reservaId: id });
-    io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-cancelada', { reservaId: id });
+    io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-cancelada', {
+      reservaId: id,
+      motivo: 'cancelado_chofer',
+      mensaje: 'El conductor canceló la reserva. Puedes solicitar otro automóvil disponible en el mapa.',
+    });
+    if (reserva.lineaId) {
+      io.to(`linea:${reserva.lineaId}`).emit('colectivo:reserva-cancelada', {
+        reservaId: id,
+        pasajeroId: reserva.pasajeroId,
+        motivo: 'cancelado_chofer',
+        mensaje: 'El conductor canceló la reserva. Puedes solicitar otro automóvil disponible en el mapa.',
+      });
+    }
 
     respuesta.json({ reserva: reservaActualizada, mensaje: 'Reserva cancelada' });
   } catch (error) {
@@ -758,8 +770,15 @@ export function despacharASiguienteConductor(reservaId: string) {
 
     io.to(`pasajero:${solicitud.pasajeroId}`).emit('colectivo:sin-conductores-disponibles', {
       reservaId,
-      mensaje: 'Todos los colectivos en tránsito vienen con cupos completos. Se liberará un móvil en breve.',
+      mensaje: 'Los colectivos no pudieron aceptar tu solicitud. Puedes solicitar otro automóvil en el mapa.',
     });
+    if (solicitud.lineaId) {
+      io.to(`linea:${solicitud.lineaId}`).emit('colectivo:sin-conductores-disponibles', {
+        reservaId,
+        pasajeroId: solicitud.pasajeroId,
+        mensaje: 'Los colectivos no pudieron aceptar tu solicitud. Puedes solicitar otro automóvil en el mapa.',
+      });
+    }
 
     solicitudesDirigidasActivas.delete(reservaId);
     return;
@@ -1133,11 +1152,17 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
           where: { id },
           data: { estado: 'rechazado' },
         });
-        io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-cancelada', { reservaId: id });
+        io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:reserva-cancelada', {
+          reservaId: id,
+          motivo: 'rechazado_chofer',
+          mensaje: 'El conductor no pudo aceptar tu reserva. Puedes solicitar otro automóvil disponible en el mapa.',
+        });
         if (reserva.lineaId) {
           io.to(`linea:${reserva.lineaId}`).emit('colectivo:reserva-cancelada', {
             reservaId: id,
             pasajeroId: reserva.pasajeroId,
+            motivo: 'rechazado_chofer',
+            mensaje: 'El conductor no pudo aceptar tu reserva. Puedes solicitar otro automóvil disponible en el mapa.',
           });
         }
       }
