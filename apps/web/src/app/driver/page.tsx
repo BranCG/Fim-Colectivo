@@ -92,7 +92,6 @@ export default function PaginaConductorColectivo() {
   const centrarMiAuto = useCallback(() => {
     setDisparadorCentrado((prev) => prev + 1);
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      // 1. Obtención rápida de red/cache (en menos de 100ms)
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const lat = pos.coords.latitude;
@@ -103,26 +102,11 @@ export default function PaginaConductorColectivo() {
           } catch {}
           setDisparadorCentrado((prev) => prev + 1);
         },
-        () => {
-          // 2. Si red falla, intentar satelital con mayor margen
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              const lat = pos.coords.latitude;
-              const lng = pos.coords.longitude;
-              setUbicacionChofer({ latitud: lat, longitud: lng });
-              try {
-                localStorage.setItem('fim_driver_last_loc', JSON.stringify({ latitud: lat, longitud: lng }));
-              } catch {}
-              setDisparadorCentrado((prev) => prev + 1);
-            },
-            (err) => {
-              console.warn('GPS chofer no disponible:', err.message);
-              setDisparadorCentrado((prev) => prev + 1);
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-          );
+        (err) => {
+          console.warn('GPS chofer:', err.message);
+          setDisparadorCentrado((prev) => prev + 1);
         },
-        { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 8000 }
       );
     }
   }, []);
@@ -597,12 +581,20 @@ export default function PaginaConductorColectivo() {
         setAudioDesbloqueado(true);
       });
 
+      const latIni = ubicacionChofer?.latitud || -33.5513;
+      const lngIni = ubicacionChofer?.longitud || -70.6192;
+      socket.emit('driver:online', {
+        driverId: choferSesion?.id,
+        lat: latIni,
+        lng: lngIni,
+      });
+
       if (typeof window !== 'undefined' && 'geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition((pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           setUbicacionChofer({ latitud: lat, longitud: lng });
-          socket.emit('driver:online', {
+          socket.emit('driver:location', {
             driverId: choferSesion?.id,
             lat,
             lng,

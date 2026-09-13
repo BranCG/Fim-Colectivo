@@ -176,7 +176,6 @@ export default function PaginaPasajeroColectivo() {
   const centrarGpsOEncuadrarRuta = useCallback(() => {
     setDisparadorCentrado((prev) => prev + 1);
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      // 1. Lectura rápida de red/cache
       navigator.geolocation.getCurrentPosition(
         (posicion: GeolocationPosition) => {
           const lat = posicion.coords.latitude;
@@ -187,26 +186,11 @@ export default function PaginaPasajeroColectivo() {
           } catch {}
           setDisparadorCentrado((prev) => prev + 1);
         },
-        () => {
-          // 2. Fallback a alta precisión satelital
-          navigator.geolocation.getCurrentPosition(
-            (posicion: GeolocationPosition) => {
-              const lat = posicion.coords.latitude;
-              const lng = posicion.coords.longitude;
-              setUbicacionPasajero({ latitud: lat, longitud: lng });
-              try {
-                localStorage.setItem('fim_passenger_last_loc', JSON.stringify({ latitud: lat, longitud: lng }));
-              } catch {}
-              setDisparadorCentrado((prev) => prev + 1);
-            },
-            (error: GeolocationPositionError) => {
-              console.warn('GPS no disponible en el dispositivo:', error.message);
-              setDisparadorEncuadrarRuta((prev) => prev + 1);
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-          );
+        (error: GeolocationPositionError) => {
+          console.warn('GPS pasajero:', error.message);
+          setDisparadorEncuadrarRuta((prev) => prev + 1);
         },
-        { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 8000 }
       );
     } else {
       setDisparadorEncuadrarRuta((prev) => prev + 1);

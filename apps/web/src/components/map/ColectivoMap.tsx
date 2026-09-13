@@ -805,12 +805,6 @@ export default function ColectivoMap({
       }
     };
 
-    if (mapa.isStyleLoaded()) {
-      aplicarGeometriaRuta();
-    } else {
-      mapa.once('styledata', aplicarGeometriaRuta);
-    }
-
     // Resaltado de tramo vial individual seleccionado (si el usuario inspecciona una calle específica)
     const aplicarTramoDestacado = () => {
       try {
@@ -840,11 +834,9 @@ export default function ColectivoMap({
       }
     };
 
-    if (mapa.isStyleLoaded()) {
-      aplicarTramoDestacado();
-    } else {
-      mapa.once('styledata', aplicarTramoDestacado);
-    }
+    // Ejecutar aplicación de trazado y tramos viales directamente
+    aplicarGeometriaRuta();
+    aplicarTramoDestacado();
 
     // C. Marcador: Ubicación del usuario o Mi Colectivo
     let uLoc = ubicacionUsuario;
