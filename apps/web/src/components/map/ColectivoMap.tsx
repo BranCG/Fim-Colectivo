@@ -380,6 +380,7 @@ export default function ColectivoMap({
 
   const haCentradoInicialmenteRef = useRef(false);
   const ultimoDisparadorRef = useRef(0);
+  const ultimaRutaEncuadradaRef = useRef('');
 
   // 2. Centrar mapa ÚNICAMENTE en la carga inicial o al presionar el botón GPS (disparadorCentrado)
   useEffect(() => {
@@ -451,23 +452,34 @@ export default function ColectivoMap({
     let puntosCoords: [number, number][] | null = null;
 
     // Prioridad 1: Trazado vial activo en la arquitectura GIS (PostGIS derivado de route_shapes)
-    const trazadoActivo = lineaSeleccionada?.trazados?.find(
-      (t) => t.sentido?.toLowerCase() === sentidoSeleccionado && t.esActivo
-    );
+    const sentidoNormalizado = (sentidoSeleccionado || 'ida').toLowerCase().trim();
+    const trazadoActivo =
+      lineaSeleccionada?.trazados?.find(
+        (t) => t.sentido?.toLowerCase().trim() === sentidoNormalizado && t.esActivo !== false
+      ) ||
+      lineaSeleccionada?.trazados?.find(
+        (t) => t.sentido?.toLowerCase().trim() === sentidoNormalizado
+      );
 
     if (trazadoActivo?.puntos) {
-      puntosCoords = Array.isArray(trazadoActivo.puntos)
-        ? (trazadoActivo.puntos as [number, number][])
-        : JSON.parse(trazadoActivo.puntos as any);
+      if (Array.isArray(trazadoActivo.puntos)) {
+        puntosCoords = trazadoActivo.puntos as [number, number][];
+      } else if (typeof trazadoActivo.puntos === 'string') {
+        try {
+          puntosCoords = JSON.parse(trazadoActivo.puntos);
+        } catch (e) {
+          puntosCoords = null;
+        }
+      }
     } else {
       // Prioridad 2: Cadena JSON guardada en lineaColectivo (IDA / REGRESO)
       const puntosJson =
-        sentidoSeleccionado === 'regreso' && lineaSeleccionada?.puntosRutaRegreso
+        sentidoNormalizado === 'regreso' && lineaSeleccionada?.puntosRutaRegreso
           ? lineaSeleccionada.puntosRutaRegreso
           : lineaSeleccionada?.puntosRuta;
       if (puntosJson) {
         try {
-          puntosCoords = JSON.parse(puntosJson);
+          puntosCoords = typeof puntosJson === 'string' ? JSON.parse(puntosJson) : puntosJson;
         } catch (e) {
           puntosCoords = null;
         }
@@ -530,6 +542,36 @@ export default function ColectivoMap({
               'line-opacity': 0.95,
             },
           });
+        }
+
+        // Encuadrar la cámara suavemente al trayecto para que el usuario visualice la ruta de inmediato
+        const rutaKeyActual = `${lineaSeleccionada.id}-${sentidoSeleccionado}`;
+        if (!estaAbordado && ultimaRutaEncuadradaRef.current !== rutaKeyActual && coordenadasGeoJson.length > 1) {
+          ultimaRutaEncuadradaRef.current = rutaKeyActual;
+          try {
+            let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+            for (const [lng, lat] of coordenadasGeoJson) {
+              if (lng < minLng) minLng = lng;
+              if (lng > maxLng) maxLng = lng;
+              if (lat < minLat) minLat = lat;
+              if (lat > maxLat) maxLat = lat;
+            }
+            if (minLng < maxLng && minLat < maxLat) {
+              mapa.fitBounds(
+                [
+                  [minLng, minLat],
+                  [maxLng, maxLat],
+                ],
+                {
+                  padding: { top: 120, bottom: 180, left: 40, right: 40 },
+                  duration: 1000,
+                  maxZoom: 15,
+                }
+              );
+            }
+          } catch (errFit) {
+            console.warn('Error al encuadrar ruta:', errFit);
+          }
         }
       } catch (e) {
         console.error('Error al procesar trazado continuo de la ruta:', e);

@@ -19,6 +19,7 @@ import {
   IconoEfectivo,
   IconoAsiento,
   IconoReloj,
+  IconoBuscar,
 } from '@/components/icons/Iconos';
 import { reproducirSonido, hablarTexto } from '@/lib/voice';
 
@@ -67,6 +68,7 @@ export default function PaginaPasajeroColectivo() {
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'rutpay' | 'mercadopago'>('efectivo');
   const [reservaActiva, setReservaActiva] = useState<ReservaActiva | null>(null);
   const [cargandoReserva, setCargandoReserva] = useState(false);
+  const estaAbordado = reservaActiva?.estado === 'abordado' || reservaActiva?.estado === 'pagando';
 
   // Estados de pago y bajada
   const [mostrarModalPago, setMostrarModalPago] = useState<boolean>(false);
@@ -78,6 +80,22 @@ export default function PaginaPasajeroColectivo() {
   const [mostrarInspectorTramos, setMostrarInspectorTramos] = useState<boolean>(false);
   const [tramoSeleccionado, setTramoSeleccionado] = useState<any | null>(null);
   const [cargandoTramos, setCargandoTramos] = useState<boolean>(false);
+
+  // Buscador intuitivo de trayecto (por folio, nombre o comuna)
+  const [terminoBusqueda, setTerminoBusqueda] = useState<string>('');
+  const [mostrarBuscador, setMostrarBuscador] = useState<boolean>(false);
+
+  const lineasFiltradas = useMemo(() => {
+    if (!terminoBusqueda.trim()) return listaLineas;
+    const q = terminoBusqueda.toLowerCase().trim();
+    return listaLineas.filter((l) => {
+      const folio = (l.folio || '').toLowerCase();
+      const nombre = (l.nombre || '').toLowerCase();
+      const recorrido = (l.nombreRecorrido || '').toLowerCase();
+      const comunas = (l.comunas || '').toLowerCase();
+      return folio.includes(q) || nombre.includes(q) || recorrido.includes(q) || comunas.includes(q);
+    });
+  }, [listaLineas, terminoBusqueda]);
 
   // Estado de asignación dirigida al primer móvil en tránsito
   const [buscandoMovil, setBuscandoMovil] = useState(false);
@@ -197,13 +215,14 @@ export default function PaginaPasajeroColectivo() {
       const lineasObtenidas: Linea[] = respuestaLineas.data.lineas || [];
       setListaLineas(lineasObtenidas);
 
-      if (lineasObtenidas.length > 0 && !lineaSeleccionada) {
-        setLineaSeleccionada(lineasObtenidas[0]);
-      }
-
-      // Si tiene una reserva en curso
+      // Si tiene una reserva en curso, asociar su línea automáticamente
       if (respuestaReservas.data?.reservas && respuestaReservas.data.reservas.length > 0) {
-        setReservaActiva(respuestaReservas.data.reservas[0]);
+        const resv = respuestaReservas.data.reservas[0];
+        setReservaActiva(resv);
+        const lRes = lineasObtenidas.find(
+          (l) => l.nombre === resv.linea?.nombre || l.id === (resv as any).lineaId
+        );
+        if (lRes) setLineaSeleccionada(lRes);
       }
     } catch (error) {
       console.error('Error al cargar líneas:', error);
@@ -232,8 +251,12 @@ export default function PaginaPasajeroColectivo() {
   }, [lineaSeleccionada?.id, sentidoSeleccionado]);
 
   const trazadoGisActivo = useMemo(() => {
-    return lineaSeleccionada?.trazados?.find(
-      (t) => t.sentido?.toLowerCase() === sentidoSeleccionado && t.esActivo
+    const sNorm = (sentidoSeleccionado || 'ida').toLowerCase().trim();
+    return (
+      lineaSeleccionada?.trazados?.find(
+        (t) => t.sentido?.toLowerCase().trim() === sNorm && t.esActivo !== false
+      ) ||
+      lineaSeleccionada?.trazados?.find((t) => t.sentido?.toLowerCase().trim() === sNorm)
     );
   }, [lineaSeleccionada, sentidoSeleccionado]);
 
@@ -514,6 +537,8 @@ export default function PaginaPasajeroColectivo() {
     setLineaSeleccionada(linea);
     setConductorElegido(null);
     setConductoresEnVivo([]);
+    setMostrarBuscador(false);
+    setTerminoBusqueda('');
   };
 
   // Enviar solicitud de reserva de asiento
@@ -650,55 +675,172 @@ export default function PaginaPasajeroColectivo() {
         </button>
       </header>
 
-      {/* ── Selector de Líneas de Colectivo (Pills horizontales) ── */}
-      <div style={{
-        padding: '10px 16px',
-        background: '#121212',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-        display: 'flex',
-        gap: '8px',
-        overflowX: 'auto',
-        whiteSpace: 'nowrap',
-        zIndex: 5,
-      }}>
-        {listaLineas.map((linea) => {
-          const esActiva = lineaSeleccionada?.id === linea.id;
-          return (
-            <button
-              key={linea.id}
-              onClick={() => seleccionarLinea(linea)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 14px',
-                borderRadius: '24px',
-                border: esActiva ? '2px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.15)',
-                background: esActiva ? 'rgba(250, 204, 21, 0.15)' : '#171717',
-                color: esActiva ? '#FACC15' : '#D4D4D4',
-                fontSize: '13px',
-                fontWeight: esActiva ? '700' : '500',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <span style={{
-                width: '10px',
-                height: '10px',
-                borderRadius: '50%',
-                background: esActiva ? '#FACC15' : '#737373',
-                display: 'inline-block',
-              }} />
-              {linea.nombre}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Selector de Sentido (IDA / REGRESO) y Ficha Oficial MTT ── */}
-      {lineaSeleccionada && (
+      {/* ── Modo A Bordo: Barra superior mínima para dar máximo espacio al mapa ── */}
+      {estaAbordado && (
         <div style={{
-          padding: '8px 14px',
+          padding: '10px 16px',
+          background: '#0D0D0D',
+          borderBottom: '1px solid rgba(250, 204, 21, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          zIndex: 5,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ADE80' }} />
+            <span style={{ fontSize: '12.5px', fontWeight: '800', color: '#FFFFFF' }}>
+              En viaje: {lineaSeleccionada?.nombreRecorrido || lineaSeleccionada?.nombre || 'Colectivo'}
+            </span>
+            <span style={{ fontSize: '11px', color: '#FACC15', fontWeight: '700' }}>
+              ({reservaActiva?.conductor?.vehiclePlate || (reservaActiva as any)?.conductorVehiclePlate || 'COL202'})
+            </span>
+          </div>
+          <span style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '600' }}>
+            {sentidoSeleccionado === 'regreso' ? 'Hacia La Granja' : 'Hacia Metro Bellavista'}
+          </span>
+        </div>
+      )}
+
+      {/* ── Buscador de Trayecto Inteligente (Aparece cuando no hay seleccionado o al tocar Buscar) ── */}
+      {!estaAbordado && (!lineaSeleccionada || mostrarBuscador) && (
+        <div style={{
+          padding: '12px 14px',
+          background: '#121212',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          zIndex: 6,
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: '#1C1C1C',
+            borderRadius: '12px',
+            border: '1.5px solid #FACC15',
+            padding: '8px 12px',
+            gap: '10px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
+          }}>
+            <IconoBuscar size={18} color="#FACC15" />
+            <input
+              type="text"
+              placeholder="Buscar trayecto por N° (ej: 233012, T) o destino..."
+              value={terminoBusqueda}
+              onChange={(e) => setTerminoBusqueda(e.target.value)}
+              autoFocus={mostrarBuscador}
+              style={{
+                flex: 1,
+                background: 'transparent',
+                border: 'none',
+                color: '#FFFFFF',
+                fontSize: '13.5px',
+                fontWeight: '600',
+                outline: 'none',
+              }}
+            />
+            {terminoBusqueda && (
+              <button
+                onClick={() => setTerminoBusqueda('')}
+                style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0 }}
+              >
+                <IconoCruz size={14} color="#888" />
+              </button>
+            )}
+            {lineaSeleccionada && (
+              <button
+                onClick={() => setMostrarBuscador(false)}
+                style={{
+                  background: '#2A2A2A',
+                  color: '#D4D4D4',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+            )}
+          </div>
+
+          {/* Lista de Recorridos Disponibles */}
+          <div style={{
+            maxHeight: '220px',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+          }}>
+            <div style={{ fontSize: '11px', color: '#A3A3A3', fontWeight: '700', letterSpacing: '0.4px', textTransform: 'uppercase', paddingLeft: '2px' }}>
+              {terminoBusqueda ? `Resultados encontrados (${lineasFiltradas.length})` : 'Recorridos oficiales disponibles'}
+            </div>
+
+            {lineasFiltradas.length === 0 ? (
+              <div style={{ padding: '16px', textAlign: 'center', color: '#737373', fontSize: '12px' }}>
+                No se encontraron recorridos para "{terminoBusqueda}". Intenta con otro número de folio o comuna.
+              </div>
+            ) : (
+              lineasFiltradas.map((linea) => (
+                <div
+                  key={linea.id}
+                  onClick={() => seleccionarLinea(linea)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    background: '#181818',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      background: 'rgba(250, 204, 21, 0.15)',
+                      border: '1px solid rgba(250, 204, 21, 0.4)',
+                      color: '#FACC15',
+                      fontSize: '11px',
+                      fontWeight: '900',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      FOLIO {linea.folio || '233012'}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>
+                        {linea.nombreRecorrido || linea.nombre}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#9CA3AF' }}>
+                        {linea.comunas || 'La Granja · La Pintana · La Florida'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#FACC15' }}>
+                      ${linea.tarifa?.toLocaleString('es-CL') || '800'}
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#4ADE80', fontWeight: '600' }}>
+                      Seleccionar ➔
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Ficha Intuitiva y Compacta del Trayecto Seleccionado (Y ahí recién aparecer) ── */}
+      {!estaAbordado && lineaSeleccionada && !mostrarBuscador && (
+        <div style={{
+          padding: '10px 14px',
           background: '#0D0D0D',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex',
@@ -706,8 +848,8 @@ export default function PaginaPasajeroColectivo() {
           gap: '8px',
           zIndex: 5,
         }}>
-          {/* Ficha oficial MTT del Recorrido */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+          {/* Cabecera limpia del Trayecto con botón Buscar otro */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{
                 background: '#FACC15',
@@ -720,27 +862,47 @@ export default function PaginaPasajeroColectivo() {
               }}>
                 FOLIO {lineaSeleccionada.folio || '233012'}
               </span>
-              <span style={{ fontSize: '12.5px', fontWeight: '800', color: '#FFFFFF' }}>
-                {lineaSeleccionada.nombreRecorrido || 'Recorrido T'} • {lineaSeleccionada.tipoTrazado || 'Principal'}
+              <span style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>
+                {lineaSeleccionada.nombreRecorrido || lineaSeleccionada.nombre}
               </span>
             </div>
-            <span style={{ fontSize: '11px', color: '#A3A3A3', fontWeight: '600' }}>
-              {lineaSeleccionada.comunas || 'La Granja - La Pintana - La Florida'}
-            </span>
+
+            <button
+              onClick={() => setMostrarBuscador(true)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '6px',
+                color: '#FACC15',
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <IconoBuscar size={12} color="#FACC15" />
+              <span>Cambiar trayecto</span>
+            </button>
           </div>
 
-          {/* Selector de Sentido IDA / REGRESO */}
+          {/* Subtítulo de comunas */}
+          <div style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '500' }}>
+            📍 {lineaSeleccionada.comunas || 'La Granja · La Pintana · La Florida'}
+          </div>
+
+          {/* Selector Limpio de Sentido: IDA vs REGRESO */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             <button
               onClick={() => setSentidoSeleccionado('ida')}
               style={{
                 padding: '8px 10px',
-                borderRadius: '10px',
-                border: sentidoSeleccionado === 'ida' ? '1.5px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '8px',
+                border: sentidoSeleccionado === 'ida' ? '1.5px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.1)',
                 background: sentidoSeleccionado === 'ida' ? 'rgba(250, 204, 21, 0.15)' : '#171717',
-                color: sentidoSeleccionado === 'ida' ? '#FACC15' : '#A3A3A3',
-                fontSize: '11px',
-                fontWeight: '800',
+                color: sentidoSeleccionado === 'ida' ? '#FACC15' : '#888888',
                 cursor: 'pointer',
                 textAlign: 'left',
                 display: 'flex',
@@ -749,17 +911,12 @@ export default function PaginaPasajeroColectivo() {
                 transition: 'all 0.15s ease',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: sentidoSeleccionado === 'ida' ? '#FACC15' : '#525252',
-                }} />
-                <span>IDA • A METRO BELLAVISTA</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: '800', fontSize: '11px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: sentidoSeleccionado === 'ida' ? '#FACC15' : '#555555' }} />
+                <span>IDA • A BELLAVISTA</span>
               </div>
-              <span style={{ fontSize: '9.5px', color: sentidoSeleccionado === 'ida' ? '#D4D4D4' : '#737373', fontWeight: '500', paddingLeft: '13px' }}>
-                Los Pensamientos → Serafín Zamora
+              <span style={{ fontSize: '9.5px', color: sentidoSeleccionado === 'ida' ? '#E5E5E5' : '#666666', paddingLeft: '11px' }}>
+                Los Pensamientos ➔ Serafín Zamora
               </span>
             </button>
 
@@ -767,12 +924,10 @@ export default function PaginaPasajeroColectivo() {
               onClick={() => setSentidoSeleccionado('regreso')}
               style={{
                 padding: '8px 10px',
-                borderRadius: '10px',
-                border: sentidoSeleccionado === 'regreso' ? '1.5px solid #4ADE80' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: sentidoSeleccionado === 'regreso' ? 'rgba(74, 222, 128, 0.15)' : '#171717',
-                color: sentidoSeleccionado === 'regreso' ? '#4ADE80' : '#A3A3A3',
-                fontSize: '11px',
-                fontWeight: '800',
+                borderRadius: '8px',
+                border: sentidoSeleccionado === 'regreso' ? '1.5px solid #10B981' : '1px solid rgba(255, 255, 255, 0.1)',
+                background: sentidoSeleccionado === 'regreso' ? 'rgba(16, 185, 129, 0.15)' : '#171717',
+                color: sentidoSeleccionado === 'regreso' ? '#10B981' : '#888888',
                 cursor: 'pointer',
                 textAlign: 'left',
                 display: 'flex',
@@ -781,129 +936,87 @@ export default function PaginaPasajeroColectivo() {
                 transition: 'all 0.15s ease',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: sentidoSeleccionado === 'regreso' ? '#4ADE80' : '#525252',
-                }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: '800', fontSize: '11px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: sentidoSeleccionado === 'regreso' ? '#10B981' : '#555555' }} />
                 <span>REGRESO • A LA GRANJA</span>
               </div>
-              <span style={{ fontSize: '9.5px', color: sentidoSeleccionado === 'regreso' ? '#D4D4D4' : '#737373', fontWeight: '500', paddingLeft: '13px' }}>
-                Serafín Zamora → Los Pensamientos
+              <span style={{ fontSize: '9.5px', color: sentidoSeleccionado === 'regreso' ? '#E5E5E5' : '#666666', paddingLeft: '11px' }}>
+                Serafín Zamora ➔ Los Pensamientos
               </span>
             </button>
           </div>
-          {/* Metadata y Visor de Red Vial PostGIS */}
-          <div style={{
-            marginTop: '8px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            borderRadius: '10px',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            padding: '8px 10px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: '800',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  background: 'rgba(250, 204, 21, 0.15)',
-                  color: '#FACC15',
-                  border: '1px solid rgba(250, 204, 21, 0.3)',
-                }}>
-                  POSTGIS
-                </span>
-                <span style={{ fontSize: '11px', color: '#D4D4D4', fontWeight: '600' }}>
-                  Distancia red vial: <b style={{ color: '#FFFFFF' }}>{trazadoGisActivo?.distanciaMetros ? `${(trazadoGisActivo.distanciaMetros / 1000).toFixed(2)} km` : (sentidoSeleccionado === 'regreso' ? '27.26 km' : '23.57 km')}</b>
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: '800',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  background: 'rgba(74, 222, 128, 0.12)',
-                  color: '#4ADE80',
-                  border: '1px solid rgba(74, 222, 128, 0.25)',
-                }}>
-                  {trazadoGisActivo?.estadoValidacion || 'VALIDADO'}
-                </span>
-                <button
-                  onClick={() => setMostrarInspectorTramos(!mostrarInspectorTramos)}
-                  style={{
-                    background: mostrarInspectorTramos ? '#FACC15' : '#262626',
-                    color: mostrarInspectorTramos ? '#000000' : '#FACC15',
-                    border: '1px solid rgba(250, 204, 21, 0.3)',
-                    borderRadius: '6px',
-                    padding: '3px 8px',
-                    fontSize: '10.5px',
-                    fontWeight: '800',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {mostrarInspectorTramos ? 'Ocultar Tramos' : `Ver Tramos Viales (${tramosViales.length || (sentidoSeleccionado === 'regreso' ? 20 : 19)})`}
-                </button>
-              </div>
-            </div>
 
-            {/* Panel Desplegable de Tramos Viales Reales (Sin markers en el mapa) */}
-            {mostrarInspectorTramos && (
-              <div style={{
-                marginTop: '6px',
-                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-                paddingTop: '6px',
-                maxHeight: '160px',
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
-              }}>
-                <div style={{ fontSize: '10px', color: '#A3A3A3', marginBottom: '2px' }}>
-                  Secuencia vial del recorrido oficial ({sentidoSeleccionado.toUpperCase()}) — Toca para resaltar:
-                </div>
-                {cargandoTramos ? (
-                  <div style={{ fontSize: '11px', color: '#737373', padding: '4px 0' }}>Cargando tramos de la red vial...</div>
-                ) : (
-                  tramosViales.map((tramo) => {
-                    const esSeleccionado = tramoSeleccionado?.orden === tramo.orden;
-                    return (
-                      <div
-                        key={tramo.id || tramo.orden}
-                        onClick={() => setTramoSeleccionado(esSeleccionado ? null : tramo)}
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          background: esSeleccionado ? 'rgba(56, 189, 248, 0.2)' : '#171717',
-                          border: esSeleccionado ? '1px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.05)',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          cursor: 'pointer',
-                          fontSize: '11px',
-                          color: esSeleccionado ? '#38BDF8' : '#D4D4D4',
-                        }}
-                      >
-                        <span style={{ fontWeight: '700' }}>
-                          {tramo.orden}. {tramo.calleOriginal}
-                        </span>
-                        <span style={{ fontSize: '9.5px', color: esSeleccionado ? '#38BDF8' : '#737373' }}>
-                          {tramo.comuna}
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
+          {/* Barra inferior compacta: Distancia y Botón de Calles */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '2px' }}>
+            <span style={{ fontSize: '11px', color: '#737373' }}>
+              Distancia ruta: <b style={{ color: '#E5E5E5' }}>{trazadoGisActivo?.distanciaMetros ? `${(trazadoGisActivo.distanciaMetros / 1000).toFixed(1)} km` : (sentidoSeleccionado === 'regreso' ? '27.3 km' : '23.6 km')}</b>
+            </span>
+            <button
+              onClick={() => setMostrarInspectorTramos(!mostrarInspectorTramos)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#38BDF8',
+                fontSize: '11px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                padding: '2px 4px',
+                textDecoration: 'underline',
+              }}
+            >
+              {mostrarInspectorTramos ? 'Ocultar calles' : `Ver calles (${tramosViales.length || (sentidoSeleccionado === 'regreso' ? 20 : 19)})`}
+            </button>
           </div>
+
+          {/* Panel Desplegable de Calles */}
+          {mostrarInspectorTramos && (
+            <div style={{
+              marginTop: '4px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              paddingTop: '6px',
+              maxHeight: '150px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+            }}>
+              <div style={{ fontSize: '10px', color: '#A3A3A3', marginBottom: '2px' }}>
+                Secuencia vial del recorrido ({sentidoSeleccionado.toUpperCase()}):
+              </div>
+              {cargandoTramos ? (
+                <div style={{ fontSize: '11px', color: '#737373', padding: '4px 0' }}>Cargando calles...</div>
+              ) : (
+                tramosViales.map((tramo) => {
+                  const esSeleccionado = tramoSeleccionado?.orden === tramo.orden;
+                  return (
+                    <div
+                      key={tramo.id || tramo.orden}
+                      onClick={() => setTramoSeleccionado(esSeleccionado ? null : tramo)}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        background: esSeleccionado ? 'rgba(56, 189, 248, 0.2)' : '#171717',
+                        border: esSeleccionado ? '1px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.05)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        color: esSeleccionado ? '#38BDF8' : '#D4D4D4',
+                      }}
+                    >
+                      <span style={{ fontWeight: '700' }}>
+                        {tramo.orden}. {tramo.calleOriginal}
+                      </span>
+                      <span style={{ fontSize: '9.5px', color: esSeleccionado ? '#38BDF8' : '#737373' }}>
+                        {tramo.comuna}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -41,6 +41,7 @@ router.get('/lineas', async (peticion: Request, respuesta: Response) => {
             distanciaMetros: true,
             confianza: true,
             estadoValidacion: true,
+            esActivo: true,
             puntos: true,
             limites: true,
           },
