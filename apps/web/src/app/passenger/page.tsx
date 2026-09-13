@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -19,12 +19,10 @@ import {
   IconoEfectivo,
   IconoAsiento,
   IconoReloj,
-  IconoBuscar,
-  IconoParada,
 } from '@/components/icons/Iconos';
 import { reproducirSonido, hablarTexto } from '@/lib/voice';
 
-// Cargar mapa de colectivos de forma dinámica para evitar problemas con SSR en Next.js
+// Cargar mapa de colectivos de forma din├ímica para evitar problemas con SSR en Next.js
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
 
 interface ReservaActiva {
@@ -44,8 +42,6 @@ interface ReservaActiva {
     mercadoPagoLink?: string | null;
     lastLat?: number;
     lastLng?: number;
-    mttValidada?: boolean;
-    folioRuta?: string | null;
   };
   cantidadAsientos: number;
   tarifa: number;
@@ -57,10 +53,9 @@ export default function PaginaPasajeroColectivo() {
   const router = useRouter();
   const [usuarioSesion, setUsuarioSesion] = useState<any>(null);
 
-  // Estados de líneas y colectivos
+  // Estados de l├¡neas y colectivos
   const [listaLineas, setListaLineas] = useState<Linea[]>([]);
   const [lineaSeleccionada, setLineaSeleccionada] = useState<Linea | null>(null);
-  const [sentidoSeleccionado, setSentidoSeleccionado] = useState<'ida' | 'regreso'>('ida');
   const [conductoresEnVivo, setConductoresEnVivo] = useState<ConductorColectivo[]>([]);
   const [conductorElegido, setConductorElegido] = useState<ConductorColectivo | null>(null);
 
@@ -69,36 +64,13 @@ export default function PaginaPasajeroColectivo() {
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'rutpay' | 'mercadopago'>('efectivo');
   const [reservaActiva, setReservaActiva] = useState<ReservaActiva | null>(null);
   const [cargandoReserva, setCargandoReserva] = useState(false);
-  const estaAbordado = reservaActiva?.estado === 'abordado' || reservaActiva?.estado === 'pagando';
 
   // Estados de pago y bajada
   const [mostrarModalPago, setMostrarModalPago] = useState<boolean>(false);
   const [solicitandoPago, setSolicitandoPago] = useState<boolean>(false);
   const [telefonoCopiado, setTelefonoCopiado] = useState<boolean>(false);
 
-  // Inspector de Tramos Viales y Trazados GIS (PostGIS)
-  const [tramosViales, setTramosViales] = useState<any[]>([]);
-  const [mostrarInspectorTramos, setMostrarInspectorTramos] = useState<boolean>(false);
-  const [tramoSeleccionado, setTramoSeleccionado] = useState<any | null>(null);
-  const [cargandoTramos, setCargandoTramos] = useState<boolean>(false);
-
-  // Buscador intuitivo de trayecto (por folio, nombre o comuna)
-  const [terminoBusqueda, setTerminoBusqueda] = useState<string>('');
-  const [mostrarBuscador, setMostrarBuscador] = useState<boolean>(false);
-
-  const lineasFiltradas = useMemo(() => {
-    if (!terminoBusqueda.trim()) return listaLineas;
-    const q = terminoBusqueda.toLowerCase().trim();
-    return listaLineas.filter((l) => {
-      const folio = (l.folio || '').toLowerCase();
-      const nombre = (l.nombre || '').toLowerCase();
-      const recorrido = (l.nombreRecorrido || '').toLowerCase();
-      const comunas = (l.comunas || '').toLowerCase();
-      return folio.includes(q) || nombre.includes(q) || recorrido.includes(q) || comunas.includes(q);
-    });
-  }, [listaLineas, terminoBusqueda]);
-
-  // Estado de asignación dirigida al primer móvil en tránsito
+  // Estado de asignaci├│n dirigida al primer m├│vil en tr├ínsito
   const [buscandoMovil, setBuscandoMovil] = useState(false);
   const [movilAsignadoPreview, setMovilAsignadoPreview] = useState<{
     nombre: string;
@@ -106,21 +78,19 @@ export default function PaginaPasajeroColectivo() {
     distanciaMetros: number;
   } | null>(null);
 
-  // Ubicación del pasajero
-  // Ubicación del pasajero (inicializada en null como en commit 6c9d5ba)
+  // Ubicaci├│n del pasajero
   const [ubicacionPasajero, setUbicacionPasajero] = useState<{
     latitud: number;
     longitud: number;
     direccion?: string;
   } | null>(null);
   const [disparadorCentrado, setDisparadorCentrado] = useState(0);
-  const [disparadorEncuadrarRuta, setDisparadorEncuadrarRuta] = useState(0);
 
   // Feedback y mensajes
   const [mensajeAlerta, setMensajeAlerta] = useState<string>('');
   const [mensajeError, setMensajeError] = useState<string>('');
 
-  // Cálculo en tiempo real de asientos libres en la línea seleccionada
+  // C├ílculo en tiempo real de asientos libres en la l├¡nea seleccionada
   const totalAsientosLibres = useMemo(() => {
     return conductoresEnVivo.reduce(
       (acc, c) => acc + Math.max(0, (c.asientosTotales || 4) - c.asientosOcupados),
@@ -128,7 +98,7 @@ export default function PaginaPasajeroColectivo() {
     );
   }, [conductoresEnVivo]);
 
-  // Cálculo cuantitativo de tiempo estimado de llegada del colectivo reservado/asignado
+  // C├ílculo cuantitativo de tiempo estimado de llegada del colectivo reservado/asignado
   const infoLlegadaReserva = useMemo(() => {
     if (!reservaActiva || reservaActiva.estado !== 'reservado') {
       return null;
@@ -140,11 +110,10 @@ export default function PaginaPasajeroColectivo() {
     const latPasajero = ubicacionPasajero?.latitud ?? reservaActiva.latitudSubida;
     const lngPasajero = ubicacionPasajero?.longitud ?? reservaActiva.longitudSubida;
 
-    if (!latChofer || !lngChofer || !latPasajero || !lngPasajero) return null;
     return calcularInfoLlegada(latChofer, lngChofer, latPasajero, lngPasajero);
   }, [reservaActiva, conductoresEnVivo, ubicacionPasajero]);
 
-  // Cálculo cuantitativo de tiempo de llegada del colectivo pre-seleccionado antes de reservar
+  // C├ílculo cuantitativo de tiempo de llegada del colectivo pre-seleccionado antes de reservar
   const infoLlegadaPreseleccionado = useMemo(() => {
     if (!conductorElegido || !ubicacionPasajero) return null;
     return calcularInfoLlegada(
@@ -155,74 +124,37 @@ export default function PaginaPasajeroColectivo() {
     );
   }, [conductorElegido, ubicacionPasajero]);
 
-  // 1. Validar autenticación
+  // 1. Validar autenticaci├│n
   useEffect(() => {
     const sesion = getSession();
     if (!sesion) {
-      router.replace('/login/?role=passenger');
+      router.push('/login?role=passenger');
       return;
     }
     setUsuarioSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener geolocalización en tiempo real del pasajero y auto-centrar el mapa (igual que en 6c9d5ba)
-  const centrarGpsOEncuadrarRuta = useCallback(() => {
-    setDisparadorCentrado((prev) => prev + 1);
+  // 2. Obtener geolocalizaci├│n del pasajero
+  useEffect(() => {
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (posicion: GeolocationPosition) => {
-          const lat = posicion.coords.latitude;
-          const lng = posicion.coords.longitude;
-          setUbicacionPasajero({ latitud: lat, longitud: lng });
-          setDisparadorCentrado((prev) => prev + 1);
+        (posicion) => {
+          setUbicacionPasajero({
+            latitud: posicion.coords.latitude,
+            longitud: posicion.coords.longitude,
+          });
         },
-        (error: GeolocationPositionError) => {
-          console.warn('GPS pasajero:', error.message);
+        (error) => {
+          console.warn('Geolocalizaci├│n desactivada o denegada:', error);
+          // Coordenadas por defecto (Centro de Santiago de Chile)
+          setUbicacionPasajero({ latitud: -33.4489, longitud: -70.6693 });
         },
         { enableHighAccuracy: true }
       );
     }
   }, []);
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('geolocation' in navigator)) return;
-
-    let primerExito = true;
-
-    const alObtenerUbicacion = (posicion: GeolocationPosition) => {
-      const lat = posicion.coords.latitude;
-      const lng = posicion.coords.longitude;
-
-      setUbicacionPasajero({ latitud: lat, longitud: lng });
-
-      if (primerExito) {
-        primerExito = false;
-        setDisparadorCentrado((prev) => prev + 1);
-      }
-    };
-
-    const alFallarUbicacion = (error: GeolocationPositionError) => {
-      console.warn('Geolocalización desactivada o denegada:', error.message);
-      if (primerExito) {
-        setUbicacionPasajero((prev) => prev || { latitud: -33.4489, longitud: -70.6693 });
-      }
-    };
-
-    navigator.geolocation.getCurrentPosition(alObtenerUbicacion, alFallarUbicacion, {
-      enableHighAccuracy: true,
-    });
-
-    const watchId = navigator.geolocation.watchPosition(alObtenerUbicacion, alFallarUbicacion, {
-      enableHighAccuracy: true,
-      maximumAge: 3000,
-    });
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
-  }, []);
-
-  // 3. Cargar líneas de colectivo y reservas activas
+  // 3. Cargar l├¡neas de colectivo y reservas activas
   const cargarLineasYReservas = useCallback(async () => {
     try {
       const [respuestaLineas, respuestaReservas] = await Promise.all([
@@ -233,20 +165,17 @@ export default function PaginaPasajeroColectivo() {
       const lineasObtenidas: Linea[] = respuestaLineas.data.lineas || [];
       setListaLineas(lineasObtenidas);
 
-      // Si tiene una reserva en curso, asociar su línea automáticamente
-      if (respuestaReservas.data?.reservas && respuestaReservas.data.reservas.length > 0) {
-        const resv = respuestaReservas.data.reservas[0];
-        setReservaActiva(resv);
-        const lRes = lineasObtenidas.find(
-          (l) => l.nombre === resv.linea?.nombre || l.id === (resv as any).lineaId
-        );
-        if (lRes) setLineaSeleccionada(lRes);
-      } else if (!lineaSeleccionada && lineasObtenidas.length > 0) {
+      if (lineasObtenidas.length > 0 && !lineaSeleccionada) {
         setLineaSeleccionada(lineasObtenidas[0]);
       }
+
+      // Si tiene una reserva en curso
+      if (respuestaReservas.data?.reservas && respuestaReservas.data.reservas.length > 0) {
+        setReservaActiva(respuestaReservas.data.reservas[0]);
+      }
     } catch (error) {
-      console.error('Error al cargar líneas:', error);
-      setMensajeError('No se pudieron obtener las líneas de colectivo disponibles.');
+      console.error('Error al cargar l├¡neas:', error);
+      setMensajeError('No se pudieron obtener las l├¡neas de colectivo disponibles.');
     }
   }, [lineaSeleccionada]);
 
@@ -254,42 +183,16 @@ export default function PaginaPasajeroColectivo() {
     cargarLineasYReservas();
   }, [cargarLineasYReservas]);
 
-  // Cargar tramos viales del recorrido al cambiar línea o sentido seleccionado
-  useEffect(() => {
-    if (!lineaSeleccionada?.id) return;
-    setCargandoTramos(true);
-    api.get(`/colectivos/lineas/${lineaSeleccionada.id}/tramos?sentido=${sentidoSeleccionado}`)
-      .then((res) => {
-        if (res.data?.tramos) {
-          setTramosViales(res.data.tramos);
-        }
-      })
-      .catch((err) => {
-        console.warn('Error al obtener tramos viales:', err);
-      })
-      .finally(() => setCargandoTramos(false));
-  }, [lineaSeleccionada?.id, sentidoSeleccionado]);
-
-  const trazadoGisActivo = useMemo(() => {
-    const sNorm = (sentidoSeleccionado || 'ida').toLowerCase().trim();
-    return (
-      lineaSeleccionada?.trazados?.find(
-        (t) => t.sentido?.toLowerCase().trim() === sNorm && t.esActivo !== false
-      ) ||
-      lineaSeleccionada?.trazados?.find((t) => t.sentido?.toLowerCase().trim() === sNorm)
-    );
-  }, [lineaSeleccionada, sentidoSeleccionado]);
-
   const conductorElegidoRef = useRef<ConductorColectivo | null>(null);
   useEffect(() => {
     conductorElegidoRef.current = conductorElegido;
   }, [conductorElegido]);
 
-  // 4. Conexión WebSocket en tiempo real
+  // 4. Conexi├│n WebSocket en tiempo real
   useEffect(() => {
     const socket = connectSocket();
 
-    // Re-suscribir salas automáticamente al conectar y ante cualquier reconexión de red
+    // Re-suscribir salas autom├íticamente al conectar y ante cualquier reconexi├│n de red
     const suscribirSalasPasajero = () => {
       if (usuarioSesion?.id) {
         socket.emit('pasajero:unirse', { pasajeroId: usuarioSesion.id });
@@ -303,7 +206,7 @@ export default function PaginaPasajeroColectivo() {
     socket.on('connect', suscribirSalasPasajero);
 
     if (lineaSeleccionada?.id) {
-      // Cargar los conductores iniciales de la línea
+      // Cargar los conductores iniciales de la l├¡nea
       api.get(`/colectivos/lineas/${lineaSeleccionada.id}`).then((res) => {
         const conductores = res.data.linea?.conductores || [];
         const mapeados: ConductorColectivo[] = conductores.map((c: any) => ({
@@ -317,14 +220,12 @@ export default function PaginaPasajeroColectivo() {
           sentidoRuta: c.sentidoRuta,
           telefonoRutPay: c.telefonoRutPay,
           mercadoPagoLink: c.mercadoPagoLink,
-          mttValidada: c.mttValidada,
-          folioRuta: c.folioRuta,
         }));
         setConductoresEnVivo(mapeados);
       });
     }
 
-    // Evento: Actualización de posición de un colectivo de la línea
+    // Evento: Actualizaci├│n de posici├│n de un colectivo de la l├¡nea
     const manejarActualizacionUbicacion = (datos: any) => {
       setConductoresEnVivo((prev) => {
         const indice = prev.findIndex((c) => c.conductorId === datos.conductorId);
@@ -337,15 +238,13 @@ export default function PaginaPasajeroColectivo() {
           asientosOcupados: datos.asientosOcupados,
           asientosTotales: datos.asientosTotales,
           sentidoRuta: datos.sentidoRuta,
-          mttValidada: datos.mttValidada !== undefined ? datos.mttValidada : (indice >= 0 ? prev[indice].mttValidada : true),
-          folioRuta: datos.folioRuta || (indice >= 0 ? prev[indice].folioRuta : null),
         };
         if (indice >= 0) {
           const copia = [...prev];
           copia[indice] = { ...copia[indice], ...actualizado };
           return copia;
         }
-        // Si el chofer no está en servicio activo en la lista, no agregarlo
+        // Si el chofer no est├í en servicio activo en la lista, no agregarlo
         return prev;
       });
     };
@@ -366,12 +265,12 @@ export default function PaginaPasajeroColectivo() {
       }
     };
 
-    // Evento: Pasajero abordó el colectivo
+    // Evento: Pasajero abord├│ el colectivo
     const manejarReservaAbordada = (datos?: any) => {
       if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
         return;
       }
-      setMensajeAlerta('¡Has abordado el colectivo! El chofer confirmó tu asiento.');
+      setMensajeAlerta('┬íHas abordado el colectivo! El chofer confirm├│ tu asiento.');
       setReservaActiva((prev) => (prev ? { ...prev, estado: 'abordado' } : null));
     };
 
@@ -381,7 +280,7 @@ export default function PaginaPasajeroColectivo() {
         return;
       }
       reproducirSonido('rechazo');
-      hablarTexto('El conductor no pudo tomar tu viaje. Puedes pedir otro automóvil.');
+      hablarTexto('El conductor no pudo tomar tu viaje. Puedes pedir otro autom├│vil.');
       setReservaActiva(null);
       setConductorElegido(null);
       setBuscandoMovil(false);
@@ -390,17 +289,17 @@ export default function PaginaPasajeroColectivo() {
       setMensajeAlerta('');
       setMensajeError(
         datos?.mensaje ||
-        'El conductor no pudo aceptar la reserva. Puedes solicitar otro automóvil disponible en el mapa.'
+        'El conductor no pudo aceptar la reserva. Puedes solicitar otro autom├│vil disponible en el mapa.'
       );
     };
 
-    // Evento: Conductor confirmó el pago y liberó el asiento
+    // Evento: Conductor confirm├│ el pago y liber├│ el asiento
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarPagoConfirmado = (datos: any) => {
       if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
         return;
       }
-      setMensajeAlerta(datos.mensaje || '¡Pago confirmado por el conductor! Asiento liberado. Gracias por viajar.');
+      setMensajeAlerta(datos.mensaje || '┬íPago confirmado por el conductor! Asiento liberado. Gracias por viajar.');
       setReservaActiva(null);
       setConductorElegido(null);
       setMostrarModalPago(false);
@@ -445,7 +344,7 @@ export default function PaginaPasajeroColectivo() {
     socket.on('colectivo:reserva-cancelada', manejarReservaCancelada);
     socket.on('colectivo:pago-confirmado', manejarPagoConfirmado);
 
-    // Eventos de asignación dirigida al primer móvil en camino
+    // Eventos de asignaci├│n dirigida al primer m├│vil en camino
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarAsignandoAChofer = (datos: any) => {
       if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
@@ -461,12 +360,12 @@ export default function PaginaPasajeroColectivo() {
         return;
       }
       reproducirSonido('exito');
-      hablarTexto('Móvil confirmado. Tu colectivo viene en camino.');
+      hablarTexto('M├│vil confirmado. Tu colectivo viene en camino.');
       setReservaActiva(datos.reserva);
       setBuscandoMovil(false);
       setMovilAsignadoPreview(null);
       setMensajeError('');
-      setMensajeAlerta('¡Móvil confirmado! El chofer aceptó tu solicitud y viene en camino.');
+      setMensajeAlerta('┬íM├│vil confirmado! El chofer acept├│ tu solicitud y viene en camino.');
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -475,7 +374,7 @@ export default function PaginaPasajeroColectivo() {
         return;
       }
       reproducirSonido('rechazo');
-      hablarTexto('Los colectivos no pudieron tomar tu solicitud. Puedes pedir otro automóvil.');
+      hablarTexto('Los colectivos no pudieron tomar tu solicitud. Puedes pedir otro autom├│vil.');
       setReservaActiva(null);
       setConductorElegido(null);
       setBuscandoMovil(false);
@@ -484,7 +383,7 @@ export default function PaginaPasajeroColectivo() {
       setMensajeAlerta('');
       setMensajeError(
         datos?.mensaje ||
-        'Los colectivos no pudieron tomar tu solicitud. Puedes solicitar otro automóvil disponible en el mapa.'
+        'Los colectivos no pudieron tomar tu solicitud. Puedes solicitar otro autom├│vil disponible en el mapa.'
       );
     };
 
@@ -526,22 +425,22 @@ export default function PaginaPasajeroColectivo() {
           if (actual.estado === 'reservado' && buscandoMovil) {
             setBuscandoMovil(false);
             setMovilAsignadoPreview(null);
-            setMensajeAlerta('¡Móvil confirmado! El chofer aceptó tu solicitud y viene en camino.');
+            setMensajeAlerta('┬íM├│vil confirmado! El chofer acept├│ tu solicitud y viene en camino.');
           } else if (actual.estado === 'abordado') {
             setBuscandoMovil(false);
           }
         } else {
-          // Si el chofer canceló o rechazó y ya no hay reservas activas en la BD:
+          // Si el chofer cancel├│ o rechaz├│ y ya no hay reservas activas en la BD:
           if (reservaActiva) {
             reproducirSonido('rechazo');
-            hablarTexto('El viaje no fue aceptado. Puedes pedir otro automóvil.');
+            hablarTexto('El viaje no fue aceptado. Puedes pedir otro autom├│vil.');
             setReservaActiva(null);
             setConductorElegido(null);
             setMostrarModalPago(false);
             setBuscandoMovil(false);
             setMovilAsignadoPreview(null);
             setMensajeAlerta('');
-            setMensajeError('El conductor no pudo aceptar tu reserva. Puedes pedir otro automóvil disponible en el mapa.');
+            setMensajeError('El conductor no pudo aceptar tu reserva. Puedes pedir otro autom├│vil disponible en el mapa.');
           }
         }
       } catch (e) {
@@ -552,13 +451,11 @@ export default function PaginaPasajeroColectivo() {
     return () => clearInterval(intervalo);
   }, [buscandoMovil, reservaActiva]);
 
-  // Manejar cambio de línea
+  // Manejar cambio de l├¡nea
   const seleccionarLinea = (linea: Linea) => {
     setLineaSeleccionada(linea);
     setConductorElegido(null);
     setConductoresEnVivo([]);
-    setMostrarBuscador(false);
-    setTerminoBusqueda('');
   };
 
   // Enviar solicitud de reserva de asiento
@@ -579,7 +476,7 @@ export default function PaginaPasajeroColectivo() {
 
       setReservaActiva(res.data.reserva);
       setConductorElegido(null);
-      setMensajeAlerta('Solicitud enviada al conductor. Esperando confirmación...');
+      setMensajeAlerta('Solicitud enviada al conductor. Esperando confirmaci├│n...');
     } catch (error: any) {
       console.error('Error al reservar:', error);
       setMensajeError(error.response?.data?.error || 'No se pudo reservar el asiento.');
@@ -619,7 +516,7 @@ export default function PaginaPasajeroColectivo() {
     }
   };
 
-  // Solicitar asignación dirigida al primer móvil en tránsito (Regla Federación)
+  // Solicitar asignaci├│n dirigida al primer m├│vil en tr├ínsito (Regla Federaci├│n)
   const solicitarProximoColectivo = async () => {
     if (!lineaSeleccionada || reservaActiva || buscandoMovil) return;
     setConductorElegido(null);
@@ -633,27 +530,27 @@ export default function PaginaPasajeroColectivo() {
         longitudSubida: ubicacionPasajero?.longitud || -70.6506,
         cantidadAsientos,
         metodoPago,
-        sentido: sentidoSeleccionado,
+        sentido: 'ida',
       });
       if (res.data?.conductorAsignado) {
         setMovilAsignadoPreview(res.data.conductorAsignado);
       }
     } catch (error: any) {
-      console.error('Error al solicitar próximo colectivo:', error);
+      console.error('Error al solicitar pr├│ximo colectivo:', error);
       setBuscandoMovil(false);
       setMensajeError(error.response?.data?.error || 'No hay colectivos con cupos disponibles en este momento.');
     }
   };
 
-  // Cerrar sesión
+  // Cerrar sesi├│n
   const cerrarSesionUsuario = () => {
     clearSession();
-    router.replace('/login/?role=passenger');
+    router.push('/login?role=passenger');
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0A0A0A', color: '#FFFFFF', width: '100%', overflowX: 'hidden' }}>
-      {/* ── Barra Superior / Encabezado ── */}
+      {/* ÔöÇÔöÇ Barra Superior / Encabezado ÔöÇÔöÇ */}
       <header style={{
         padding: '10px 14px',
         background: 'rgba(10, 10, 10, 0.95)',
@@ -695,357 +592,52 @@ export default function PaginaPasajeroColectivo() {
         </button>
       </header>
 
-      {/* ── Modo A Bordo: Barra superior mínima para dar máximo espacio al mapa ── */}
-      {estaAbordado && (
-        <div style={{
-          padding: '10px 16px',
-          background: '#0D0D0D',
-          borderBottom: '1px solid rgba(250, 204, 21, 0.25)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          zIndex: 5,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ADE80' }} />
-            <span style={{ fontSize: '12.5px', fontWeight: '800', color: '#FFFFFF' }}>
-              En viaje: {lineaSeleccionada?.nombreRecorrido || lineaSeleccionada?.nombre || 'Colectivo'}
-            </span>
-            <span style={{ fontSize: '11px', color: '#FACC15', fontWeight: '700' }}>
-              ({reservaActiva?.conductor?.vehiclePlate || (reservaActiva as any)?.conductorVehiclePlate || 'COL202'})
-            </span>
-          </div>
-          <span style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '600' }}>
-            {sentidoSeleccionado === 'regreso' ? 'Hacia La Granja' : 'Hacia Metro Bellavista'}
-          </span>
-        </div>
-      )}
-
-      {/* ── Buscador de Trayecto Inteligente (Aparece cuando no hay seleccionado o al tocar Buscar) ── */}
-      {!estaAbordado && (!lineaSeleccionada || mostrarBuscador) && (
-        <div style={{
-          padding: '12px 14px',
-          background: '#121212',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '10px',
-          zIndex: 6,
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            background: '#1C1C1C',
-            borderRadius: '12px',
-            border: '1.5px solid #FACC15',
-            padding: '8px 12px',
-            gap: '10px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
-          }}>
-            <IconoBuscar size={18} color="#FACC15" />
-            <input
-              type="text"
-              placeholder="Buscar trayecto por N° (ej: 233012, T) o destino..."
-              value={terminoBusqueda}
-              onChange={(e) => setTerminoBusqueda(e.target.value)}
-              autoFocus={mostrarBuscador}
-              style={{
-                flex: 1,
-                background: 'transparent',
-                border: 'none',
-                color: '#FFFFFF',
-                fontSize: '13.5px',
-                fontWeight: '600',
-                outline: 'none',
-              }}
-            />
-            {terminoBusqueda && (
-              <button
-                onClick={() => setTerminoBusqueda('')}
-                style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: 0 }}
-              >
-                <IconoCruz size={14} color="#888" />
-              </button>
-            )}
-            {lineaSeleccionada && (
-              <button
-                onClick={() => setMostrarBuscador(false)}
-                style={{
-                  background: '#2A2A2A',
-                  color: '#D4D4D4',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '4px 8px',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                }}
-              >
-                Cerrar
-              </button>
-            )}
-          </div>
-
-          {/* Lista de Recorridos Disponibles */}
-          <div style={{
-            maxHeight: '220px',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px',
-          }}>
-            <div style={{ fontSize: '11px', color: '#A3A3A3', fontWeight: '700', letterSpacing: '0.4px', textTransform: 'uppercase', paddingLeft: '2px' }}>
-              {terminoBusqueda ? `Resultados encontrados (${lineasFiltradas.length})` : 'Recorridos oficiales disponibles'}
-            </div>
-
-            {lineasFiltradas.length === 0 ? (
-              <div style={{ padding: '16px', textAlign: 'center', color: '#737373', fontSize: '12px' }}>
-                No se encontraron recorridos para "{terminoBusqueda}". Intenta con otro número de folio o comuna.
-              </div>
-            ) : (
-              lineasFiltradas.map((linea) => (
-                <div
-                  key={linea.id}
-                  onClick={() => seleccionarLinea(linea)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    background: '#181818',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{
-                      background: 'rgba(250, 204, 21, 0.15)',
-                      border: '1px solid rgba(250, 204, 21, 0.4)',
-                      color: '#FACC15',
-                      fontSize: '11px',
-                      fontWeight: '900',
-                      padding: '4px 8px',
-                      borderRadius: '6px',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      FOLIO {linea.folio || '233012'}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>
-                        {linea.nombreRecorrido || linea.nombre}
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#9CA3AF' }}>
-                        {linea.comunas || 'La Granja · La Pintana · La Florida'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{
-                      fontSize: '11px',
-                      color: '#4ADE80',
-                      fontWeight: '700',
-                      background: 'rgba(74, 222, 128, 0.12)',
-                      padding: '4px 8px',
-                      borderRadius: '6px',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      Ver recorrido ➔
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Ficha Intuitiva y Compacta del Trayecto Seleccionado (Y ahí recién aparecer) ── */}
-      {!estaAbordado && lineaSeleccionada && !mostrarBuscador && (
-        <div style={{
-          padding: '10px 14px',
-          background: '#0D0D0D',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          zIndex: 5,
-        }}>
-          {/* Cabecera limpia del Trayecto con botón Buscar otro */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{
-                background: '#FACC15',
-                color: '#000000',
-                fontSize: '11px',
-                fontWeight: '900',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                letterSpacing: '0.4px',
-              }}>
-                FOLIO {lineaSeleccionada.folio || '233012'}
-              </span>
-              <span style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>
-                {lineaSeleccionada.nombreRecorrido || lineaSeleccionada.nombre}
-              </span>
-            </div>
-
+      {/* ÔöÇÔöÇ Selector de L├¡neas de Colectivo (Pills horizontales) ÔöÇÔöÇ */}
+      <div style={{
+        padding: '10px 16px',
+        background: '#121212',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        display: 'flex',
+        gap: '8px',
+        overflowX: 'auto',
+        whiteSpace: 'nowrap',
+        zIndex: 5,
+      }}>
+        {listaLineas.map((linea) => {
+          const esActiva = lineaSeleccionada?.id === linea.id;
+          return (
             <button
-              onClick={() => setMostrarBuscador(true)}
+              key={linea.id}
+              onClick={() => seleccionarLinea(linea)}
               style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '6px',
-                color: '#FACC15',
-                padding: '4px 10px',
-                fontSize: '11px',
-                fontWeight: '700',
-                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
-              }}
-            >
-              <IconoBuscar size={12} color="#FACC15" />
-              <span>Cambiar trayecto</span>
-            </button>
-          </div>
-
-          {/* Subtítulo de comunas */}
-          <div style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '500' }}>
-            📍 {lineaSeleccionada.comunas || 'La Granja · La Pintana · La Florida'}
-          </div>
-
-          {/* Selector Limpio de Sentido: IDA vs REGRESO */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <button
-              onClick={() => setSentidoSeleccionado('ida')}
-              style={{
-                padding: '8px 10px',
-                borderRadius: '8px',
-                border: sentidoSeleccionado === 'ida' ? '1.5px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.1)',
-                background: sentidoSeleccionado === 'ida' ? 'rgba(250, 204, 21, 0.15)' : '#171717',
-                color: sentidoSeleccionado === 'ida' ? '#FACC15' : '#888888',
+                gap: '8px',
+                padding: '8px 14px',
+                borderRadius: '24px',
+                border: esActiva ? '2px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.15)',
+                background: esActiva ? 'rgba(250, 204, 21, 0.15)' : '#171717',
+                color: esActiva ? '#FACC15' : '#D4D4D4',
+                fontSize: '13px',
+                fontWeight: esActiva ? '700' : '500',
                 cursor: 'pointer',
-                textAlign: 'left',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-                transition: 'all 0.15s ease',
+                transition: 'all 0.2s ease',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: '800', fontSize: '11px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: sentidoSeleccionado === 'ida' ? '#FACC15' : '#555555' }} />
-                <span>IDA • A BELLAVISTA</span>
-              </div>
-              <span style={{ fontSize: '9.5px', color: sentidoSeleccionado === 'ida' ? '#E5E5E5' : '#666666', paddingLeft: '11px' }}>
-                Los Pensamientos ➔ Serafín Zamora
-              </span>
+              <span style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                background: esActiva ? '#FACC15' : '#737373',
+                display: 'inline-block',
+              }} />
+              {linea.nombre}
             </button>
+          );
+        })}
+      </div>
 
-            <button
-              onClick={() => setSentidoSeleccionado('regreso')}
-              style={{
-                padding: '8px 10px',
-                borderRadius: '8px',
-                border: sentidoSeleccionado === 'regreso' ? '1.5px solid #10B981' : '1px solid rgba(255, 255, 255, 0.1)',
-                background: sentidoSeleccionado === 'regreso' ? 'rgba(16, 185, 129, 0.15)' : '#171717',
-                color: sentidoSeleccionado === 'regreso' ? '#10B981' : '#888888',
-                cursor: 'pointer',
-                textAlign: 'left',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: '800', fontSize: '11px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: sentidoSeleccionado === 'regreso' ? '#10B981' : '#555555' }} />
-                <span>REGRESO • A LA GRANJA</span>
-              </div>
-              <span style={{ fontSize: '9.5px', color: sentidoSeleccionado === 'regreso' ? '#E5E5E5' : '#666666', paddingLeft: '11px' }}>
-                Serafín Zamora ➔ Los Pensamientos
-              </span>
-            </button>
-          </div>
-
-          {/* Barra inferior compacta: Distancia y Botón de Calles */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '2px' }}>
-            <span style={{ fontSize: '11px', color: '#737373' }}>
-              Distancia ruta: <b style={{ color: '#E5E5E5' }}>{trazadoGisActivo?.distanciaMetros ? `${(trazadoGisActivo.distanciaMetros / 1000).toFixed(1)} km` : (sentidoSeleccionado === 'regreso' ? '27.3 km' : '23.6 km')}</b>
-            </span>
-            <button
-              onClick={() => setMostrarInspectorTramos(!mostrarInspectorTramos)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#38BDF8',
-                fontSize: '11px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                padding: '2px 4px',
-                textDecoration: 'underline',
-              }}
-            >
-              {mostrarInspectorTramos ? 'Ocultar calles' : `Ver calles (${tramosViales.length || (sentidoSeleccionado === 'regreso' ? 20 : 19)})`}
-            </button>
-          </div>
-
-          {/* Panel Desplegable de Calles */}
-          {mostrarInspectorTramos && (
-            <div style={{
-              marginTop: '4px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-              paddingTop: '6px',
-              maxHeight: '150px',
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-            }}>
-              <div style={{ fontSize: '10px', color: '#A3A3A3', marginBottom: '2px' }}>
-                Secuencia vial del recorrido ({sentidoSeleccionado.toUpperCase()}):
-              </div>
-              {cargandoTramos ? (
-                <div style={{ fontSize: '11px', color: '#737373', padding: '4px 0' }}>Cargando calles...</div>
-              ) : (
-                tramosViales.map((tramo) => {
-                  const esSeleccionado = tramoSeleccionado?.orden === tramo.orden;
-                  return (
-                    <div
-                      key={tramo.id || tramo.orden}
-                      onClick={() => setTramoSeleccionado(esSeleccionado ? null : tramo)}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        background: esSeleccionado ? 'rgba(56, 189, 248, 0.2)' : '#171717',
-                        border: esSeleccionado ? '1px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.05)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        cursor: 'pointer',
-                        fontSize: '11px',
-                        color: esSeleccionado ? '#38BDF8' : '#D4D4D4',
-                      }}
-                    >
-                      <span style={{ fontWeight: '700' }}>
-                        {tramo.orden}. {tramo.calleOriginal}
-                      </span>
-                      <span style={{ fontSize: '9.5px', color: esSeleccionado ? '#38BDF8' : '#737373' }}>
-                        {tramo.comuna}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Banner de Alerta o Error ── */}
+      {/* ÔöÇÔöÇ Banner de Alerta o Error ÔöÇÔöÇ */}
       {mensajeAlerta && (
         <div style={{
           background: 'rgba(250, 204, 21, 0.15)',
@@ -1111,7 +703,7 @@ export default function PaginaPasajeroColectivo() {
         </div>
       )}
 
-      {/* ── Mapa Interactivo Principal ── */}
+      {/* ÔöÇÔöÇ Mapa Interactivo Principal ÔöÇÔöÇ */}
       <div style={{ flex: 1, position: 'relative' }}>
         <ColectivoMap
           ubicacionUsuario={ubicacionPasajero}
@@ -1120,72 +712,37 @@ export default function PaginaPasajeroColectivo() {
           conductorSeleccionadoId={reservaActiva ? (reservaActiva.conductor?.id || (reservaActiva as any).conductorId) : conductorElegido?.conductorId}
           alSeleccionarConductor={(chofer) => setConductorElegido(chofer)}
           disparadorCentrado={disparadorCentrado}
-          disparadorEncuadrarRuta={disparadorEncuadrarRuta}
           estaAbordado={reservaActiva?.estado === 'abordado' || reservaActiva?.estado === 'pagando'}
-          sentidoSeleccionado={sentidoSeleccionado}
-          tramoSeleccionado={tramoSeleccionado}
         />
 
-        {/* Botón flotante para ver y encuadrar recorrido completo */}
+        {/* Bot├│n flotante para recentrar ubicaci├│n */}
         <button
-          onClick={() => setDisparadorEncuadrarRuta((prev) => prev + 1)}
-          style={{
-            position: 'absolute',
-            right: '16px',
-            bottom: '70px',
-            zIndex: 1000,
-            background: 'rgba(18, 18, 18, 0.95)',
-            backdropFilter: 'blur(8px)',
-            color: '#FACC15',
-            border: '1.5px solid rgba(250, 204, 21, 0.4)',
-            borderRadius: '50%',
-            width: '44px',
-            height: '44px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.7)',
-            cursor: 'pointer',
-            transition: 'transform 0.15s ease',
-          }}
-          title="Ver recorrido completo"
-          onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.92)')}
-          onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-        >
-          <IconoParada size={20} color="#FACC15" />
-        </button>
-
-        {/* Botón flotante para recentrar ubicación GPS */}
-        <button
-          onClick={centrarGpsOEncuadrarRuta}
+          onClick={() => setDisparadorCentrado((prev) => prev + 1)}
           style={{
             position: 'absolute',
             right: '16px',
             bottom: '16px',
             zIndex: 1000,
-            background: 'rgba(18, 18, 18, 0.95)',
-            backdropFilter: 'blur(8px)',
+            background: '#171717',
             color: '#FACC15',
-            border: '1.5px solid #FACC15',
+            border: '1px solid #FACC15',
             borderRadius: '50%',
             width: '44px',
             height: '44px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(250, 204, 21, 0.3)',
+            fontSize: '18px',
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.6)',
             cursor: 'pointer',
-            transition: 'transform 0.15s ease',
           }}
-          title="Centrar en mi ubicación GPS"
-          onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.92)')}
-          onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+          title="Centrar en mi posici├│n"
         >
           <IconoGps size={20} color="#FACC15" />
         </button>
       </div>
 
-      {/* ── Panel Inferior: Colectivo Seleccionado o Reserva Activa ── */}
+      {/* ÔöÇÔöÇ Panel Inferior: Colectivo Seleccionado o Reserva Activa ÔöÇÔöÇ */}
       <div style={{
         padding: '14px 12px',
         background: '#121212',
@@ -1223,23 +780,6 @@ export default function PaginaPasajeroColectivo() {
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: '800', color: '#FFFFFF' }}>
                   {reservaActiva.conductor.name} ({reservaActiva.conductor.vehiclePlate})
                 </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    background: 'rgba(74, 222, 128, 0.15)',
-                    border: '1px solid #4ADE80',
-                    color: '#4ADE80',
-                    borderRadius: '10px',
-                    padding: '2px 8px',
-                    fontSize: '10.5px',
-                    fontWeight: '800',
-                  }}>
-                    <IconoCheck size={11} color="#4ADE80" />
-                    Patente Verificada MTT ({reservaActiva.conductor.vehiclePlate})
-                  </span>
-                </div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <span style={{
@@ -1262,12 +802,12 @@ export default function PaginaPasajeroColectivo() {
                     ? 'En viaje'
                     : reservaActiva.estado === 'pendiente_chofer'
                     ? 'Esperando respuesta del chofer'
-                    : 'Móvil en camino'}
+                    : 'M├│vil en camino'}
                 </div>
               </div>
             </div>
 
-            {/* Si está en pendiente_chofer: tarjeta especial de espera sin estimación prematura */}
+            {/* Si est├í en pendiente_chofer: tarjeta especial de espera sin estimaci├│n prematura */}
             {reservaActiva.estado === 'pendiente_chofer' && (
               <div
                 style={{
@@ -1298,16 +838,16 @@ export default function PaginaPasajeroColectivo() {
                 </div>
                 <div>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#FACC15' }}>
-                    Esperando confirmación del conductor...
+                    Esperando confirmaci├│n del conductor...
                   </div>
                   <div style={{ fontSize: '11.5px', color: '#D4D4D4', marginTop: '2px' }}>
-                    El chofer recibió la alerta en su vehículo. Debe responder <b>Sí</b> o <b>No</b> para confirmar tu viaje.
+                    El chofer recibi├│ la alerta en su veh├¡culo. Debe responder <b>S├¡</b> o <b>No</b> para confirmar tu viaje.
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Tiempo estimado de llegada del colectivo reservado (cuantitativo en minutos) - ÚNICAMENTE cuando fue confirmado */}
+            {/* Tiempo estimado de llegada del colectivo reservado (cuantitativo en minutos) - ├ÜNICAMENTE cuando fue confirmado */}
             {reservaActiva.estado === 'reservado' && infoLlegadaReserva && (
               <div
                 style={{
@@ -1375,7 +915,7 @@ export default function PaginaPasajeroColectivo() {
               gap: '6px',
               border: '1px solid rgba(255, 255, 255, 0.08)',
             }}>
-              <div style={{ color: '#A3A3A3' }}>Método de pago: <b style={{ color: '#FFFFFF' }}>{reservaActiva.metodoPago.toUpperCase()}</b></div>
+              <div style={{ color: '#A3A3A3' }}>M├®todo de pago: <b style={{ color: '#FFFFFF' }}>{reservaActiva.metodoPago.toUpperCase()}</b></div>
               {reservaActiva.conductor.telefonoRutPay && (
                 <div style={{ color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <IconoBanco size={14} color="#FACC15" />
@@ -1386,13 +926,13 @@ export default function PaginaPasajeroColectivo() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <IconoTarjeta size={14} color="#FACC15" />
                   <a href={reservaActiva.conductor.mercadoPagoLink} target="_blank" rel="noreferrer" style={{ color: '#FACC15', textDecoration: 'underline' }}>
-                    Pagar con MercadoPago aquí
+                    Pagar con MercadoPago aqu├¡
                   </a>
                 </div>
               )}
             </div>
 
-            {/* BOTONES PRINCIPALES DE ACCIÓN: PAGAR / BAJARME */}
+            {/* BOTONES PRINCIPALES DE ACCI├ôN: PAGAR / BAJARME */}
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 onClick={() => setMostrarModalPago(true)}
@@ -1418,7 +958,7 @@ export default function PaginaPasajeroColectivo() {
                 <IconoTarjeta size={16} color={reservaActiva.estado === 'pagando' ? '#A3A3A3' : '#000000'} />
                 <span>
                   {reservaActiva.estado === 'pagando'
-                    ? 'Esperando Confirmación del Chofer...'
+                    ? 'Esperando Confirmaci├│n del Chofer...'
                     : 'PAGAR Y BAJARME'}
                 </span>
               </button>
@@ -1449,32 +989,15 @@ export default function PaginaPasajeroColectivo() {
               <div>
                 <span style={{ fontSize: '11px', color: '#A3A3A3' }}>Colectivo seleccionado</span>
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: '800', color: '#FFFFFF' }}>
-                  {conductorElegido.nombre} — {conductorElegido.patente}
+                  {conductorElegido.nombre} ÔÇö {conductorElegido.patente}
                 </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
-                  <span style={{
-                    fontSize: '11px',
-                    color: conductorElegido.asientosOcupados >= 4 ? '#A3A3A3' : '#FACC15',
-                    fontWeight: '700',
-                  }}>
-                    {4 - conductorElegido.asientosOcupados} de 4 asientos disponibles
-                  </span>
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    background: 'rgba(74, 222, 128, 0.15)',
-                    border: '1px solid #4ADE80',
-                    color: '#4ADE80',
-                    borderRadius: '10px',
-                    padding: '2px 7px',
-                    fontSize: '10px',
-                    fontWeight: '800',
-                  }}>
-                    <IconoCheck size={10} color="#4ADE80" />
-                    Patente Verificada MTT
-                  </span>
-                </div>
+                <span style={{
+                  fontSize: '11px',
+                  color: conductorElegido.asientosOcupados >= 4 ? '#A3A3A3' : '#FACC15',
+                  fontWeight: '700',
+                }}>
+                  {4 - conductorElegido.asientosOcupados} de 4 asientos disponibles
+                </span>
               </div>
               <button
                 onClick={() => setConductorElegido(null)}
@@ -1503,7 +1026,7 @@ export default function PaginaPasajeroColectivo() {
               >
                 <IconoReloj size={16} color="#FACC15" />
                 <span>
-                  Llegaría en <b>{infoLlegadaPreseleccionado.textoTiempo}</b> ({infoLlegadaPreseleccionado.textoDistancia} de tu posición)
+                  Llegar├¡a en <b>{infoLlegadaPreseleccionado.textoTiempo}</b> ({infoLlegadaPreseleccionado.textoDistancia} de tu posici├│n)
                 </span>
               </div>
             )}
@@ -1561,7 +1084,7 @@ export default function PaginaPasajeroColectivo() {
               })}
             </div>
 
-            {/* Botón de Confirmación */}
+            {/* Bot├│n de Confirmaci├│n */}
             <button
               onClick={solicitarReservaAsiento}
               disabled={cargandoReserva || 4 - conductorElegido.asientosOcupados <= 0}
@@ -1585,13 +1108,13 @@ export default function PaginaPasajeroColectivo() {
             </button>
           </div>
         ) : (
-          /* Caso 3: Estado general de la línea y Despacho Dirigido */
+          /* Caso 3: Estado general de la l├¡nea y Despacho Dirigido */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <span style={{ fontSize: '11px', color: '#A3A3A3' }}>Recorrido seleccionado</span>
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '15px', fontWeight: '700', color: '#FFFFFF' }}>
-                  {lineaSeleccionada?.nombre || 'Seleccione una línea'}
+                  {lineaSeleccionada?.nombre || 'Seleccione una l├¡nea'}
                 </h3>
                 <p style={{ margin: 0, fontSize: '12px', color: '#737373' }}>
                   {conductoresEnVivo.length === 0
@@ -1629,7 +1152,7 @@ export default function PaginaPasajeroColectivo() {
                       <IconoAsiento size={13} color="#000000" />
                       {totalAsientosLibres} libre{totalAsientosLibres > 1 ? 's' : ''}
                     </span>
-                    <div style={{ fontSize: '11px', color: '#A3A3A3', marginTop: '3px' }}>En la línea</div>
+                    <div style={{ fontSize: '11px', color: '#A3A3A3', marginTop: '3px' }}>En la l├¡nea</div>
                   </div>
                 ) : (
                   <div>
@@ -1650,7 +1173,7 @@ export default function PaginaPasajeroColectivo() {
               </div>
             </div>
 
-            {/* Panel de Solicitud Dirigida al Primer Móvil en Tránsito */}
+            {/* Panel de Solicitud Dirigida al Primer M├│vil en Tr├ínsito */}
             {buscandoMovil ? (
               <div style={{
                 background: '#171717',
@@ -1672,7 +1195,7 @@ export default function PaginaPasajeroColectivo() {
                       animation: 'fimPulse 1s infinite ease-out',
                     }} />
                     <span style={{ fontSize: '12px', fontWeight: '800', color: '#FACC15', textTransform: 'uppercase' }}>
-                      Buscando primer móvil en camino...
+                      Buscando primer m├│vil en camino...
                     </span>
                   </div>
                   <button
@@ -1684,17 +1207,17 @@ export default function PaginaPasajeroColectivo() {
                 </div>
                 {movilAsignadoPreview ? (
                   <div style={{ fontSize: '12px', color: '#FFFFFF' }}>
-                    Ofreciendo solicitud al móvil <b>{movilAsignadoPreview.patente} ({movilAsignadoPreview.nombre})</b> a <b>{movilAsignadoPreview.distanciaMetros}m</b>. Esperando confirmación del chofer...
+                    Ofreciendo solicitud al m├│vil <b>{movilAsignadoPreview.patente} ({movilAsignadoPreview.nombre})</b> a <b>{movilAsignadoPreview.distanciaMetros}m</b>. Esperando confirmaci├│n del chofer...
                   </div>
                 ) : (
                   <div style={{ fontSize: '12px', color: '#A3A3A3' }}>
-                    Calculando el colectivo más próximo en aproximación hacia tu punto de recogida...
+                    Calculando el colectivo m├ís pr├│ximo en aproximaci├│n hacia tu punto de recogida...
                   </div>
                 )}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Selectores de asientos y método de pago para el próximo colectivo */}
+                {/* Selectores de asientos y m├®todo de pago para el pr├│ximo colectivo */}
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between' }}>
                   {/* Cantidad de asientos */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#171717', padding: '6px 10px', borderRadius: '8px' }}>
@@ -1716,7 +1239,7 @@ export default function PaginaPasajeroColectivo() {
                     </button>
                   </div>
 
-                  {/* Método de pago */}
+                  {/* M├®todo de pago */}
                   <div style={{ display: 'flex', gap: '4px' }}>
                     {(['efectivo', 'rutpay', 'mercadopago'] as const).map((metodo) => {
                       const sel = metodoPago === metodo;
@@ -1742,7 +1265,7 @@ export default function PaginaPasajeroColectivo() {
                   </div>
                 </div>
 
-                {/* Botón principal de solicitud dirigida */}
+                {/* Bot├│n principal de solicitud dirigida */}
                 <button
                   onClick={solicitarProximoColectivo}
                   disabled={buscandoMovil || totalAsientosLibres <= 0 || conductoresEnVivo.length === 0}
@@ -1768,12 +1291,12 @@ export default function PaginaPasajeroColectivo() {
                     {conductoresEnVivo.length === 0
                       ? 'Sin colectivos en ruta'
                       : totalAsientosLibres <= 0
-                      ? 'Todos los móviles completos'
-                      : `Solicitar Próximo Colectivo (${cantidadAsientos} as.)`}
+                      ? 'Todos los m├│viles completos'
+                      : `Solicitar Pr├│ximo Colectivo (${cantidadAsientos} as.)`}
                   </span>
                 </button>
                 <div style={{ textAlign: 'center', fontSize: '10px', color: '#737373' }}>
-                  Regla de asignación por turno al primer móvil en aproximación con cupo disponible
+                  Regla de asignaci├│n por turno al primer m├│vil en aproximaci├│n con cupo disponible
                 </div>
               </div>
             )}
@@ -1781,7 +1304,7 @@ export default function PaginaPasajeroColectivo() {
         )}
       </div>
 
-      {/* ── MODAL: PAGAR PASAJE Y SOLICITAR BAJADA AL CONDUCTOR ── */}
+      {/* ÔöÇÔöÇ MODAL: PAGAR PASAJE Y SOLICITAR BAJADA AL CONDUCTOR ÔöÇÔöÇ */}
       {mostrarModalPago && reservaActiva && (
         <div
           style={{
@@ -1858,7 +1381,7 @@ export default function PaginaPasajeroColectivo() {
                     <span>RutPay BancoEstado</span>
                   </div>
                   <p style={{ margin: 0, fontSize: '12px', color: '#A3A3A3' }}>
-                    Transfiere directamente con RutPay al número de teléfono del chofer:
+                    Transfiere directamente con RutPay al n├║mero de tel├®fono del chofer:
                   </p>
                   <div
                     style={{
@@ -1894,11 +1417,11 @@ export default function PaginaPasajeroColectivo() {
                         cursor: 'pointer',
                       }}
                     >
-                      {telefonoCopiado ? '¡Copiado!' : 'Copiar'}
+                      {telefonoCopiado ? '┬íCopiado!' : 'Copiar'}
                     </button>
                   </div>
                   <span style={{ fontSize: '11px', color: '#737373' }}>
-                    Abre tu App BancoEstado, selecciona RutPay y pega este número.
+                    Abre tu App BancoEstado, selecciona RutPay y pega este n├║mero.
                   </span>
                 </div>
               ) : reservaActiva.metodoPago === 'mercadopago' ? (
@@ -1908,7 +1431,7 @@ export default function PaginaPasajeroColectivo() {
                     <span>MercadoPago</span>
                   </div>
                   <p style={{ margin: 0, fontSize: '12px', color: '#A3A3A3' }}>
-                    Paga de forma digital a través del link de MercadoPago del conductor:
+                    Paga de forma digital a trav├®s del link de MercadoPago del conductor:
                   </p>
                   {reservaActiva.conductor.mercadoPagoLink ? (
                     <a
@@ -1942,13 +1465,13 @@ export default function PaginaPasajeroColectivo() {
                     <span>Pago en Efectivo</span>
                   </div>
                   <p style={{ margin: 0, fontSize: '13px', color: '#D4D4D4' }}>
-                    Entrega el efectivo directamente al conductor al descender del vehículo.
+                    Entrega el efectivo directamente al conductor al descender del veh├¡culo.
                   </p>
                 </div>
               )}
             </div>
 
-            {/* BOTÓN CONFIRMAR Y ENVIAR AL CHOFER */}
+            {/* BOT├ôN CONFIRMAR Y ENVIAR AL CHOFER */}
             <button
               onClick={notificarPagoChofer}
               disabled={solicitandoPago || reservaActiva.estado === 'pagando'}
@@ -1994,7 +1517,7 @@ export default function PaginaPasajeroColectivo() {
                   color: '#FACC15',
                 }}
               >
-                La voz en el móvil del chofer ha anunciado tu pago. En cuanto acepte, tu pantalla se liberará automáticamente.
+                La voz en el m├│vil del chofer ha anunciado tu pago. En cuanto acepte, tu pantalla se liberar├í autom├íticamente.
               </div>
             )}
           </div>

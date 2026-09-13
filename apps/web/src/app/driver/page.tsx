@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -27,7 +27,7 @@ import {
   IconoMicrofono,
 } from '@/components/icons/Iconos';
 
-// Cargar mapa dinámico sin SSR para Leaflet
+// Cargar mapa din├ímico sin SSR para Leaflet
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
 import AlertaVozReserva, { DatosSolicitudDirigida } from '@/components/driver/AlertaVozReserva';
 import { reproducirSonido, hablarTexto, desbloquearAudioYVoz, iniciarEscuchaVoz, detenerVoz, bloquearAbordoTemporal } from '@/lib/voice';
@@ -65,51 +65,26 @@ export default function PaginaConductorColectivo() {
   const [lineaActual, setLineaActual] = useState<Linea | null>(null);
   const [enServicio, setEnServicio] = useState<boolean>(false);
   const [asientosOcupados, setAsientosOcupados] = useState<number>(0);
-  const [sentidoRuta, setSentidoRuta] = useState<'ida' | 'regreso'>('ida');
+  const [sentidoRuta, setSentidoRuta] = useState<'ida' | 'vuelta'>('ida');
 
-  // Validación MTT de Patente y Folio
-  const [patenteInput, setPatenteInput] = useState<string>('');
-  const [validandoMtt, setValidandoMtt] = useState<boolean>(false);
-  const [mttDetalle, setMttDetalle] = useState<any>(null);
-  const [mostrarConfigPatente, setMostrarConfigPatente] = useState<boolean>(false);
-
-  // Ubicación y mapa en tiempo real (inicializada en null como en 6c9d5ba)
+  // Ubicaci├│n y mapa en tiempo real
   const [ubicacionChofer, setUbicacionChofer] = useState<{
     latitud: number;
     longitud: number;
   } | null>(null);
   const [disparadorCentrado, setDisparadorCentrado] = useState(0);
-  const [disparadorEncuadrarRuta, setDisparadorEncuadrarRuta] = useState(0);
-
-  const centrarMiAuto = useCallback(() => {
-    setDisparadorCentrado((prev) => prev + 1);
-    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setUbicacionChofer({ latitud: lat, longitud: lng });
-          setDisparadorCentrado((prev) => prev + 1);
-        },
-        (err) => {
-          console.warn('GPS chofer:', err.message);
-        },
-        { enableHighAccuracy: true }
-      );
-    }
-  }, []);
   const [conductoresEnVivo, setConductoresEnVivo] = useState<ConductorColectivo[]>([]);
 
   // Reservas de pasajeros
   const [reservasPendientes, setReservasPendientes] = useState<ReservaPasajero[]>([]);
 
-  // Configuración de cobros
+  // Configuraci├│n de cobros
   const [telefonoRutPay, setTelefonoRutPay] = useState<string>('');
   const [linkMercadoPago, setLinkMercadoPago] = useState<string>('');
   const [guardandoCobro, setGuardandoCobro] = useState<boolean>(false);
   const [mostrarConfigCobro, setMostrarConfigCobro] = useState<boolean>(false);
 
-  // Solicitud dirigida en tránsito (Manos libres TTS y botones gigantes)
+  // Solicitud dirigida en tr├ínsito (Manos libres TTS y botones gigantes)
   const [solicitudActiva, setSolicitudActiva] = useState<DatosSolicitudDirigida | null>(null);
 
   // Solicitud de pago y descenso del pasajero
@@ -117,7 +92,7 @@ export default function PaginaConductorColectivo() {
   const [audioDesbloqueado, setAudioDesbloqueado] = useState<boolean>(false);
   const [cargandoAccion, setCargandoAccion] = useState<string | null>(null);
 
-  // Estados de retroalimentación de voz en tiempo real
+  // Estados de retroalimentaci├│n de voz en tiempo real
   const [textoDetectadoPago, setTextoDetectadoPago] = useState<string>('');
   const [textoDetectadoAbordaje, setTextoDetectadoAbordaje] = useState<string>('');
   const [anunciandoPagoVoz, setAnunciandoPagoVoz] = useState<boolean>(false);
@@ -127,7 +102,7 @@ export default function PaginaConductorColectivo() {
   const [mensajeExito, setMensajeExito] = useState<string>('');
   const [mensajeError, setMensajeError] = useState<string>('');
 
-  // Referencia a rastreo GPS y deduplicación de eventos
+  // Referencia a rastreo GPS y deduplicaci├│n de eventos
   const watchIdRef = useRef<number | null>(null);
   const ubicacionChoferRef = useRef(ubicacionChofer);
   const ultimaSolicitudNotificadaRef = useRef<{ id: string; timestamp: number } | null>(null);
@@ -138,83 +113,35 @@ export default function PaginaConductorColectivo() {
     ubicacionChoferRef.current = ubicacionChofer;
   }, [ubicacionChofer]);
 
-  // 1. Validar autenticación de chofer
+  // 1. Validar autenticaci├│n de chofer
   useEffect(() => {
     const sesion = getSession();
     if (!sesion) {
-      router.replace('/login/?role=driver');
+      router.push('/login?role=driver');
       return;
     }
     setChoferSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener ubicación GPS en tiempo real del chofer y mantener rastreo continuo (igual que en 6c9d5ba)
+  // 2. Obtener ubicaci├│n GPS inicial del dispositivo
   useEffect(() => {
-    if (typeof window === 'undefined' || !('geolocation' in navigator)) return;
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setUbicacionChofer({
-          latitud: pos.coords.latitude,
-          longitud: pos.coords.longitude,
-        });
-      },
-      (err) => {
-        console.warn('GPS chofer inicial:', err.message);
-      },
-      { enableHighAccuracy: true }
-    );
-
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        setUbicacionChofer({
-          latitud: pos.coords.latitude,
-          longitud: pos.coords.longitude,
-        });
-      },
-      (err) => console.warn('Rastreo GPS chofer:', err.message),
-      { enableHighAccuracy: true, maximumAge: 3000 }
-    );
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUbicacionChofer({
+            latitud: pos.coords.latitude,
+            longitud: pos.coords.longitude,
+          });
+        },
+        (err) => {
+          console.warn('GPS inicial no disponible, usando ├║ltima posici├│n guardada:', err.message);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
   }, []);
 
-  // 2.1. Prevención de suspensión de pantalla para el chofer (Screen Wake Lock API)
-  useEffect(() => {
-    let wakeLockSentinel: any = null;
-
-    const solicitarWakeLock = async () => {
-      try {
-        if (typeof window !== 'undefined' && 'wakeLock' in navigator) {
-          wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
-          console.log('[Wake Lock] Pantalla mantenida encendida continuamente para el chofer.');
-        }
-      } catch (err) {
-        console.warn('[Wake Lock] No se pudo mantener la pantalla encendida:', err);
-      }
-    };
-
-    solicitarWakeLock();
-
-    const alCambiarVisibilidad = () => {
-      if (document.visibilityState === 'visible') {
-        solicitarWakeLock();
-      }
-    };
-
-    document.addEventListener('visibilitychange', alCambiarVisibilidad);
-
-    return () => {
-      document.removeEventListener('visibilitychange', alCambiarVisibilidad);
-      if (wakeLockSentinel) {
-        wakeLockSentinel.release().catch(() => {});
-      }
-    };
-  }, []);
-
-  // 3. Cargar datos del chofer y líneas disponibles
+  // 3. Cargar datos del chofer y l├¡neas disponibles
   const cargarDatosChofer = useCallback(async () => {
     try {
       const [resEstado, resLineas] = await Promise.all([
@@ -229,22 +156,9 @@ export default function PaginaConductorColectivo() {
         const datos = resEstado.data.chofer;
         setEnServicio(datos.isOnline || false);
         setAsientosOcupados(datos.asientosOcupados || 0);
-        setSentidoRuta(datos.sentidoRuta === 'regreso' ? 'regreso' : 'ida');
+        setSentidoRuta(datos.sentidoRuta || 'ida');
         setTelefonoRutPay(datos.telefonoRutPay || '');
         setLinkMercadoPago(datos.mercadoPagoLink || '');
-
-        if (datos.vehiclePlate) {
-          setPatenteInput(datos.vehiclePlate);
-        }
-        if (datos.mttDetalle) {
-          try {
-            setMttDetalle(typeof datos.mttDetalle === 'string' ? JSON.parse(datos.mttDetalle) : datos.mttDetalle);
-          } catch {}
-        }
-        setChoferSesion((prev: any) => ({
-          ...prev,
-          ...datos,
-        }));
 
         if (datos.lastLat && datos.lastLng) {
           setUbicacionChofer((prev) => prev || {
@@ -254,11 +168,7 @@ export default function PaginaConductorColectivo() {
         }
 
         if (datos.linea) {
-          const lineaEncontrada = lineas.find((l) => l.id === datos.linea.id || l.folio === datos.linea.folio);
-          const trazados = (lineaEncontrada?.trazados && lineaEncontrada.trazados.length > 0)
-            ? lineaEncontrada.trazados
-            : (datos.linea.trazados || []);
-          setLineaActual({ ...datos.linea, ...(lineaEncontrada || {}), trazados });
+          setLineaActual(datos.linea);
         } else if (lineas.length > 0) {
           setLineaActual(lineas[0]);
         }
@@ -279,13 +189,13 @@ export default function PaginaConductorColectivo() {
     cargarDatosChofer();
   }, [cargarDatosChofer]);
 
-  // 4. WebSockets y transmisión de ubicación en tiempo real
+  // 4. WebSockets y transmisi├│n de ubicaci├│n en tiempo real
   useEffect(() => {
     if (!choferSesion?.id) return;
 
     const socket = connectSocket();
 
-    // Función idempotente para unirse a salas del chofer y línea
+    // Funci├│n idempotente para unirse a salas del chofer y l├¡nea
     const suscribirSalas = () => {
       if (choferSesion?.id) {
         socket.emit('conductor:unirse', { conductorId: choferSesion.id });
@@ -337,7 +247,7 @@ export default function PaginaConductorColectivo() {
       setMensajeExito('Una reserva fue cancelada por el pasajero.');
     };
 
-    // Evento de solicitud dirigida al móvil en tránsito (Dispara lectura TTS y modal gigante con deduplicación)
+    // Evento de solicitud dirigida al m├│vil en tr├ínsito (Dispara lectura TTS y modal gigante con deduplicaci├│n)
     const manejarSolicitudAsignada = (datos: DatosSolicitudDirigida & { conductorId?: string }) => {
       if (datos.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
         return;
@@ -354,17 +264,17 @@ export default function PaginaConductorColectivo() {
       setSolicitudActiva(datos);
     };
 
-    // Evento si la solicitud expiró o fue pasada a otro móvil
+    // Evento si la solicitud expir├│ o fue pasada a otro m├│vil
     const manejarSolicitudExpirada = (datos: { reservaId: string }) => {
       setSolicitudActiva((prev) => (prev?.reservaId === datos.reservaId ? null : prev));
     };
 
-    // Evento si el pasajero canceló mientras sonaba la alerta
+    // Evento si el pasajero cancel├│ mientras sonaba la alerta
     const manejarSolicitudCancelada = (datos: { reservaId: string }) => {
       setSolicitudActiva((prev) => (prev?.reservaId === datos.reservaId ? null : prev));
     };
 
-    // Evento: Cambio en asientos ocupados de la línea o propio móvil
+    // Evento: Cambio en asientos ocupados de la l├¡nea o propio m├│vil
     const manejarCambioAsientos = (datos: { conductorId: string; asientosOcupados: number; asientosTotales: number }) => {
       if (datos.conductorId === choferSesion.id) {
         setAsientosOcupados(datos.asientosOcupados);
@@ -394,11 +304,11 @@ export default function PaginaConductorColectivo() {
       escuchaPagoRef.current = iniciarEscuchaVoz({
         id: 'escucha-pago-conductor',
         onSi: () => {
-          setTextoDetectadoPago('¡SÍ DETECTADO!');
+          setTextoDetectadoPago('┬íS├ì DETECTADO!');
           confirmarPagoPasajero(datos.reservaId);
         },
         onNo: () => {
-          setTextoDetectadoPago('¡NO DETECTADO!');
+          setTextoDetectadoPago('┬íNO DETECTADO!');
           rechazarPagoPasajero();
         },
         onTextoDetectado: (txt) => {
@@ -406,8 +316,8 @@ export default function PaginaConductorColectivo() {
         },
       });
 
-      // Frase clara sin incluir las palabras disparadoras "sí" o "no" para evitar auto-disparo del parlante
-      const mensajeVoz = 'Cliente solicita pagar. ¿Liberamos asiento?';
+      // Frase clara sin incluir las palabras disparadoras "s├¡" o "no" para evitar auto-disparo del parlante
+      const mensajeVoz = 'Cliente solicita pagar. ┬┐Liberamos asiento?';
       setAnunciandoPagoVoz(true);
 
       // Esperar a que concluya el chime de alerta (350ms) antes de emitir la voz
@@ -451,7 +361,7 @@ export default function PaginaConductorColectivo() {
       }
     };
 
-    // Evento de ubicación de otros colectivos de la misma línea
+    // Evento de ubicaci├│n de otros colectivos de la misma l├¡nea
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarUbicacionFlota = (payload: any) => {
       if (payload.lineaId === lineaActual?.id && payload.conductorId !== choferSesion.id) {
@@ -477,7 +387,7 @@ export default function PaginaConductorColectivo() {
       }
     };
 
-    // Evento si otro colectivo de la línea se desconecta o pasa a fuera de servicio
+    // Evento si otro colectivo de la l├¡nea se desconecta o pasa a fuera de servicio
     const manejarConductorOffline = (datos: { conductorId: string }) => {
       setConductoresEnVivo((prev) => prev.filter((c) => c.conductorId !== datos.conductorId));
     };
@@ -494,7 +404,7 @@ export default function PaginaConductorColectivo() {
     socket.on('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
     socket.on('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
 
-    // Si está en servicio, transmitir ubicación GPS continua
+    // Si est├í en servicio, transmitir ubicaci├│n GPS continua
     if (enServicio && typeof window !== 'undefined' && 'geolocation' in navigator) {
       watchIdRef.current = navigator.geolocation.watchPosition(
         (posicion) => {
@@ -541,7 +451,7 @@ export default function PaginaConductorColectivo() {
     };
   }, [enServicio, choferSesion?.id, lineaActual?.id]);
 
-  // Sincronización de respaldo periódica (cada 7s) en servicio
+  // Sincronizaci├│n de respaldo peri├│dica (cada 7s) en servicio
   useEffect(() => {
     if (!enServicio) return;
     const intervalo = setInterval(() => {
@@ -570,20 +480,12 @@ export default function PaginaConductorColectivo() {
         setAudioDesbloqueado(true);
       });
 
-      const latIni = ubicacionChofer?.latitud || -33.5513;
-      const lngIni = ubicacionChofer?.longitud || -70.6192;
-      socket.emit('driver:online', {
-        driverId: choferSesion?.id,
-        lat: latIni,
-        lng: lngIni,
-      });
-
       if (typeof window !== 'undefined' && 'geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition((pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           setUbicacionChofer({ latitud: lat, longitud: lng });
-          socket.emit('driver:location', {
+          socket.emit('driver:online', {
             driverId: choferSesion?.id,
             lat,
             lng,
@@ -604,17 +506,17 @@ export default function PaginaConductorColectivo() {
     setMensajeExito(nuevoEstado ? 'Turno iniciado: En servicio transmitiendo GPS' : 'Turno finalizado: Fuera de servicio');
   };
 
-  // Asignar línea de colectivo
+  // Asignar l├¡nea de colectivo
   const cambiarLineaColectivo = async (nuevaLineaId: string) => {
     try {
       await api.post('/colectivos/conductor/linea', { lineaId: nuevaLineaId });
       const lineaEncontrada = lineasDisponibles.find((l) => l.id === nuevaLineaId) || null;
       setLineaActual(lineaEncontrada);
       setConductoresEnVivo([]);
-      setMensajeExito(`Línea cambiada a ${lineaEncontrada?.nombre}`);
+      setMensajeExito(`L├¡nea cambiada a ${lineaEncontrada?.nombre}`);
     } catch (error) {
-      console.error('Error al cambiar línea:', error);
-      setMensajeError('No se pudo cambiar la línea.');
+      console.error('Error al cambiar l├¡nea:', error);
+      setMensajeError('No se pudo cambiar la l├¡nea.');
     }
   };
 
@@ -631,48 +533,16 @@ export default function PaginaConductorColectivo() {
     }
   };
 
-  // Cambiar sentido de ruta (IDA <-> REGRESO)
-  const alternarSentido = async (sentidoObjetivo?: 'ida' | 'regreso') => {
-    const nuevoSentido = sentidoObjetivo || (sentidoRuta === 'ida' ? 'regreso' : 'ida');
+  // Cambiar sentido de ruta (Ida <-> Vuelta)
+  const alternarSentido = async () => {
+    const nuevoSentido = sentidoRuta === 'ida' ? 'vuelta' : 'ida';
     setSentidoRuta(nuevoSentido);
     try {
       await api.post('/colectivos/conductor/sentido', { sentidoRuta: nuevoSentido });
-      setMensajeExito(`Sentido cambiado a ${nuevoSentido === 'ida' ? 'IDA (A Metro Bellavista)' : 'REGRESO (A La Granja)'}`);
+      setMensajeExito(`Sentido cambiado a ${nuevoSentido.toUpperCase()}`);
     } catch (error) {
       console.error('Error al cambiar sentido:', error);
       setMensajeError('No se pudo cambiar el sentido de la ruta.');
-    }
-  };
-
-  // Validar patente vehicular contra MTT Consulta Web (https://apps.mtt.cl/consultaweb/)
-  const validarPatenteMtt = async () => {
-    if (!patenteInput.trim()) {
-      setMensajeError('Por favor ingresa una patente vehicular.');
-      return;
-    }
-    setValidandoMtt(true);
-    setMensajeError('');
-    try {
-      const res = await api.post('/colectivos/validar-patente-mtt', { patente: patenteInput.trim() });
-      if (res.data?.mttValidada) {
-        setChoferSesion((prev: any) => ({
-          ...prev,
-          vehiclePlate: res.data.patente,
-          patente: res.data.patente,
-          mttValidada: true,
-          mttDetalle: res.data.detalle,
-        }));
-        setMttDetalle(res.data.detalle);
-        setMensajeExito(`✓ Patente ${res.data.patente} verificada exitosamente en el Ministerio de Transportes (MTT).`);
-        reproducirSonido('exito');
-      } else {
-        setMensajeError(`La patente ${patenteInput} no pudo ser validada ante el registro MTT.`);
-      }
-    } catch (error: any) {
-      console.error('Error al validar patente MTT:', error);
-      setMensajeError(error.response?.data?.error || 'Error al conectar con la plataforma MTT.');
-    } finally {
-      setValidandoMtt(false);
     }
   };
 
@@ -687,7 +557,7 @@ export default function PaginaConductorColectivo() {
         setMensajeExito(`Reserva aceptada: ${nombreConfirmado} confirmado.`);
         reproducirSonido('exito');
 
-        // Locución guiada: Di "A bordo" cuando suba el pasajero
+        // Locuci├│n guiada: Di "A bordo" cuando suba el pasajero
         const locucionConfirmada =
           nombreConfirmado && nombreConfirmado !== 'el pasajero'
             ? `Reserva aceptada. Di a bordo cuando suba ${nombreConfirmado}.`
@@ -776,7 +646,7 @@ export default function PaginaConductorColectivo() {
         escuchaAbordajeRef.current = iniciarEscuchaVoz({
           id: 'escucha-abordaje-conductor',
           onAbordo: () => {
-            setTextoDetectadoAbordaje('¡A BORDO DETECTADO!');
+            setTextoDetectadoAbordaje('┬íA BORDO DETECTADO!');
             confirmarAbordaje(primerReservado.id);
           },
           onTextoDetectado: (txt) => {
@@ -876,22 +746,22 @@ export default function PaginaConductorColectivo() {
         telefonoRutPay,
         linkMercadoPago,
       });
-      setMensajeExito('Métodos de cobro actualizados correctamente.');
+      setMensajeExito('M├®todos de cobro actualizados correctamente.');
     } catch (error) {
       console.error('Error al guardar datos de pago:', error);
-      setMensajeError('No se pudieron actualizar los métodos de cobro.');
+      setMensajeError('No se pudieron actualizar los m├®todos de cobro.');
     } finally {
       setGuardandoCobro(false);
     }
   };
 
-  // Cerrar sesión
+  // Cerrar sesi├│n
   const cerrarSesionChofer = () => {
     clearSession();
-    router.replace('/login/?role=driver');
+    router.push('/login?role=driver');
   };
 
-  // Pasajeros en espera formateados para marcadores en el mapa con cálculo de ETA cuantitativo
+  // Pasajeros en espera formateados para marcadores en el mapa con c├ílculo de ETA cuantitativo
   const pasajerosEnEspera: PasajeroEnEspera[] = useMemo(() => {
     return reservasPendientes
       .filter((r) => r.estado === 'reservado')
@@ -940,7 +810,7 @@ export default function PaginaConductorColectivo() {
       .filter(Boolean) as PasajeroEnEspera[];
   }, [reservasPendientes, lineaActual, ubicacionChofer]);
 
-  // ─── Desglose de Asientos por Estado (Libre: Verde, Reservado: Naranjo, A Bordo: Rojo) ───
+  // ÔöÇÔöÇÔöÇ Desglose de Asientos por Estado (Libre: Verde, Reservado: Naranjo, A Bordo: Rojo) ÔöÇÔöÇÔöÇ
   const conteoAsientos = useMemo(() => {
     // 1. Asientos de pasajeros ya a bordo o pagando
     const abordados = reservasPendientes
@@ -970,7 +840,7 @@ export default function PaginaConductorColectivo() {
   return (
     <div style={{ minHeight: '100vh', background: '#0A0A0A', color: '#FFFFFF', padding: '8px 10px', maxWidth: '800px', margin: '0 auto', width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
-      {/* ── Encabezado Principal ── */}
+      {/* ÔöÇÔöÇ Encabezado Principal ÔöÇÔöÇ */}
       <header style={{
         display: 'flex',
         alignItems: 'center',
@@ -1000,7 +870,7 @@ export default function PaginaConductorColectivo() {
               Fim <span style={{ color: '#FACC15' }}>Colectivo Chofer</span>
             </h1>
             <p style={{ margin: 0, fontSize: '11px', color: '#A3A3A3' }}>
-              {choferSesion ? choferSesion.name : 'Conductor'} • {lineaActual ? lineaActual.nombre : 'Línea no asignada'}
+              {choferSesion ? choferSesion.name : 'Conductor'} ÔÇó {lineaActual ? lineaActual.nombre : 'L├¡nea no asignada'}
             </p>
           </div>
         </div>
@@ -1010,7 +880,7 @@ export default function PaginaConductorColectivo() {
             onClick={() => {
               desbloquearAudioYVoz('Audio y voz activados para el servicio de colectivos', () => {
                 setAudioDesbloqueado(true);
-                setMensajeExito('Altavoz y síntesis de voz verificados correctamente.');
+                setMensajeExito('Altavoz y s├¡ntesis de voz verificados correctamente.');
               });
             }}
             style={{
@@ -1071,7 +941,7 @@ export default function PaginaConductorColectivo() {
         </div>
       </header>
 
-      {/* ── Alertas ── */}
+      {/* ÔöÇÔöÇ Alertas ÔöÇÔöÇ */}
       {mensajeExito && (
         <div style={{ background: 'rgba(250, 204, 21, 0.15)', border: '1px solid #FACC15', padding: '10px 14px', borderRadius: '10px', color: '#FACC15', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1091,217 +961,7 @@ export default function PaginaConductorColectivo() {
         </div>
       )}
 
-      {/* ── PANEL DE RECORRIDO OFICIAL MTT Y SENTIDO DE OPERACIÓN ── */}
-      <div style={{
-        background: '#121212',
-        border: '1px solid rgba(255, 255, 255, 0.12)',
-        borderRadius: '16px',
-        padding: '12px 14px',
-        marginBottom: '10px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px',
-      }}>
-        {/* Ficha Folio y Patente MTT */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{
-              background: '#FACC15',
-              color: '#000000',
-              fontSize: '11px',
-              fontWeight: '900',
-              padding: '3px 8px',
-              borderRadius: '6px',
-              letterSpacing: '0.5px',
-            }}>
-              FOLIO {lineaActual?.folio || '233012'}
-            </span>
-            <div>
-              <div style={{ fontSize: '13px', fontWeight: '800', color: '#FFFFFF' }}>
-                {lineaActual?.nombreRecorrido || 'Recorrido T'} • {lineaActual?.tipoTrazado || 'Principal'}
-              </div>
-              <div style={{ fontSize: '11px', color: '#A3A3A3' }}>
-                {lineaActual?.comunas || 'La Granja - La Pintana - La Florida'}
-              </div>
-            </div>
-          </div>
-
-          {/* Patente y Estado MTT */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div
-              onClick={() => setMostrarConfigPatente(!mostrarConfigPatente)}
-              style={{
-                cursor: 'pointer',
-                background: '#171717',
-                border: choferSesion?.mttValidada ? '1px solid #4ADE80' : '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '8px',
-                padding: '4px 8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-              }}
-              title="Haz clic para verificar o cambiar tu patente ante el MTT"
-            >
-              <span style={{ fontSize: '12px', fontWeight: '900', color: '#FFFFFF' }}>
-                {choferSesion?.vehiculo?.patente || choferSesion?.vehiclePlate || choferSesion?.patente || patenteInput || 'SIN PATENTE'}
-              </span>
-              {choferSesion?.mttValidada ? (
-                <span style={{
-                  background: 'rgba(74, 222, 128, 0.15)',
-                  color: '#4ADE80',
-                  fontSize: '9.5px',
-                  fontWeight: '800',
-                  padding: '2px 5px',
-                  borderRadius: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '3px',
-                }}>
-                  <IconoCheck size={9} color="#4ADE80" />
-                  MTT OK
-                </span>
-              ) : (
-                <span style={{
-                  background: 'rgba(250, 204, 21, 0.15)',
-                  color: '#FACC15',
-                  fontSize: '9.5px',
-                  fontWeight: '800',
-                  padding: '2px 5px',
-                  borderRadius: '4px',
-                }}>
-                  VALIDAR
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Acordeón para registrar o validar patente con https://apps.mtt.cl/consultaweb/ */}
-        {mostrarConfigPatente && (
-          <div style={{
-            background: '#171717',
-            border: '1px solid rgba(250, 204, 21, 0.3)',
-            borderRadius: '10px',
-            padding: '10px 12px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-          }}>
-            <div style={{ fontSize: '11px', color: '#A3A3A3' }}>
-              Valida tu patente vehicular en tiempo real con el <b>Ministerio de Transportes (MTT Consulta Web)</b>:
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="text"
-                placeholder="Ej: COL202 o BBCL12"
-                value={patenteInput}
-                onChange={(e) => setPatenteInput(e.target.value.toUpperCase())}
-                style={{
-                  flex: 1,
-                  background: '#000000',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                  color: '#FFFFFF',
-                  fontSize: '13px',
-                  fontWeight: '800',
-                  letterSpacing: '1px',
-                  outline: 'none',
-                }}
-              />
-              <button
-                onClick={validarPatenteMtt}
-                disabled={validandoMtt}
-                style={{
-                  background: validandoMtt ? '#262626' : '#FACC15',
-                  color: validandoMtt ? '#737373' : '#000000',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '8px 14px',
-                  fontWeight: '800',
-                  fontSize: '12px',
-                  cursor: validandoMtt ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                {validandoMtt ? 'Validando...' : 'Validar MTT'}
-              </button>
-            </div>
-            {mttDetalle && (
-              <div style={{ fontSize: '10.5px', color: '#4ADE80', background: 'rgba(74, 222, 128, 0.08)', padding: '6px 8px', borderRadius: '6px' }}>
-                {mttDetalle.resultado || 'Vehículo registrado y autorizado para servicio de transporte colectivo'}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* SELECTOR DE SENTIDO DE RECORRIDO (IDA / REGRESO) */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <button
-            onClick={() => alternarSentido('ida')}
-            style={{
-              padding: '8px 10px',
-              borderRadius: '10px',
-              border: sentidoRuta === 'ida' ? '2px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.12)',
-              background: sentidoRuta === 'ida' ? 'rgba(250, 204, 21, 0.15)' : '#171717',
-              color: sentidoRuta === 'ida' ? '#FACC15' : '#A3A3A3',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '2px',
-              textAlign: 'left',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: sentidoRuta === 'ida' ? '#FACC15' : '#525252',
-              }} />
-              <span style={{ fontSize: '11.5px', fontWeight: '900' }}>IDA • A METRO BELLAVISTA</span>
-            </div>
-            <span style={{ fontSize: '9.5px', color: sentidoRuta === 'ida' ? '#D4D4D4' : '#737373', fontWeight: '500', paddingLeft: '14px' }}>
-              Los Pensamientos → Serafín Zamora
-            </span>
-          </button>
-
-          <button
-            onClick={() => alternarSentido('regreso')}
-            style={{
-              padding: '8px 10px',
-              borderRadius: '10px',
-              border: sentidoRuta === 'regreso' ? '2px solid #4ADE80' : '1px solid rgba(255, 255, 255, 0.12)',
-              background: sentidoRuta === 'regreso' ? 'rgba(74, 222, 128, 0.15)' : '#171717',
-              color: sentidoRuta === 'regreso' ? '#4ADE80' : '#A3A3A3',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '2px',
-              textAlign: 'left',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: sentidoRuta === 'regreso' ? '#4ADE80' : '#525252',
-              }} />
-              <span style={{ fontSize: '11.5px', fontWeight: '900' }}>REGRESO • A LA GRANJA</span>
-            </div>
-            <span style={{ fontSize: '9.5px', color: sentidoRuta === 'regreso' ? '#D4D4D4' : '#737373', fontWeight: '500', paddingLeft: '14px' }}>
-              Serafín Zamora → Los Pensamientos
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── SECCIÓN 1: MAPA EN VIVO DEL CONDUCTOR ── */}
+      {/* ÔöÇÔöÇ SECCI├ôN 1: MAPA EN VIVO DEL CONDUCTOR ÔöÇÔöÇ */}
       <section style={{
         position: 'relative',
         borderRadius: '16px',
@@ -1336,7 +996,7 @@ export default function PaginaConductorColectivo() {
             gap: '6px',
           }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#FACC15' }} />
-            {lineaActual ? `${lineaActual.nombre} • ${sentidoRuta.toUpperCase()}` : 'Línea'}
+            {lineaActual ? `${lineaActual.nombre} ÔÇó ${sentidoRuta.toUpperCase()}` : 'L├¡nea'}
           </div>
 
           <div style={{
@@ -1374,39 +1034,9 @@ export default function PaginaConductorColectivo() {
           </div>
         </div>
 
-        {/* Botón flotante para ver recorrido completo */}
+        {/* Bot├│n flotante para centrar mapa en el colectivo */}
         <button
-          onClick={() => setDisparadorEncuadrarRuta((prev) => prev + 1)}
-          style={{
-            position: 'absolute',
-            bottom: '16px',
-            left: '16px',
-            zIndex: 10,
-            background: 'rgba(18, 18, 18, 0.92)',
-            backdropFilter: 'blur(8px)',
-            color: '#FACC15',
-            border: '1.5px solid rgba(250, 204, 21, 0.4)',
-            borderRadius: '50px',
-            padding: '8px 14px',
-            fontSize: '12px',
-            fontWeight: '800',
-            cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            transition: 'transform 0.15s',
-          }}
-          onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.94)')}
-          onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-        >
-          <IconoParada size={15} color="#FACC15" />
-          <span>Ver recorrido</span>
-        </button>
-
-        {/* Botón flotante para centrar mapa en el colectivo */}
-        <button
-          onClick={centrarMiAuto}
+          onClick={() => setDisparadorCentrado((prev) => prev + 1)}
           style={{
             position: 'absolute',
             bottom: '16px',
@@ -1444,14 +1074,12 @@ export default function PaginaConductorColectivo() {
             miPatente={choferSesion?.vehiculo?.patente || choferSesion?.patente || ''}
             pasajerosEnEspera={pasajerosEnEspera}
             disparadorCentrado={disparadorCentrado}
-            disparadorEncuadrarRuta={disparadorEncuadrarRuta}
-            sentidoSeleccionado={sentidoRuta === 'regreso' ? 'regreso' : 'ida'}
             altura="300px"
           />
         </div>
       </section>
 
-      {/* ── SECCIÓN 2: PASAJEROS EN RUTA Y ACCIÓN RÁPIDA DE ABORDO / COBRO (INMEDIATAMENTE DEBAJO DEL MAPA) ── */}
+      {/* ÔöÇÔöÇ SECCI├ôN 2: PASAJEROS EN RUTA Y ACCI├ôN R├üPIDA DE ABORDO / COBRO (INMEDIATAMENTE DEBAJO DEL MAPA) ÔöÇÔöÇ */}
       <section style={{
         background: '#121212',
         borderRadius: '16px',
@@ -1463,7 +1091,7 @@ export default function PaginaConductorColectivo() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <IconoPasajero size={18} color="#FACC15" />
             <h2 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#FFFFFF' }}>
-              Pasajeros en Ruta (Acción Rápida de Abordaje)
+              Pasajeros en Ruta (Acci├│n R├ípida de Abordaje)
             </h2>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1481,7 +1109,7 @@ export default function PaginaConductorColectivo() {
                 gap: '5px',
               }}>
                 <IconoMicrofono size={13} color="#FACC15" />
-                <span>Di &quot;A bordo&quot; o pulsa el botón</span>
+                <span>Di &quot;A bordo&quot; o pulsa el bot├│n</span>
               </span>
             )}
             <span style={{
@@ -1529,14 +1157,14 @@ export default function PaginaConductorColectivo() {
                 }}
               >
                 {anunciandoAbordajeVoz ? (
-                  <span style={{ fontSize: '18px' }}>🔊</span>
+                  <span style={{ fontSize: '18px' }}>­ƒöè</span>
                 ) : (
                   <IconoMicrofono size={18} color="#FACC15" />
                 )}
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: '11px', fontWeight: '800', color: anunciandoAbordajeVoz ? '#93C5FD' : '#FACC15', letterSpacing: '0.5px' }}>
-                  {anunciandoAbordajeVoz ? 'ANUNCIANDO INSTRUCCIONES DE ABORDAJE...' : 'CONTROL POR VOZ ACTIVO — DI "A BORDO" AL SUBIR'}
+                  {anunciandoAbordajeVoz ? 'ANUNCIANDO INSTRUCCIONES DE ABORDAJE...' : 'CONTROL POR VOZ ACTIVO ÔÇö DI "A BORDO" AL SUBIR'}
                 </div>
                 <div
                   style={{
@@ -1556,10 +1184,10 @@ export default function PaginaConductorColectivo() {
                   }}
                 >
                   {anunciandoAbordajeVoz
-                    ? '🔊 "Reserva aceptada. Di a bordo cuando suba el pasajero"'
+                    ? '­ƒöè "Reserva aceptada. Di a bordo cuando suba el pasajero"'
                     : textoDetectadoAbordaje
                     ? `Escuchado: "${textoDetectadoAbordaje}"`
-                    : 'Esperando tu voz ("A bordo", "Subió")...'}
+                    : 'Esperando tu voz ("A bordo", "Subi├│")...'}
                 </div>
               </div>
             </div>
@@ -1859,7 +1487,7 @@ export default function PaginaConductorColectivo() {
                         </button>
                       </div>
                     ) : (
-                      /* BOTÓN DESTACADO "SUBIR A BORDO" */
+                      /* BOT├ôN DESTACADO "SUBIR A BORDO" */
                       <button
                         onClick={() => confirmarAbordaje(reserva.id)}
                         disabled={cargandoAccion === reserva.id}
@@ -1910,7 +1538,7 @@ export default function PaginaConductorColectivo() {
         )}
       </section>
 
-      {/* ── SECCIÓN 3: BOTÓN DE TURNO (PONER EN LÍNEA / DESCONECTARME) ── */}
+      {/* ÔöÇÔöÇ SECCI├ôN 3: BOT├ôN DE TURNO (PONER EN L├ìNEA / DESCONECTARME) ÔöÇÔöÇ */}
       <div style={{ marginBottom: '10px' }}>
         <button
           onClick={alternarServicio}
@@ -1937,11 +1565,11 @@ export default function PaginaConductorColectivo() {
           }}
         >
           <IconoPuntoEstado activo={enServicio} size={12} />
-          <span>{enServicio ? 'DESCONECTARME' : 'PONER EN LÍNEA'}</span>
+          <span>{enServicio ? 'DESCONECTARME' : 'PONER EN L├ìNEA'}</span>
         </button>
       </div>
 
-      {/* ── SECCIÓN 4: CONTROL RÁPIDO DE ASIENTOS (BARRA SIMPLE: ASIENTOS : + O -) ── */}
+      {/* ÔöÇÔöÇ SECCI├ôN 4: CONTROL R├üPIDO DE ASIENTOS (BARRA SIMPLE: ASIENTOS : + O -) ÔöÇÔöÇ */}
       <div
         style={{
           display: 'flex',
@@ -1996,7 +1624,7 @@ export default function PaginaConductorColectivo() {
             }}
             onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
           >
-            −
+            ÔêÆ
           </button>
 
           <button
@@ -2032,7 +1660,7 @@ export default function PaginaConductorColectivo() {
         </div>
       </div>
 
-      {/* ── SECCIÓN 6: CONFIGURACIÓN DE COBROS (RUTPAY Y MERCADOPAGO) ── */}
+      {/* ÔöÇÔöÇ SECCI├ôN 6: CONFIGURACI├ôN DE COBROS (RUTPAY Y MERCADOPAGO) ÔöÇÔöÇ */}
       {mostrarConfigCobro && (
         <section style={{
           background: '#121212',
@@ -2044,7 +1672,7 @@ export default function PaginaConductorColectivo() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <IconoTarjeta size={16} color="#FACC15" />
-              <span>Métodos de Cobro Electrónico</span>
+              <span>M├®todos de Cobro Electr├│nico</span>
             </h3>
             <button
               onClick={() => setMostrarConfigCobro(false)}
@@ -2054,13 +1682,13 @@ export default function PaginaConductorColectivo() {
             </button>
           </div>
           <p style={{ fontSize: '12px', color: '#A3A3A3', margin: '0 0 14px 0' }}>
-            Permite a los pasajeros transferirte vía RutPay BancoEstado o pagarte con MercadoPago directamente en el colectivo.
+            Permite a los pasajeros transferirte v├¡a RutPay BancoEstado o pagarte con MercadoPago directamente en el colectivo.
           </p>
 
           <form onSubmit={guardarDatosCobro} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12px', color: '#D4D4D4', marginBottom: '4px', fontWeight: '600' }}>
-                Teléfono para RutPay BancoEstado:
+                Tel├®fono para RutPay BancoEstado:
               </label>
               <input
                 type="text"
@@ -2126,7 +1754,7 @@ export default function PaginaConductorColectivo() {
         </section>
       )}
 
-      {/* ── MODAL MANOS LIBRES: ALERTA DE VOZ Y BOTONES GIGANTES (LEY NO CHAT 21.377) ── */}
+      {/* ÔöÇÔöÇ MODAL MANOS LIBRES: ALERTA DE VOZ Y BOTONES GIGANTES (LEY NO CHAT 21.377) ÔöÇÔöÇ */}
       {solicitudActiva && (
         <AlertaVozReserva
           solicitud={solicitudActiva}
@@ -2136,7 +1764,7 @@ export default function PaginaConductorColectivo() {
         />
       )}
 
-      {/* ── MODAL: PASAJERO QUIERE PAGAR Y BAJARSE ── */}
+      {/* ÔöÇÔöÇ MODAL: PASAJERO QUIERE PAGAR Y BAJARSE ÔöÇÔöÇ */}
       {pagoPendiente && (
         <div
           style={{
@@ -2207,7 +1835,7 @@ export default function PaginaConductorColectivo() {
                 Pasajero {pagoPendiente.pasajeroNombre}
               </h2>
               <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#A3A3A3' }}>
-                Desea pagar y descender del vehículo
+                Desea pagar y descender del veh├¡culo
               </p>
             </div>
 
@@ -2241,7 +1869,7 @@ export default function PaginaConductorColectivo() {
               </div>
             </div>
 
-            {/* RETROALIMENTACIÓN DE VOZ EN TIEMPO REAL: SÍ / NO */}
+            {/* RETROALIMENTACI├ôN DE VOZ EN TIEMPO REAL: S├ì / NO */}
             <div
               style={{
                 display: 'flex',
@@ -2251,7 +1879,7 @@ export default function PaginaConductorColectivo() {
                 background: '#171717',
                 borderRadius: '14px',
                 border: '2px solid #FACC15',
-                boxShadow: textoDetectadoPago.includes('SÍ')
+                boxShadow: textoDetectadoPago.includes('S├ì')
                   ? '0 0 25px rgba(250, 204, 21, 0.7)'
                   : textoDetectadoPago.includes('NO')
                   ? '0 0 25px rgba(239, 68, 68, 0.7)'
@@ -2265,7 +1893,7 @@ export default function PaginaConductorColectivo() {
                     width: '10px',
                     height: '10px',
                     borderRadius: '50%',
-                    background: textoDetectadoPago.includes('SÍ')
+                    background: textoDetectadoPago.includes('S├ì')
                       ? '#22C55E'
                       : textoDetectadoPago.includes('NO')
                       ? '#EF4444'
@@ -2277,14 +1905,14 @@ export default function PaginaConductorColectivo() {
                   }}
                 />
                 <span style={{ fontSize: '11px', fontWeight: '800', color: '#FACC15', letterSpacing: '0.6px', textTransform: 'uppercase' }}>
-                  {textoDetectadoPago ? 'VOZ DETECTADA' : anunciandoPagoVoz ? 'ANUNCIANDO COBRO...' : 'MICRÓFONO EN VIVO — DI TU RESPUESTA:'}
+                  {textoDetectadoPago ? 'VOZ DETECTADA' : anunciandoPagoVoz ? 'ANUNCIANDO COBRO...' : 'MICR├ôFONO EN VIVO ÔÇö DI TU RESPUESTA:'}
                 </span>
               </div>
               <div
                 style={{
                   fontSize: '18px',
                   fontWeight: '900',
-                  color: textoDetectadoPago.includes('SÍ')
+                  color: textoDetectadoPago.includes('S├ì')
                     ? '#FACC15'
                     : textoDetectadoPago.includes('NO')
                     ? '#EF4444'
@@ -2297,11 +1925,11 @@ export default function PaginaConductorColectivo() {
                   textShadow: (textoDetectadoPago || !anunciandoPagoVoz) ? '0 0 12px rgba(250, 204, 21, 0.5)' : 'none',
                 }}
               >
-                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? '🔊 Cliente solicita pagar. ¿Liberamos asiento?' : '🎙️ Escuchando... Di "SÍ" o "NO"'}
+                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? '­ƒöè Cliente solicita pagar. ┬┐Liberamos asiento?' : '­ƒÄÖ´©Å Escuchando... Di "S├ì" o "NO"'}
               </div>
             </div>
 
-            {/* BOTONES GIGANTES: SÍ / NO */}
+            {/* BOTONES GIGANTES: S├ì / NO */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
               <button
                 onClick={() => confirmarPagoPasajero(pagoPendiente.reservaId)}
