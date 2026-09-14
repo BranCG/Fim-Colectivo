@@ -5,6 +5,7 @@ import { io } from '../index';
 import { calculateDistance } from '../utils/pricing';
 import { onlineDrivers } from '../socket/handlers';
 import { consultarPatenteMtt } from '../utils/mttValidator';
+import { notificarConductor, notificarPasajero } from '../utils/fcm';
 
 // Mapa de solicitudes dirigidas en tránsito con cascada automática
 export interface SolicitudDirigidaActiva {
@@ -363,6 +364,14 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
         direccionSubida: nuevaReserva.direccionSubida,
       });
     }
+
+    // FCM: notificar al conductor por push (para cuando la app está en background)
+    notificarConductor(
+      conductorId,
+      'Nueva solicitud de asiento',
+      `${nuevaReserva.pasajero.name} solicita ${cantidadAsientos} asiento(s)${direccionSubida ? ` en ${direccionSubida}` : ''}`,
+      { reservaId: nuevaReserva.id, tipo: 'nueva_reserva' }
+    );
 
     respuesta.status(201).json({ reserva: nuevaReserva });
   } catch (error) {
@@ -847,7 +856,7 @@ router.post('/reservas/:id/cancelar', requireAuth, async (peticion: Request, res
     const { id } = peticion.params;
     const reserva = await prisma.reservaAsiento.findUnique({
       where: { id: String(id) },
-      include: { conductor: true },
+      include: { conductor: true, pasajero: true },
     });
 
     if (!reserva) {
@@ -905,6 +914,16 @@ router.post('/reservas/:id/cancelar', requireAuth, async (peticion: Request, res
         motivo: 'cancelado_chofer',
         mensaje: 'El conductor canceló la reserva. Puedes solicitar otro automóvil disponible en el mapa.',
       });
+    }
+
+    // FCM: avisar al conductor que el pasajero canceló (si fue el pasajero quien canceló)
+    if (reserva.conductorId) {
+      notificarConductor(
+        reserva.conductorId,
+        'Reserva cancelada',
+        `${reserva.pasajero?.name || 'Un pasajero'} canceló su reserva de asiento.`,
+        { reservaId: String(id), tipo: 'reserva_cancelada' }
+      );
     }
 
     respuesta.json({ reserva: reservaActualizada, mensaje: 'Reserva cancelada' });
@@ -1324,6 +1343,14 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
         reserva: reservaActualizada,
         asientosOcupados: choferActualizado.asientosOcupados,
       });
+
+      // FCM: notificar al pasajero que su reserva fue aceptada
+      notificarPasajero(
+        reserva.pasajeroId,
+        'Reserva confirmada',
+        `${reserva.conductor?.name || 'Tu conductor'} aceptó tu reserva. El colectivo ${reserva.conductor?.vehiclePlate} está en camino.`,
+        { reservaId: String(id), tipo: 'reserva_aceptada' }
+      );
 
       return respuesta.json({
         ok: true,

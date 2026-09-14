@@ -8,6 +8,7 @@ import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo } from '@/components/map/ColectivoMap';
 import { calcularInfoLlegada } from '@/lib/geo';
 import { usePantallaEncendida } from '@/lib/usePantallaEncendida';
+import { useFcmToken } from '@/lib/useFcmToken';
 import {
   IconoColectivo,
   IconoCheck,
@@ -127,6 +128,9 @@ export default function PaginaPasajeroColectivo() {
 
   // Mantener pantalla encendida siempre (pasajero activo)
   usePantallaEncendida(true);
+
+  // Inicializar y registrar token FCM para notificaciones push en segundo plano
+  useFcmToken();
 
   // 1. Validar autenticación
   useEffect(() => {
