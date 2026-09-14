@@ -33,7 +33,7 @@ import {
 // Cargar mapa dinámico sin SSR para Leaflet
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
 import AlertaVozReserva, { DatosSolicitudDirigida } from '@/components/driver/AlertaVozReserva';
-import { reproducirSonido, hablarTexto, desbloquearAudioYVoz, iniciarEscuchaVoz, detenerVoz, bloquearAbordoTemporal } from '@/lib/voice';
+import { reproducirSonido, hablarTexto, desbloquearAudioYVoz, iniciarEscuchaVoz, detenerVoz, bloquearAbordoTemporal, forzarReinicioVoz } from '@/lib/voice';
 
 interface SolicitudPagoActiva {
   reservaId: string;
@@ -566,15 +566,15 @@ export default function PaginaConductorColectivo() {
         setMensajeExito(`Reserva aceptada: ${nombreConfirmado} confirmado.`);
         reproducirSonido('exito');
 
-        // Locución guiada: Di "A bordo" cuando suba el pasajero
+        // Locución guiada sin auto-disparo de trigger
         const locucionConfirmada =
           nombreConfirmado && nombreConfirmado !== 'el pasajero'
-            ? `Reserva aceptada. Di a bordo cuando suba ${nombreConfirmado}.`
-            : 'Reserva aceptada. Di a bordo cuando suba el pasajero.';
+            ? `Reserva aceptada. Indica cuando suba ${nombreConfirmado}.`
+            : 'Reserva aceptada. Indica cuando suba el pasajero.';
 
         setAnunciandoAbordajeVoz(true);
         setTimeout(() => {
-          bloquearAbordoTemporal(8000);
+          bloquearAbordoTemporal(1200);
           hablarTexto(locucionConfirmada, () => {
             setAnunciandoAbordajeVoz(false);
           });
@@ -635,7 +635,7 @@ export default function PaginaConductorColectivo() {
       setMensajeExito('Pasajero a bordo. Asiento registrado en rojo.');
       reproducirSonido('exito');
       setTimeout(() => {
-        bloquearAbordoTemporal(3000);
+        bloquearAbordoTemporal(1000);
         hablarTexto('Pasajero a bordo');
       }, 450);
     } catch (error) {
@@ -683,6 +683,48 @@ export default function PaginaConductorColectivo() {
       }
     };
   }, [reservasPendientes, solicitudActiva, pagoPendiente]);
+
+  // Reactivar micrófono si el chofer regresa a primer plano mientras un pasajero solicita pagar
+  useEffect(() => {
+    const alReanudarPrimerPlanoPago = () => {
+      if (!document.hidden && pagoPendiente) {
+        console.log('[Driver] App maximizada con solicitud de pago activa. Reactivando escucha...');
+        reproducirSonido('alerta');
+        forzarReinicioVoz();
+        if (escuchaPagoRef.current) {
+          try {
+            escuchaPagoRef.current.detener();
+          } catch {}
+        }
+        escuchaPagoRef.current = iniciarEscuchaVoz({
+          id: 'escucha-pago-conductor',
+          onSi: () => {
+            setTextoDetectadoPago('¡SÍ DETECTADO!');
+            confirmarPagoPasajero(pagoPendiente.reservaId);
+          },
+          onNo: () => {
+            setTextoDetectadoPago('¡NO DETECTADO!');
+            rechazarPagoPasajero();
+          },
+          onTextoDetectado: (txt) => {
+            setTextoDetectadoPago(txt);
+          },
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', alReanudarPrimerPlanoPago);
+    document.addEventListener('resume', alReanudarPrimerPlanoPago);
+    window.addEventListener('focus', alReanudarPrimerPlanoPago);
+    window.addEventListener('pageshow', alReanudarPrimerPlanoPago);
+
+    return () => {
+      document.removeEventListener('visibilitychange', alReanudarPrimerPlanoPago);
+      document.removeEventListener('resume', alReanudarPrimerPlanoPago);
+      window.removeEventListener('focus', alReanudarPrimerPlanoPago);
+      window.removeEventListener('pageshow', alReanudarPrimerPlanoPago);
+    };
+  }, [pagoPendiente]);
 
   // Rechazar o cancelar solicitud de pago del pasajero
   const rechazarPagoPasajero = () => {
@@ -1760,6 +1802,8 @@ export default function PaginaConductorColectivo() {
       {/* ── MODAL: PASAJERO QUIERE PAGAR Y BAJARSE ── */}
       {pagoPendiente && (
         <div
+          onClick={() => forzarReinicioVoz()}
+          onTouchStart={() => forzarReinicioVoz()}
           style={{
             position: 'fixed',
             inset: 0,

@@ -227,9 +227,9 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
   esParadaIntencional = false;
 
   // Si la locución contiene instrucciones de abordaje ("a bordo", "suba"),
-  // bloquear el comando "A bordo" preventivamente por 10s para evitar eco del parlante
+  // bloquear el comando "A bordo" solo por un margen mínimo (1.5s) para evitar eco residual
   if (/bordo|suba|auto/i.test(textoLimpio)) {
-    GestorReconocimientoVoz.obtener().bloquearAbordoTemporal(10000);
+    GestorReconocimientoVoz.obtener().bloquearAbordoTemporal(1500);
   }
 
   // Pausar reconocimiento mientras se emite voz para evitar que el hardware
@@ -415,7 +415,7 @@ class GestorReconocimientoVoz {
     return GestorReconocimientoVoz.instancia;
   }
 
-  bloquearAbordoTemporal(duracionMs = 4000) {
+  bloquearAbordoTemporal(duracionMs = 1500) {
     this.bloqueoAbordoHasta = Date.now() + duracionMs;
   }
 
@@ -709,19 +709,38 @@ class GestorReconocimientoVoz {
             }
 
             // 2. Comando: A BORDO (sube pasajero)
+            // Cubre todas las variaciones acústicas y fonéticas comunes ("abordo", "agordo", "a gordo", "subió", "listo", etc.)
             const esAbordo =
+              normalizado === 'a bordo' ||
+              normalizado === 'abordo' ||
+              normalizado === 'agordo' ||
+              normalizado === 'a gordo' ||
+              normalizado === 'bordo' ||
+              normalizado === 'gordo' ||
+              normalizado === 'subio' ||
+              normalizado === 'subió' ||
+              normalizado === 'subieron' ||
               normalizado.includes('bordo') ||
+              normalizado.includes('abordo') ||
+              normalizado.includes('agordo') ||
+              normalizado.includes('a gordo') ||
               normalizado.includes('subio') ||
+              normalizado.includes('subieron') ||
               normalizado.includes('sube') ||
               normalizado.includes('arriba') ||
               normalizado.includes('adentro') ||
-              normalizado.includes('auto') ||
               palabras.includes('bordo') ||
+              palabras.includes('abordo') ||
+              palabras.includes('agordo') ||
+              palabras.includes('gordo') ||
               palabras.includes('subio') ||
+              palabras.includes('subieron') ||
               palabras.includes('sube') ||
               palabras.includes('arriba') ||
+              palabras.includes('adentro') ||
               palabras.includes('listo') ||
-              /(^|\s)(a\s*bordo|bordo|subi[oó]|sube|subieron|subir|arriba|adentro|al\s*auto|aborde|listo)($|\s)/i.test(
+              palabras.includes('vamos') ||
+              /(^|\s)(a\s*bordo|abordo|agordo|a\s*gordo|bordo|gordo|subi[oó]|sube|subieron|subir|ya\s*subi[oó]|ya\s*subieron|arriba|adentro|al\s*auto|aborde|listo|vamos|nos\s*fuimos)($|\s)/i.test(
                 normalizado
               );
 
@@ -856,7 +875,7 @@ export function iniciarEscuchaVoz(opciones: OpcionesEscucha): { detener: () => v
  * Bloquea temporalmente el comando de voz "A bordo" durante locuciones del sistema
  * para evitar que el altavoz active su propio comando por eco acústico.
  */
-export function bloquearAbordoTemporal(ms = 4000) {
+export function bloquearAbordoTemporal(ms = 1500) {
   if (typeof window === 'undefined') return;
   GestorReconocimientoVoz.obtener().bloquearAbordoTemporal(ms);
 }

@@ -710,6 +710,17 @@ router.post('/reservas/:id/abordar', requireAuth, requireRole('driver', 'admin')
       });
     }
 
+    // FCM: notificar al pasajero confirmación de abordaje
+    notificarPasajero(
+      reserva.pasajeroId,
+      'A bordo del colectivo',
+      'El conductor ha registrado tu abordaje. ¡Buen viaje!',
+      {
+        tipo: 'reserva_abordada',
+        reservaId: String(id),
+      }
+    ).catch((err) => console.error('[FCM] Error notificando abordaje al pasajero:', err));
+
     respuesta.json({ reserva: reservaActualizada, chofer: choferActualizado });
   } catch (error) {
     console.error('Error al marcar abordaje:', error);
@@ -766,6 +777,21 @@ router.post('/reservas/:id/solicitar-pago', requireAuth, async (peticion: Reques
       reservaId: id,
       estado: 'pagando',
     });
+
+    // FCM: notificar al conductor por push si tiene la app minimizada en segundo plano
+    const metodoTexto = reserva.metodoPago === 'rutpay' ? 'RutPay' : reserva.metodoPago === 'mercadopago' ? 'MercadoPago' : 'Efectivo';
+    notificarConductor(
+      reserva.conductorId,
+      'Solicitud de pago y descenso',
+      `${reserva.pasajero.name} solicita pagar (${metodoTexto}) y descender del vehículo.`,
+      {
+        tipo: 'pago_solicitado',
+        reservaId: String(id),
+        pasajeroNombre: reserva.pasajero.name,
+        cantidadAsientos: String(reserva.cantidadAsientos),
+        metodoPago: reserva.metodoPago,
+      }
+    ).catch((err) => console.error('[FCM] Error notificando pago al conductor:', err));
 
     respuesta.json({ ok: true, reserva: reservaActualizada });
   } catch (error) {
@@ -837,6 +863,17 @@ router.post('/reservas/:id/confirmar-pago', requireAuth, requireRole('driver', '
       reservaId: id,
       asientosOcupados: nuevosOcupados,
     });
+
+    // FCM: notificar al pasajero confirmación de pago
+    notificarPasajero(
+      reserva.pasajeroId,
+      'Viaje finalizado',
+      'El conductor ha confirmado tu pago. ¡Gracias por viajar con Fim Colectivo!',
+      {
+        tipo: 'pago_confirmado',
+        reservaId: String(id),
+      }
+    ).catch((err) => console.error('[FCM] Error notificando fin de viaje al pasajero:', err));
 
     respuesta.json({
       ok: true,
@@ -1051,6 +1088,19 @@ export function despacharASiguienteConductor(reservaId: string) {
         direccionSubida: solicitud.direccionSubida,
       });
     }
+
+    // FCM: notificar al conductor por push si tiene la app minimizada
+    notificarConductor(
+      driverId,
+      'Nueva solicitud de viaje',
+      `${solicitud.nombrePasajero} solicita ${solicitud.cantidadAsientos} asiento(s)${solicitud.direccionSubida ? ` en ${solicitud.direccionSubida}` : ''}`,
+      {
+        reservaId,
+        tipo: 'solicitud_dirigida',
+        nombrePasajero: solicitud.nombrePasajero,
+        cantidadAsientos: String(solicitud.cantidadAsientos),
+      }
+    ).catch((err) => console.error('[FCM] Error notificando conductor asignado:', err));
 
     // Notificar al pasajero qué móvil en camino está evaluando
     io.to(`pasajero:${solicitud.pasajeroId}`).emit('colectivo:asignando-a-chofer', {
