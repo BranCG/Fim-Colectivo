@@ -14,6 +14,8 @@ import {
   IconoMicrofono,
   IconoAuto,
   IconoTarjeta,
+  IconoCheck,
+  IconoCruz,
 } from '@/components/icons/Iconos';
 
 export default function Home() {
@@ -708,28 +710,28 @@ export default function Home() {
 
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#737373', fontWeight: 900, fontSize: '1.1rem' }}>✕</span>
+                  <IconoCruz size={18} color="#737373" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div style={{ fontSize: '0.9rem', color: '#A3A3A3' }}>
                     <strong style={{ color: '#FFFFFF' }}>Antes:</strong> Esperar hasta 40 minutos en la esquina con lluvia, frío o de noche sin saber si pasará el colectivo.
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#FACC15', fontWeight: 900, fontSize: '1.1rem' }}>✓</span>
+                  <IconoCheck size={18} color="#FACC15" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div style={{ fontSize: '0.9rem', color: '#FFFFFF' }}>
                     <strong style={{ color: '#FACC15' }}>Con FIM:</strong> Ves en el mapa que viene a ~4 minutos, sabes la patente y sales justo a tiempo a la parada.
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#737373', fontWeight: 900, fontSize: '1.1rem' }}>✕</span>
+                  <IconoCruz size={18} color="#737373" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div style={{ fontSize: '0.9rem', color: '#A3A3A3' }}>
                     <strong style={{ color: '#FFFFFF' }}>Antes:</strong> Hacer parar con la mano y ver que el chofer te hace señas de que viene lleno.
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#FACC15', fontWeight: 900, fontSize: '1.1rem' }}>✓</span>
+                  <IconoCheck size={18} color="#FACC15" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div style={{ fontSize: '0.9rem', color: '#FFFFFF' }}>
                     <strong style={{ color: '#FACC15' }}>Con FIM:</strong> Ves cuántos asientos libres trae el colectivo y aseguras tu cupo antes de que pase.
                   </div>
@@ -756,28 +758,28 @@ export default function Home() {
 
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#737373', fontWeight: 900, fontSize: '1.1rem' }}>✕</span>
+                  <IconoCruz size={18} color="#737373" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div style={{ fontSize: '0.9rem', color: '#A3A3A3' }}>
                     <strong style={{ color: '#FFFFFF' }}>Antes:</strong> Vueltas vacías consumiendo bencina y esperando ver si alguien levanta la mano.
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#FACC15', fontWeight: 900, fontSize: '1.1rem' }}>✓</span>
+                  <IconoCheck size={18} color="#FACC15" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div style={{ fontSize: '0.9rem', color: '#FFFFFF' }}>
                     <strong style={{ color: '#FACC15' }}>Con FIM:</strong> Los pasajeros te reservan en ruta y optimizas el llenado de tus 4 cupos en cada viaje.
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#737373', fontWeight: 900, fontSize: '1.1rem' }}>✕</span>
+                  <IconoCruz size={18} color="#737373" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div style={{ fontSize: '0.9rem', color: '#A3A3A3' }}>
                     <strong style={{ color: '#FFFFFF' }}>Antes:</strong> Distracción o multas por manipular el celular al volante (Ley No Chat).
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#FACC15', fontWeight: 900, fontSize: '1.1rem' }}>✓</span>
+                  <IconoCheck size={18} color="#FACC15" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div style={{ fontSize: '0.9rem', color: '#FFFFFF' }}>
                     <strong style={{ color: '#FACC15' }}>Con FIM:</strong> Asistente auditivo neuronal lee la reserva y confirmas con tu voz diciendo <em>&quot;SÍ&quot;</em> sin mirar la pantalla.
                   </div>

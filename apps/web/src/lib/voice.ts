@@ -199,6 +199,15 @@ export function hablarTexto(texto: string, alFinalizar?: () => void) {
     return;
   }
 
+  // Si la aplicación está en segundo plano (minimizada), Android WebView bloquea/pausa
+  // el Audio y SpeechSynthesis, causando congelamiento de 7 a 15 segundos.
+  // En segundo plano completamos de inmediato para no demorar la activación del sistema.
+  if (typeof document !== 'undefined' && document.hidden) {
+    console.log('[Voz] Solicitud de voz en segundo plano (minimizada). Liberando callback de inmediato.');
+    if (alFinalizar) alFinalizar();
+    return;
+  }
+
   const textoLimpio = texto.trim();
   if (!textoLimpio) {
     if (alFinalizar) alFinalizar();
@@ -397,6 +406,7 @@ class GestorReconocimientoVoz {
   private ultimoDisparoComando = 0;
   private timerReintento: NodeJS.Timeout | null = null;
   private bloqueoAbordoHasta = 0;
+  private tiempoUltimoError = 0;
 
   static obtener(): GestorReconocimientoVoz {
     if (!GestorReconocimientoVoz.instancia) {
@@ -410,7 +420,58 @@ class GestorReconocimientoVoz {
   }
 
   private constructor() {
-    // Inicialización bajo demanda
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const alReanudarPrimerPlano = () => {
+        if (!document.hidden) {
+          console.log('[Voz Chofer] Ventana activa en primer plano detectada (visibilitychange/focus/resume). Reactivando motor de voz...');
+          // Despertar AudioContext y Synthesis si Android los suspendió
+          const ctx = obtenerAudioContext();
+          if (ctx && ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+          }
+          if ('speechSynthesis' in window) {
+            try {
+              window.speechSynthesis.resume();
+            } catch {}
+          }
+
+          if (this.suscriptores.size > 0) {
+            this.escuchandoDeseado = true;
+            this.silenciadoPorHabla = false;
+            if (this.timerReintento) clearTimeout(this.timerReintento);
+            this.timerReintento = setTimeout(() => {
+              this.iniciarCiclo();
+            }, 300);
+          }
+        } else {
+          // En segundo plano, pausar timers para no saturar Android WebView
+          if (this.timerReintento) {
+            clearTimeout(this.timerReintento);
+            this.timerReintento = null;
+          }
+        }
+      };
+
+      document.addEventListener('visibilitychange', alReanudarPrimerPlano);
+      document.addEventListener('resume', alReanudarPrimerPlano);
+      window.addEventListener('focus', alReanudarPrimerPlano);
+      window.addEventListener('pageshow', alReanudarPrimerPlano);
+    }
+  }
+
+  forzarReinicio() {
+    console.log('[Voz Chofer] Forzando reinicio manual del reconocimiento de voz...');
+    this.escuchandoDeseado = true;
+    this.silenciadoPorHabla = false;
+    if (this.timerReanudarHabla) {
+      clearTimeout(this.timerReanudarHabla);
+      this.timerReanudarHabla = null;
+    }
+    if (this.timerReintento) {
+      clearTimeout(this.timerReintento);
+      this.timerReintento = null;
+    }
+    this.iniciarCiclo();
   }
 
   pausarPorHabla() {
@@ -681,11 +742,28 @@ class GestorReconocimientoVoz {
 
       rec.onerror = (err: any) => {
         console.warn('[Voz Chofer] Evento onerror SpeechRecognition:', err?.error);
-        if (err?.error === 'not-allowed' || err?.error === 'service-not-allowed') {
-          this.escuchandoDeseado = false;
-          this.notificarError('Permiso de micrófono denegado');
+        this.tiempoUltimoError = Date.now();
+
+        // Si la app está en segundo plano (minimizada), Android suspende el micrófono por política del sistema.
+        // NO debemos apagar escuchandoDeseado porque se reanudará cuando el usuario vuelva a primer plano.
+        if (typeof document !== 'undefined' && document.hidden) {
+          console.log('[Voz Chofer] Micrófono suspendido por segundo plano en Android. Se reactivará al regresar.');
+          this.estaCorriendo = false;
           return;
         }
+
+        if (err?.error === 'not-allowed' || err?.error === 'service-not-allowed' || err?.error === 'audio-capture') {
+          this.estaCorriendo = false;
+          // Reintentar de forma suave tras 1.2s para permitir que Android restaure el hardware de audio
+          if (this.timerReintento) clearTimeout(this.timerReintento);
+          this.timerReintento = setTimeout(() => {
+            if (this.escuchandoDeseado && this.suscriptores.size > 0 && !document.hidden) {
+              this.iniciarCiclo();
+            }
+          }, 1200);
+          return;
+        }
+
         this.estaCorriendo = false;
       };
 
@@ -697,12 +775,24 @@ class GestorReconocimientoVoz {
         // reanudarTrasHabla se encargará de abrir el ciclo limpio cuando finalice el audio
         if (this.silenciadoPorHabla) return;
 
+        // Si la app está en segundo plano, no reiniciar en bucle hasta que vuelva a primer plano
+        if (typeof document !== 'undefined' && document.hidden) {
+          return;
+        }
+
+        // Si hubo un error reciente (p.ej. not-allowed o audio-capture al maximizar),
+        // no machacar el timerReintento con 150ms: respetar el periodo de enfriamiento
+        const tiempoDesdeError = Date.now() - this.tiempoUltimoError;
+        if (tiempoDesdeError < 1200) {
+          return;
+        }
+
         // Reinicio automático con instancia limpia para Android
         if (this.escuchandoDeseado && this.suscriptores.size > 0) {
           if (this.timerReintento) clearTimeout(this.timerReintento);
           this.timerReintento = setTimeout(() => {
             this.iniciarCiclo();
-          }, 100);
+          }, 150);
         }
       };
 
@@ -770,3 +860,22 @@ export function bloquearAbordoTemporal(ms = 4000) {
   if (typeof window === 'undefined') return;
   GestorReconocimientoVoz.obtener().bloquearAbordoTemporal(ms);
 }
+
+/**
+ * Fuerza la reactivación inmediata del micrófono y hardware de audio
+ * Útil cuando la app regresa de segundo plano o tras un toque en la pantalla
+ */
+export function forzarReinicioVoz() {
+  if (typeof window === 'undefined') return;
+  const ctx = obtenerAudioContext();
+  if (ctx && ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+  if ('speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.resume();
+    } catch {}
+  }
+  GestorReconocimientoVoz.obtener().forzarReinicio();
+}
+
