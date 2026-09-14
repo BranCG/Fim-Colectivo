@@ -51,6 +51,12 @@ export default api;
 export function saveSession(token: string, user: object) {
   localStorage.setItem('fim_colectivo_token', token);
   localStorage.setItem('fim_colectivo_user', JSON.stringify(user));
+  const fcmToken = localStorage.getItem('fim_fcm_token');
+  if (fcmToken) {
+    api.post('/fcm/token', { token: fcmToken }).catch((err) => {
+      console.warn('[FCM] Error sincronizando token post-login:', err);
+    });
+  }
 }
 
 export function getSession() {

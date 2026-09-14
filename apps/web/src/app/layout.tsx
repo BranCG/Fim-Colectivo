@@ -21,10 +21,15 @@ export const viewport: Viewport = {
   themeColor: '#00E5A0',
 };
 
+import FcmInitializer from '@/components/FcmInitializer';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className={inter.variable}>
-      <body>{children}</body>
+      <body>
+        <FcmInitializer />
+        {children}
+      </body>
     </html>
   );
 }
