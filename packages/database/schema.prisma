@@ -29,6 +29,8 @@ model User {
   trips            Trip[]           @relation("PassengerTrips")
   reservasAsiento  ReservaAsiento[] @relation("PasajeroReservas")
 
+  fcmToken         String?          // Token FCM del dispositivo para notificaciones push
+
   @@map("users")
 }
 
@@ -88,6 +90,8 @@ model Driver {
   mttValidada         Boolean          @default(false) // Si la patente fue confirmada en apps.mtt.cl
   mttFechaValidacion  DateTime?
   mttDetalle          String?          // JSON o texto de respuesta del Registro Nacional MTT
+
+  fcmToken            String?          // Token FCM del dispositivo para notificaciones push
 
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt

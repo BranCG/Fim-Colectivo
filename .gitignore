@@ -49,3 +49,8 @@ apps/web/android/.kotlin/
 *.sln
 *.sw?
 .vscode/
+
+# Firebase Service Account private keys
+*firebase-adminsdk*.json
+*service-account*.json
+serviceAccountKey.json

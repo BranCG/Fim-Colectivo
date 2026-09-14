@@ -15,6 +15,10 @@ import adminRoutes from './routes/admin';
 import uploadRoutes from './routes/uploads';
 import paymentRoutes from './routes/payments.routes';
 import colectivosRoutes from './routes/colectivos';
+import fcmRoutes from './routes/fcm.routes';
+
+// Inicializar Firebase Admin (push notifications)
+import './utils/fcm';
 
 import prisma from './utils/prisma';
 
@@ -96,6 +100,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/colectivos', colectivosRoutes);
+app.use('/api/fcm', fcmRoutes);
 
 // Health check extendido con estado de BD y memoria
 app.get('/api/health', async (_, res) => {
