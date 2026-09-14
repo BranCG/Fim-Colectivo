@@ -7,7 +7,6 @@ import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo } from '@/components/map/ColectivoMap';
 import { calcularInfoLlegada } from '@/lib/geo';
-import { obtenerPosicionActual } from '@/lib/geolocalizacion';
 import {
   IconoColectivo,
   IconoCheck,
@@ -23,7 +22,7 @@ import {
 } from '@/components/icons/Iconos';
 import { reproducirSonido, hablarTexto } from '@/lib/voice';
 
-// Cargar mapa de colectivos de forma din├ímica para evitar problemas con SSR en Next.js
+// Cargar mapa de colectivos de forma dinámica para evitar problemas con SSR en Next.js
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
 
 interface ReservaActiva {
@@ -54,7 +53,7 @@ export default function PaginaPasajeroColectivo() {
   const router = useRouter();
   const [usuarioSesion, setUsuarioSesion] = useState<any>(null);
 
-  // Estados de l├¡neas y colectivos
+  // Estados de líneas y colectivos
   const [listaLineas, setListaLineas] = useState<Linea[]>([]);
   const [lineaSeleccionada, setLineaSeleccionada] = useState<Linea | null>(null);
   const [conductoresEnVivo, setConductoresEnVivo] = useState<ConductorColectivo[]>([]);
@@ -71,7 +70,7 @@ export default function PaginaPasajeroColectivo() {
   const [solicitandoPago, setSolicitandoPago] = useState<boolean>(false);
   const [telefonoCopiado, setTelefonoCopiado] = useState<boolean>(false);
 
-  // Estado de asignaci├│n dirigida al primer m├│vil en tr├ínsito
+  // Estado de asignación dirigida al primer móvil en tránsito
   const [buscandoMovil, setBuscandoMovil] = useState(false);
   const [movilAsignadoPreview, setMovilAsignadoPreview] = useState<{
     nombre: string;
@@ -79,7 +78,7 @@ export default function PaginaPasajeroColectivo() {
     distanciaMetros: number;
   } | null>(null);
 
-  // Ubicaci├│n del pasajero
+  // Ubicación del pasajero
   const [ubicacionPasajero, setUbicacionPasajero] = useState<{
     latitud: number;
     longitud: number;
@@ -91,7 +90,7 @@ export default function PaginaPasajeroColectivo() {
   const [mensajeAlerta, setMensajeAlerta] = useState<string>('');
   const [mensajeError, setMensajeError] = useState<string>('');
 
-  // C├ílculo en tiempo real de asientos libres en la l├¡nea seleccionada
+  // Cálculo en tiempo real de asientos libres en la línea seleccionada
   const totalAsientosLibres = useMemo(() => {
     return conductoresEnVivo.reduce(
       (acc, c) => acc + Math.max(0, (c.asientosTotales || 4) - c.asientosOcupados),
@@ -99,7 +98,7 @@ export default function PaginaPasajeroColectivo() {
     );
   }, [conductoresEnVivo]);
 
-  // C├ílculo cuantitativo de tiempo estimado de llegada del colectivo reservado/asignado
+  // Cálculo cuantitativo de tiempo estimado de llegada del colectivo reservado/asignado
   const infoLlegadaReserva = useMemo(() => {
     if (!reservaActiva || reservaActiva.estado !== 'reservado') {
       return null;
@@ -114,7 +113,7 @@ export default function PaginaPasajeroColectivo() {
     return calcularInfoLlegada(latChofer, lngChofer, latPasajero, lngPasajero);
   }, [reservaActiva, conductoresEnVivo, ubicacionPasajero]);
 
-  // C├ílculo cuantitativo de tiempo de llegada del colectivo pre-seleccionado antes de reservar
+  // Cálculo cuantitativo de tiempo de llegada del colectivo pre-seleccionado antes de reservar
   const infoLlegadaPreseleccionado = useMemo(() => {
     if (!conductorElegido || !ubicacionPasajero) return null;
     return calcularInfoLlegada(
@@ -135,16 +134,24 @@ export default function PaginaPasajeroColectivo() {
     setUsuarioSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener geolocalización del pasajero (nativo en Android, web en browser)
+  // 2. Obtener geolocalización del pasajero
   useEffect(() => {
-    obtenerPosicionActual({ altaPresicion: true, timeout: 10000, usarFallback: true })
-      .then((pos) => {
-        setUbicacionPasajero({ latitud: pos.latitud, longitud: pos.longitud });
-      })
-      .catch(() => {
-        // Fallback ya manejado en obtenerPosicionActual cuando usarFallback=true
-        setUbicacionPasajero({ latitud: -33.4489, longitud: -70.6693 });
-      });
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (posicion) => {
+          setUbicacionPasajero({
+            latitud: posicion.coords.latitude,
+            longitud: posicion.coords.longitude,
+          });
+        },
+        (error) => {
+          console.warn('Geolocalización desactivada o denegada:', error);
+          // Coordenadas por defecto (Centro de Santiago de Chile)
+          setUbicacionPasajero({ latitud: -33.4489, longitud: -70.6693 });
+        },
+        { enableHighAccuracy: true }
+      );
+    }
   }, []);
 
   // 3. Cargar líneas de colectivo y reservas activas
@@ -167,8 +174,8 @@ export default function PaginaPasajeroColectivo() {
         setReservaActiva(respuestaReservas.data.reservas[0]);
       }
     } catch (error) {
-      console.error('Error al cargar l├¡neas:', error);
-      setMensajeError('No se pudieron obtener las l├¡neas de colectivo disponibles.');
+      console.error('Error al cargar líneas:', error);
+      setMensajeError('No se pudieron obtener las líneas de colectivo disponibles.');
     }
   }, [lineaSeleccionada]);
 
@@ -181,11 +188,11 @@ export default function PaginaPasajeroColectivo() {
     conductorElegidoRef.current = conductorElegido;
   }, [conductorElegido]);
 
-  // 4. Conexi├│n WebSocket en tiempo real
+  // 4. Conexión WebSocket en tiempo real
   useEffect(() => {
     const socket = connectSocket();
 
-    // Re-suscribir salas autom├íticamente al conectar y ante cualquier reconexi├│n de red
+    // Re-suscribir salas automáticamente al conectar y ante cualquier reconexión de red
     const suscribirSalasPasajero = () => {
       if (usuarioSesion?.id) {
         socket.emit('pasajero:unirse', { pasajeroId: usuarioSesion.id });
@@ -199,7 +206,7 @@ export default function PaginaPasajeroColectivo() {
     socket.on('connect', suscribirSalasPasajero);
 
     if (lineaSeleccionada?.id) {
-      // Cargar los conductores iniciales de la l├¡nea
+      // Cargar los conductores iniciales de la línea
       api.get(`/colectivos/lineas/${lineaSeleccionada.id}`).then((res) => {
         const conductores = res.data.linea?.conductores || [];
         const mapeados: ConductorColectivo[] = conductores.map((c: any) => ({
@@ -218,7 +225,7 @@ export default function PaginaPasajeroColectivo() {
       });
     }
 
-    // Evento: Actualizaci├│n de posici├│n de un colectivo de la l├¡nea
+    // Evento: Actualización de posición de un colectivo de la línea
     const manejarActualizacionUbicacion = (datos: any) => {
       setConductoresEnVivo((prev) => {
         const indice = prev.findIndex((c) => c.conductorId === datos.conductorId);
@@ -237,7 +244,7 @@ export default function PaginaPasajeroColectivo() {
           copia[indice] = { ...copia[indice], ...actualizado };
           return copia;
         }
-        // Si el chofer no est├í en servicio activo en la lista, no agregarlo
+        // Si el chofer no está en servicio activo en la lista, no agregarlo
         return prev;
       });
     };
@@ -258,12 +265,12 @@ export default function PaginaPasajeroColectivo() {
       }
     };
 
-    // Evento: Pasajero abord├│ el colectivo
+    // Evento: Pasajero abordó el colectivo
     const manejarReservaAbordada = (datos?: any) => {
       if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
         return;
       }
-      setMensajeAlerta('┬íHas abordado el colectivo! El chofer confirm├│ tu asiento.');
+      setMensajeAlerta('¡Has abordado el colectivo! El chofer confirmó tu asiento.');
       setReservaActiva((prev) => (prev ? { ...prev, estado: 'abordado' } : null));
     };
 
@@ -273,7 +280,7 @@ export default function PaginaPasajeroColectivo() {
         return;
       }
       reproducirSonido('rechazo');
-      hablarTexto('El conductor no pudo tomar tu viaje. Puedes pedir otro autom├│vil.');
+      hablarTexto('El conductor no pudo tomar tu viaje. Puedes pedir otro automóvil.');
       setReservaActiva(null);
       setConductorElegido(null);
       setBuscandoMovil(false);
@@ -282,17 +289,17 @@ export default function PaginaPasajeroColectivo() {
       setMensajeAlerta('');
       setMensajeError(
         datos?.mensaje ||
-        'El conductor no pudo aceptar la reserva. Puedes solicitar otro autom├│vil disponible en el mapa.'
+        'El conductor no pudo aceptar la reserva. Puedes solicitar otro automóvil disponible en el mapa.'
       );
     };
 
-    // Evento: Conductor confirm├│ el pago y liber├│ el asiento
+    // Evento: Conductor confirmó el pago y liberó el asiento
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarPagoConfirmado = (datos: any) => {
       if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
         return;
       }
-      setMensajeAlerta(datos.mensaje || '┬íPago confirmado por el conductor! Asiento liberado. Gracias por viajar.');
+      setMensajeAlerta(datos.mensaje || '¡Pago confirmado por el conductor! Asiento liberado. Gracias por viajar.');
       setReservaActiva(null);
       setConductorElegido(null);
       setMostrarModalPago(false);
@@ -337,7 +344,7 @@ export default function PaginaPasajeroColectivo() {
     socket.on('colectivo:reserva-cancelada', manejarReservaCancelada);
     socket.on('colectivo:pago-confirmado', manejarPagoConfirmado);
 
-    // Eventos de asignaci├│n dirigida al primer m├│vil en camino
+    // Eventos de asignación dirigida al primer móvil en camino
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarAsignandoAChofer = (datos: any) => {
       if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
@@ -353,12 +360,12 @@ export default function PaginaPasajeroColectivo() {
         return;
       }
       reproducirSonido('exito');
-      hablarTexto('M├│vil confirmado. Tu colectivo viene en camino.');
+      hablarTexto('Móvil confirmado. Tu colectivo viene en camino.');
       setReservaActiva(datos.reserva);
       setBuscandoMovil(false);
       setMovilAsignadoPreview(null);
       setMensajeError('');
-      setMensajeAlerta('┬íM├│vil confirmado! El chofer acept├│ tu solicitud y viene en camino.');
+      setMensajeAlerta('¡Móvil confirmado! El chofer aceptó tu solicitud y viene en camino.');
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -367,7 +374,7 @@ export default function PaginaPasajeroColectivo() {
         return;
       }
       reproducirSonido('rechazo');
-      hablarTexto('Los colectivos no pudieron tomar tu solicitud. Puedes pedir otro autom├│vil.');
+      hablarTexto('Los colectivos no pudieron tomar tu solicitud. Puedes pedir otro automóvil.');
       setReservaActiva(null);
       setConductorElegido(null);
       setBuscandoMovil(false);
@@ -376,7 +383,7 @@ export default function PaginaPasajeroColectivo() {
       setMensajeAlerta('');
       setMensajeError(
         datos?.mensaje ||
-        'Los colectivos no pudieron tomar tu solicitud. Puedes solicitar otro autom├│vil disponible en el mapa.'
+        'Los colectivos no pudieron tomar tu solicitud. Puedes solicitar otro automóvil disponible en el mapa.'
       );
     };
 
@@ -418,22 +425,22 @@ export default function PaginaPasajeroColectivo() {
           if (actual.estado === 'reservado' && buscandoMovil) {
             setBuscandoMovil(false);
             setMovilAsignadoPreview(null);
-            setMensajeAlerta('┬íM├│vil confirmado! El chofer acept├│ tu solicitud y viene en camino.');
+            setMensajeAlerta('¡Móvil confirmado! El chofer aceptó tu solicitud y viene en camino.');
           } else if (actual.estado === 'abordado') {
             setBuscandoMovil(false);
           }
         } else {
-          // Si el chofer cancel├│ o rechaz├│ y ya no hay reservas activas en la BD:
+          // Si el chofer canceló o rechazó y ya no hay reservas activas en la BD:
           if (reservaActiva) {
             reproducirSonido('rechazo');
-            hablarTexto('El viaje no fue aceptado. Puedes pedir otro autom├│vil.');
+            hablarTexto('El viaje no fue aceptado. Puedes pedir otro automóvil.');
             setReservaActiva(null);
             setConductorElegido(null);
             setMostrarModalPago(false);
             setBuscandoMovil(false);
             setMovilAsignadoPreview(null);
             setMensajeAlerta('');
-            setMensajeError('El conductor no pudo aceptar tu reserva. Puedes pedir otro autom├│vil disponible en el mapa.');
+            setMensajeError('El conductor no pudo aceptar tu reserva. Puedes pedir otro automóvil disponible en el mapa.');
           }
         }
       } catch (e) {
@@ -444,7 +451,7 @@ export default function PaginaPasajeroColectivo() {
     return () => clearInterval(intervalo);
   }, [buscandoMovil, reservaActiva]);
 
-  // Manejar cambio de l├¡nea
+  // Manejar cambio de línea
   const seleccionarLinea = (linea: Linea) => {
     setLineaSeleccionada(linea);
     setConductorElegido(null);
@@ -469,7 +476,7 @@ export default function PaginaPasajeroColectivo() {
 
       setReservaActiva(res.data.reserva);
       setConductorElegido(null);
-      setMensajeAlerta('Solicitud enviada al conductor. Esperando confirmaci├│n...');
+      setMensajeAlerta('Solicitud enviada al conductor. Esperando confirmación...');
     } catch (error: any) {
       console.error('Error al reservar:', error);
       setMensajeError(error.response?.data?.error || 'No se pudo reservar el asiento.');
@@ -509,7 +516,7 @@ export default function PaginaPasajeroColectivo() {
     }
   };
 
-  // Solicitar asignaci├│n dirigida al primer m├│vil en tr├ínsito (Regla Federaci├│n)
+  // Solicitar asignación dirigida al primer móvil en tránsito (Regla Federación)
   const solicitarProximoColectivo = async () => {
     if (!lineaSeleccionada || reservaActiva || buscandoMovil) return;
     setConductorElegido(null);
@@ -529,13 +536,13 @@ export default function PaginaPasajeroColectivo() {
         setMovilAsignadoPreview(res.data.conductorAsignado);
       }
     } catch (error: any) {
-      console.error('Error al solicitar pr├│ximo colectivo:', error);
+      console.error('Error al solicitar próximo colectivo:', error);
       setBuscandoMovil(false);
       setMensajeError(error.response?.data?.error || 'No hay colectivos con cupos disponibles en este momento.');
     }
   };
 
-  // Cerrar sesi├│n
+  // Cerrar sesión
   const cerrarSesionUsuario = () => {
     clearSession();
     router.push('/login?role=passenger');
@@ -543,7 +550,7 @@ export default function PaginaPasajeroColectivo() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0A0A0A', color: '#FFFFFF', width: '100%', overflowX: 'hidden' }}>
-      {/* ÔöÇÔöÇ Barra Superior / Encabezado ÔöÇÔöÇ */}
+      {/* ── Barra Superior / Encabezado ── */}
       <header style={{
         padding: '10px 14px',
         background: 'rgba(10, 10, 10, 0.95)',
@@ -585,7 +592,7 @@ export default function PaginaPasajeroColectivo() {
         </button>
       </header>
 
-      {/* ÔöÇÔöÇ Selector de L├¡neas de Colectivo (Pills horizontales) ÔöÇÔöÇ */}
+      {/* ── Selector de Líneas de Colectivo (Pills horizontales) ── */}
       <div style={{
         padding: '10px 16px',
         background: '#121212',
@@ -630,7 +637,7 @@ export default function PaginaPasajeroColectivo() {
         })}
       </div>
 
-      {/* ÔöÇÔöÇ Banner de Alerta o Error ÔöÇÔöÇ */}
+      {/* ── Banner de Alerta o Error ── */}
       {mensajeAlerta && (
         <div style={{
           background: 'rgba(250, 204, 21, 0.15)',
@@ -696,7 +703,7 @@ export default function PaginaPasajeroColectivo() {
         </div>
       )}
 
-      {/* ÔöÇÔöÇ Mapa Interactivo Principal ÔöÇÔöÇ */}
+      {/* ── Mapa Interactivo Principal ── */}
       <div style={{ flex: 1, position: 'relative' }}>
         <ColectivoMap
           ubicacionUsuario={ubicacionPasajero}
@@ -710,20 +717,7 @@ export default function PaginaPasajeroColectivo() {
 
         {/* Botón flotante para recentrar ubicación */}
         <button
-          onClick={async () => {
-            if (ubicacionPasajero) {
-              setDisparadorCentrado((prev) => prev + 1);
-              return;
-            }
-            try {
-              const pos = await obtenerPosicionActual({ altaPresicion: true, timeout: 8000, usarFallback: true });
-              setUbicacionPasajero({ latitud: pos.latitud, longitud: pos.longitud });
-              setTimeout(() => setDisparadorCentrado((prev) => prev + 1), 200);
-            } catch {
-              setDisparadorCentrado((prev) => prev + 1);
-            }
-          }}
-
+          onClick={() => setDisparadorCentrado((prev) => prev + 1)}
           style={{
             position: 'absolute',
             right: '16px',
@@ -742,13 +736,13 @@ export default function PaginaPasajeroColectivo() {
             boxShadow: '0 4px 14px rgba(0, 0, 0, 0.6)',
             cursor: 'pointer',
           }}
-          title="Centrar en mi posici├│n"
+          title="Centrar en mi posición"
         >
           <IconoGps size={20} color="#FACC15" />
         </button>
       </div>
 
-      {/* ÔöÇÔöÇ Panel Inferior: Colectivo Seleccionado o Reserva Activa ÔöÇÔöÇ */}
+      {/* ── Panel Inferior: Colectivo Seleccionado o Reserva Activa ── */}
       <div style={{
         padding: '14px 12px',
         background: '#121212',
@@ -808,12 +802,12 @@ export default function PaginaPasajeroColectivo() {
                     ? 'En viaje'
                     : reservaActiva.estado === 'pendiente_chofer'
                     ? 'Esperando respuesta del chofer'
-                    : 'M├│vil en camino'}
+                    : 'Móvil en camino'}
                 </div>
               </div>
             </div>
 
-            {/* Si est├í en pendiente_chofer: tarjeta especial de espera sin estimaci├│n prematura */}
+            {/* Si está en pendiente_chofer: tarjeta especial de espera sin estimación prematura */}
             {reservaActiva.estado === 'pendiente_chofer' && (
               <div
                 style={{
@@ -844,16 +838,16 @@ export default function PaginaPasajeroColectivo() {
                 </div>
                 <div>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#FACC15' }}>
-                    Esperando confirmaci├│n del conductor...
+                    Esperando confirmación del conductor...
                   </div>
                   <div style={{ fontSize: '11.5px', color: '#D4D4D4', marginTop: '2px' }}>
-                    El chofer recibi├│ la alerta en su veh├¡culo. Debe responder <b>S├¡</b> o <b>No</b> para confirmar tu viaje.
+                    El chofer recibió la alerta en su vehículo. Debe responder <b>Sí</b> o <b>No</b> para confirmar tu viaje.
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Tiempo estimado de llegada del colectivo reservado (cuantitativo en minutos) - ├ÜNICAMENTE cuando fue confirmado */}
+            {/* Tiempo estimado de llegada del colectivo reservado (cuantitativo en minutos) - ÚNICAMENTE cuando fue confirmado */}
             {reservaActiva.estado === 'reservado' && infoLlegadaReserva && (
               <div
                 style={{
@@ -921,7 +915,7 @@ export default function PaginaPasajeroColectivo() {
               gap: '6px',
               border: '1px solid rgba(255, 255, 255, 0.08)',
             }}>
-              <div style={{ color: '#A3A3A3' }}>M├®todo de pago: <b style={{ color: '#FFFFFF' }}>{reservaActiva.metodoPago.toUpperCase()}</b></div>
+              <div style={{ color: '#A3A3A3' }}>Método de pago: <b style={{ color: '#FFFFFF' }}>{reservaActiva.metodoPago.toUpperCase()}</b></div>
               {reservaActiva.conductor.telefonoRutPay && (
                 <div style={{ color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <IconoBanco size={14} color="#FACC15" />
@@ -932,13 +926,13 @@ export default function PaginaPasajeroColectivo() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <IconoTarjeta size={14} color="#FACC15" />
                   <a href={reservaActiva.conductor.mercadoPagoLink} target="_blank" rel="noreferrer" style={{ color: '#FACC15', textDecoration: 'underline' }}>
-                    Pagar con MercadoPago aqu├¡
+                    Pagar con MercadoPago aquí
                   </a>
                 </div>
               )}
             </div>
 
-            {/* BOTONES PRINCIPALES DE ACCI├ôN: PAGAR / BAJARME */}
+            {/* BOTONES PRINCIPALES DE ACCIÓN: PAGAR / BAJARME */}
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 onClick={() => setMostrarModalPago(true)}
@@ -964,7 +958,7 @@ export default function PaginaPasajeroColectivo() {
                 <IconoTarjeta size={16} color={reservaActiva.estado === 'pagando' ? '#A3A3A3' : '#000000'} />
                 <span>
                   {reservaActiva.estado === 'pagando'
-                    ? 'Esperando Confirmaci├│n del Chofer...'
+                    ? 'Esperando Confirmación del Chofer...'
                     : 'PAGAR Y BAJARME'}
                 </span>
               </button>
@@ -995,7 +989,7 @@ export default function PaginaPasajeroColectivo() {
               <div>
                 <span style={{ fontSize: '11px', color: '#A3A3A3' }}>Colectivo seleccionado</span>
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: '800', color: '#FFFFFF' }}>
-                  {conductorElegido.nombre} ÔÇö {conductorElegido.patente}
+                  {conductorElegido.nombre} — {conductorElegido.patente}
                 </h3>
                 <span style={{
                   fontSize: '11px',
@@ -1032,7 +1026,7 @@ export default function PaginaPasajeroColectivo() {
               >
                 <IconoReloj size={16} color="#FACC15" />
                 <span>
-                  Llegar├¡a en <b>{infoLlegadaPreseleccionado.textoTiempo}</b> ({infoLlegadaPreseleccionado.textoDistancia} de tu posici├│n)
+                  Llegaría en <b>{infoLlegadaPreseleccionado.textoTiempo}</b> ({infoLlegadaPreseleccionado.textoDistancia} de tu posición)
                 </span>
               </div>
             )}
@@ -1090,7 +1084,7 @@ export default function PaginaPasajeroColectivo() {
               })}
             </div>
 
-            {/* Bot├│n de Confirmaci├│n */}
+            {/* Botón de Confirmación */}
             <button
               onClick={solicitarReservaAsiento}
               disabled={cargandoReserva || 4 - conductorElegido.asientosOcupados <= 0}
@@ -1114,13 +1108,13 @@ export default function PaginaPasajeroColectivo() {
             </button>
           </div>
         ) : (
-          /* Caso 3: Estado general de la l├¡nea y Despacho Dirigido */
+          /* Caso 3: Estado general de la línea y Despacho Dirigido */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <span style={{ fontSize: '11px', color: '#A3A3A3' }}>Recorrido seleccionado</span>
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '15px', fontWeight: '700', color: '#FFFFFF' }}>
-                  {lineaSeleccionada?.nombre || 'Seleccione una l├¡nea'}
+                  {lineaSeleccionada?.nombre || 'Seleccione una línea'}
                 </h3>
                 <p style={{ margin: 0, fontSize: '12px', color: '#737373' }}>
                   {conductoresEnVivo.length === 0
@@ -1158,7 +1152,7 @@ export default function PaginaPasajeroColectivo() {
                       <IconoAsiento size={13} color="#000000" />
                       {totalAsientosLibres} libre{totalAsientosLibres > 1 ? 's' : ''}
                     </span>
-                    <div style={{ fontSize: '11px', color: '#A3A3A3', marginTop: '3px' }}>En la l├¡nea</div>
+                    <div style={{ fontSize: '11px', color: '#A3A3A3', marginTop: '3px' }}>En la línea</div>
                   </div>
                 ) : (
                   <div>
@@ -1179,7 +1173,7 @@ export default function PaginaPasajeroColectivo() {
               </div>
             </div>
 
-            {/* Panel de Solicitud Dirigida al Primer M├│vil en Tr├ínsito */}
+            {/* Panel de Solicitud Dirigida al Primer Móvil en Tránsito */}
             {buscandoMovil ? (
               <div style={{
                 background: '#171717',
@@ -1201,7 +1195,7 @@ export default function PaginaPasajeroColectivo() {
                       animation: 'fimPulse 1s infinite ease-out',
                     }} />
                     <span style={{ fontSize: '12px', fontWeight: '800', color: '#FACC15', textTransform: 'uppercase' }}>
-                      Buscando primer m├│vil en camino...
+                      Buscando primer móvil en camino...
                     </span>
                   </div>
                   <button
@@ -1213,17 +1207,17 @@ export default function PaginaPasajeroColectivo() {
                 </div>
                 {movilAsignadoPreview ? (
                   <div style={{ fontSize: '12px', color: '#FFFFFF' }}>
-                    Ofreciendo solicitud al m├│vil <b>{movilAsignadoPreview.patente} ({movilAsignadoPreview.nombre})</b> a <b>{movilAsignadoPreview.distanciaMetros}m</b>. Esperando confirmaci├│n del chofer...
+                    Ofreciendo solicitud al móvil <b>{movilAsignadoPreview.patente} ({movilAsignadoPreview.nombre})</b> a <b>{movilAsignadoPreview.distanciaMetros}m</b>. Esperando confirmación del chofer...
                   </div>
                 ) : (
                   <div style={{ fontSize: '12px', color: '#A3A3A3' }}>
-                    Calculando el colectivo m├ís pr├│ximo en aproximaci├│n hacia tu punto de recogida...
+                    Calculando el colectivo más próximo en aproximación hacia tu punto de recogida...
                   </div>
                 )}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Selectores de asientos y m├®todo de pago para el pr├│ximo colectivo */}
+                {/* Selectores de asientos y método de pago para el próximo colectivo */}
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between' }}>
                   {/* Cantidad de asientos */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#171717', padding: '6px 10px', borderRadius: '8px' }}>
@@ -1245,7 +1239,7 @@ export default function PaginaPasajeroColectivo() {
                     </button>
                   </div>
 
-                  {/* M├®todo de pago */}
+                  {/* Método de pago */}
                   <div style={{ display: 'flex', gap: '4px' }}>
                     {(['efectivo', 'rutpay', 'mercadopago'] as const).map((metodo) => {
                       const sel = metodoPago === metodo;
@@ -1271,7 +1265,7 @@ export default function PaginaPasajeroColectivo() {
                   </div>
                 </div>
 
-                {/* Bot├│n principal de solicitud dirigida */}
+                {/* Botón principal de solicitud dirigida */}
                 <button
                   onClick={solicitarProximoColectivo}
                   disabled={buscandoMovil || totalAsientosLibres <= 0 || conductoresEnVivo.length === 0}
@@ -1297,12 +1291,12 @@ export default function PaginaPasajeroColectivo() {
                     {conductoresEnVivo.length === 0
                       ? 'Sin colectivos en ruta'
                       : totalAsientosLibres <= 0
-                      ? 'Todos los m├│viles completos'
-                      : `Solicitar Pr├│ximo Colectivo (${cantidadAsientos} as.)`}
+                      ? 'Todos los móviles completos'
+                      : `Solicitar Próximo Colectivo (${cantidadAsientos} as.)`}
                   </span>
                 </button>
                 <div style={{ textAlign: 'center', fontSize: '10px', color: '#737373' }}>
-                  Regla de asignaci├│n por turno al primer m├│vil en aproximaci├│n con cupo disponible
+                  Regla de asignación por turno al primer móvil en aproximación con cupo disponible
                 </div>
               </div>
             )}
@@ -1310,7 +1304,7 @@ export default function PaginaPasajeroColectivo() {
         )}
       </div>
 
-      {/* ÔöÇÔöÇ MODAL: PAGAR PASAJE Y SOLICITAR BAJADA AL CONDUCTOR ÔöÇÔöÇ */}
+      {/* ── MODAL: PAGAR PASAJE Y SOLICITAR BAJADA AL CONDUCTOR ── */}
       {mostrarModalPago && reservaActiva && (
         <div
           style={{
@@ -1387,7 +1381,7 @@ export default function PaginaPasajeroColectivo() {
                     <span>RutPay BancoEstado</span>
                   </div>
                   <p style={{ margin: 0, fontSize: '12px', color: '#A3A3A3' }}>
-                    Transfiere directamente con RutPay al n├║mero de tel├®fono del chofer:
+                    Transfiere directamente con RutPay al número de teléfono del chofer:
                   </p>
                   <div
                     style={{
@@ -1423,11 +1417,11 @@ export default function PaginaPasajeroColectivo() {
                         cursor: 'pointer',
                       }}
                     >
-                      {telefonoCopiado ? '┬íCopiado!' : 'Copiar'}
+                      {telefonoCopiado ? '¡Copiado!' : 'Copiar'}
                     </button>
                   </div>
                   <span style={{ fontSize: '11px', color: '#737373' }}>
-                    Abre tu App BancoEstado, selecciona RutPay y pega este n├║mero.
+                    Abre tu App BancoEstado, selecciona RutPay y pega este número.
                   </span>
                 </div>
               ) : reservaActiva.metodoPago === 'mercadopago' ? (
@@ -1437,7 +1431,7 @@ export default function PaginaPasajeroColectivo() {
                     <span>MercadoPago</span>
                   </div>
                   <p style={{ margin: 0, fontSize: '12px', color: '#A3A3A3' }}>
-                    Paga de forma digital a trav├®s del link de MercadoPago del conductor:
+                    Paga de forma digital a través del link de MercadoPago del conductor:
                   </p>
                   {reservaActiva.conductor.mercadoPagoLink ? (
                     <a
@@ -1471,13 +1465,13 @@ export default function PaginaPasajeroColectivo() {
                     <span>Pago en Efectivo</span>
                   </div>
                   <p style={{ margin: 0, fontSize: '13px', color: '#D4D4D4' }}>
-                    Entrega el efectivo directamente al conductor al descender del veh├¡culo.
+                    Entrega el efectivo directamente al conductor al descender del vehículo.
                   </p>
                 </div>
               )}
             </div>
 
-            {/* BOT├ôN CONFIRMAR Y ENVIAR AL CHOFER */}
+            {/* BOTÓN CONFIRMAR Y ENVIAR AL CHOFER */}
             <button
               onClick={notificarPagoChofer}
               disabled={solicitandoPago || reservaActiva.estado === 'pagando'}
@@ -1523,7 +1517,7 @@ export default function PaginaPasajeroColectivo() {
                   color: '#FACC15',
                 }}
               >
-                La voz en el m├│vil del chofer ha anunciado tu pago. En cuanto acepte, tu pantalla se liberar├í autom├íticamente.
+                La voz en el móvil del chofer ha anunciado tu pago. En cuanto acepte, tu pantalla se liberará automáticamente.
               </div>
             )}
           </div>

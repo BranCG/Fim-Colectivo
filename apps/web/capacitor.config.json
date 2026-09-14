@@ -3,15 +3,8 @@
   "appName": "Fim Colectivo",
   "webDir": "out",
   "server": {
+    "url": "https://colectivo.fimchile.cl",
     "androidScheme": "https",
     "cleartext": true
-  },
-  "plugins": {
-    "Geolocation": {
-      "AndroidPermissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
-    }
-  },
-  "android": {
-    "allowMixedContent": true
   }
-}
+}

@@ -6,7 +6,6 @@ import dynamic from 'next/dynamic';
 import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo, PasajeroEnEspera } from '@/components/map/ColectivoMap';
-import { obtenerPosicionActual, iniciarRastreoGps } from '@/lib/geolocalizacion';
 import { calcularInfoLlegada } from '@/lib/geo';
 import {
   IconoColectivo,
@@ -28,7 +27,7 @@ import {
   IconoMicrofono,
 } from '@/components/icons/Iconos';
 
-// Cargar mapa din├ímico sin SSR para Leaflet
+// Cargar mapa dinámico sin SSR para Leaflet
 const ColectivoMap = dynamic(() => import('@/components/map/ColectivoMap'), { ssr: false });
 import AlertaVozReserva, { DatosSolicitudDirigida } from '@/components/driver/AlertaVozReserva';
 import { reproducirSonido, hablarTexto, desbloquearAudioYVoz, iniciarEscuchaVoz, detenerVoz, bloquearAbordoTemporal } from '@/lib/voice';
@@ -68,7 +67,7 @@ export default function PaginaConductorColectivo() {
   const [asientosOcupados, setAsientosOcupados] = useState<number>(0);
   const [sentidoRuta, setSentidoRuta] = useState<'ida' | 'vuelta'>('ida');
 
-  // Ubicaci├│n y mapa en tiempo real
+  // Ubicación y mapa en tiempo real
   const [ubicacionChofer, setUbicacionChofer] = useState<{
     latitud: number;
     longitud: number;
@@ -79,13 +78,13 @@ export default function PaginaConductorColectivo() {
   // Reservas de pasajeros
   const [reservasPendientes, setReservasPendientes] = useState<ReservaPasajero[]>([]);
 
-  // Configuraci├│n de cobros
+  // Configuración de cobros
   const [telefonoRutPay, setTelefonoRutPay] = useState<string>('');
   const [linkMercadoPago, setLinkMercadoPago] = useState<string>('');
   const [guardandoCobro, setGuardandoCobro] = useState<boolean>(false);
   const [mostrarConfigCobro, setMostrarConfigCobro] = useState<boolean>(false);
 
-  // Solicitud dirigida en tr├ínsito (Manos libres TTS y botones gigantes)
+  // Solicitud dirigida en tránsito (Manos libres TTS y botones gigantes)
   const [solicitudActiva, setSolicitudActiva] = useState<DatosSolicitudDirigida | null>(null);
 
   // Solicitud de pago y descenso del pasajero
@@ -93,7 +92,7 @@ export default function PaginaConductorColectivo() {
   const [audioDesbloqueado, setAudioDesbloqueado] = useState<boolean>(false);
   const [cargandoAccion, setCargandoAccion] = useState<string | null>(null);
 
-  // Estados de retroalimentaci├│n de voz en tiempo real
+  // Estados de retroalimentación de voz en tiempo real
   const [textoDetectadoPago, setTextoDetectadoPago] = useState<string>('');
   const [textoDetectadoAbordaje, setTextoDetectadoAbordaje] = useState<string>('');
   const [anunciandoPagoVoz, setAnunciandoPagoVoz] = useState<boolean>(false);
@@ -103,9 +102,8 @@ export default function PaginaConductorColectivo() {
   const [mensajeExito, setMensajeExito] = useState<string>('');
   const [mensajeError, setMensajeError] = useState<string>('');
 
-  // Referencia a rastreo GPS y deduplicaci├│n de eventos
+  // Referencia a rastreo GPS y deduplicación de eventos
   const watchIdRef = useRef<number | null>(null);
-  const detenerRastreoRef = useRef<(() => void) | null>(null);
   const ubicacionChoferRef = useRef(ubicacionChofer);
   const ultimaSolicitudNotificadaRef = useRef<{ id: string; timestamp: number } | null>(null);
   const escuchaPagoRef = useRef<{ detener: () => void } | null>(null);
@@ -115,7 +113,7 @@ export default function PaginaConductorColectivo() {
     ubicacionChoferRef.current = ubicacionChofer;
   }, [ubicacionChofer]);
 
-  // 1. Validar autenticaci├│n de chofer
+  // 1. Validar autenticación de chofer
   useEffect(() => {
     const sesion = getSession();
     if (!sesion) {
@@ -125,20 +123,25 @@ export default function PaginaConductorColectivo() {
     setChoferSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener ubicación GPS inicial del dispositivo (nativo en Android, web en browser)
+  // 2. Obtener ubicación GPS inicial del dispositivo
   useEffect(() => {
-    obtenerPosicionActual({ altaPresicion: true, timeout: 8000, usarFallback: false })
-      .then((pos) => {
-        setUbicacionChofer({ latitud: pos.latitud, longitud: pos.longitud });
-      })
-      .catch((err) => {
-        console.warn('[Driver] GPS inicial no disponible:', err);
-        // No asignamos fallback aquí para no mover el mapa a Santiago si el conductor
-        // está en otra ciudad — esperamos el lastLat del backend.
-      });
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUbicacionChofer({
+            latitud: pos.coords.latitude,
+            longitud: pos.coords.longitude,
+          });
+        },
+        (err) => {
+          console.warn('GPS inicial no disponible, usando última posición guardada:', err.message);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
   }, []);
 
-  // 3. Cargar datos del chofer y l├¡neas disponibles
+  // 3. Cargar datos del chofer y líneas disponibles
   const cargarDatosChofer = useCallback(async () => {
     try {
       const [resEstado, resLineas] = await Promise.all([
@@ -186,13 +189,13 @@ export default function PaginaConductorColectivo() {
     cargarDatosChofer();
   }, [cargarDatosChofer]);
 
-  // 4. WebSockets y transmisi├│n de ubicaci├│n en tiempo real
+  // 4. WebSockets y transmisión de ubicación en tiempo real
   useEffect(() => {
     if (!choferSesion?.id) return;
 
     const socket = connectSocket();
 
-    // Funci├│n idempotente para unirse a salas del chofer y l├¡nea
+    // Función idempotente para unirse a salas del chofer y línea
     const suscribirSalas = () => {
       if (choferSesion?.id) {
         socket.emit('conductor:unirse', { conductorId: choferSesion.id });
@@ -244,7 +247,7 @@ export default function PaginaConductorColectivo() {
       setMensajeExito('Una reserva fue cancelada por el pasajero.');
     };
 
-    // Evento de solicitud dirigida al m├│vil en tr├ínsito (Dispara lectura TTS y modal gigante con deduplicaci├│n)
+    // Evento de solicitud dirigida al móvil en tránsito (Dispara lectura TTS y modal gigante con deduplicación)
     const manejarSolicitudAsignada = (datos: DatosSolicitudDirigida & { conductorId?: string }) => {
       if (datos.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
         return;
@@ -261,17 +264,17 @@ export default function PaginaConductorColectivo() {
       setSolicitudActiva(datos);
     };
 
-    // Evento si la solicitud expir├│ o fue pasada a otro m├│vil
+    // Evento si la solicitud expiró o fue pasada a otro móvil
     const manejarSolicitudExpirada = (datos: { reservaId: string }) => {
       setSolicitudActiva((prev) => (prev?.reservaId === datos.reservaId ? null : prev));
     };
 
-    // Evento si el pasajero cancel├│ mientras sonaba la alerta
+    // Evento si el pasajero canceló mientras sonaba la alerta
     const manejarSolicitudCancelada = (datos: { reservaId: string }) => {
       setSolicitudActiva((prev) => (prev?.reservaId === datos.reservaId ? null : prev));
     };
 
-    // Evento: Cambio en asientos ocupados de la l├¡nea o propio m├│vil
+    // Evento: Cambio en asientos ocupados de la línea o propio móvil
     const manejarCambioAsientos = (datos: { conductorId: string; asientosOcupados: number; asientosTotales: number }) => {
       if (datos.conductorId === choferSesion.id) {
         setAsientosOcupados(datos.asientosOcupados);
@@ -301,11 +304,11 @@ export default function PaginaConductorColectivo() {
       escuchaPagoRef.current = iniciarEscuchaVoz({
         id: 'escucha-pago-conductor',
         onSi: () => {
-          setTextoDetectadoPago('┬íS├ì DETECTADO!');
+          setTextoDetectadoPago('¡SÍ DETECTADO!');
           confirmarPagoPasajero(datos.reservaId);
         },
         onNo: () => {
-          setTextoDetectadoPago('┬íNO DETECTADO!');
+          setTextoDetectadoPago('¡NO DETECTADO!');
           rechazarPagoPasajero();
         },
         onTextoDetectado: (txt) => {
@@ -313,8 +316,8 @@ export default function PaginaConductorColectivo() {
         },
       });
 
-      // Frase clara sin incluir las palabras disparadoras "s├¡" o "no" para evitar auto-disparo del parlante
-      const mensajeVoz = 'Cliente solicita pagar. ┬┐Liberamos asiento?';
+      // Frase clara sin incluir las palabras disparadoras "sí" o "no" para evitar auto-disparo del parlante
+      const mensajeVoz = 'Cliente solicita pagar. ¿Liberamos asiento?';
       setAnunciandoPagoVoz(true);
 
       // Esperar a que concluya el chime de alerta (350ms) antes de emitir la voz
@@ -358,7 +361,7 @@ export default function PaginaConductorColectivo() {
       }
     };
 
-    // Evento de ubicaci├│n de otros colectivos de la misma l├¡nea
+    // Evento de ubicación de otros colectivos de la misma línea
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarUbicacionFlota = (payload: any) => {
       if (payload.lineaId === lineaActual?.id && payload.conductorId !== choferSesion.id) {
@@ -384,7 +387,7 @@ export default function PaginaConductorColectivo() {
       }
     };
 
-    // Evento si otro colectivo de la l├¡nea se desconecta o pasa a fuera de servicio
+    // Evento si otro colectivo de la línea se desconecta o pasa a fuera de servicio
     const manejarConductorOffline = (datos: { conductorId: string }) => {
       setConductoresEnVivo((prev) => prev.filter((c) => c.conductorId !== datos.conductorId));
     };
@@ -401,30 +404,27 @@ export default function PaginaConductorColectivo() {
     socket.on('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
     socket.on('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
 
-    // Si está en servicio, transmitir ubicación GPS continua (nativo en Android, web en browser)
-    if (enServicio) {
-      // Detener rastreo previo si existía
-      if (detenerRastreoRef.current) {
-        detenerRastreoRef.current();
-        detenerRastreoRef.current = null;
-      }
+    // Si está en servicio, transmitir ubicación GPS continua
+    if (enServicio && typeof window !== 'undefined' && 'geolocation' in navigator) {
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (posicion) => {
+          const nuevaLat = posicion.coords.latitude;
+          const nuevaLng = posicion.coords.longitude;
 
-      iniciarRastreoGps(
-        (pos) => {
-          setUbicacionChofer({ latitud: pos.latitud, longitud: pos.longitud });
+          setUbicacionChofer({ latitud: nuevaLat, longitud: nuevaLng });
+
           socket.emit('driver:location', {
             driverId: choferSesion.id,
-            lat: pos.latitud,
-            lng: pos.longitud,
+            lat: nuevaLat,
+            lng: nuevaLng,
           });
         },
-        (err) => console.warn('[Driver] Error en rastreo GPS:', err)
-      ).then((detener) => {
-        detenerRastreoRef.current = detener;
-      });
-    } else if (detenerRastreoRef.current) {
-      detenerRastreoRef.current();
-      detenerRastreoRef.current = null;
+        (err) => console.warn('Error en GPS del chofer:', err),
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+      );
+    } else if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
     }
 
     return () => {
@@ -444,14 +444,14 @@ export default function PaginaConductorColectivo() {
       if (lineaActual?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaActual.id });
       }
-      if (detenerRastreoRef.current) {
-        detenerRastreoRef.current();
-        detenerRastreoRef.current = null;
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
       }
     };
   }, [enServicio, choferSesion?.id, lineaActual?.id]);
 
-  // Sincronizaci├│n de respaldo peri├│dica (cada 7s) en servicio
+  // Sincronización de respaldo periódica (cada 7s) en servicio
   useEffect(() => {
     if (!enServicio) return;
     const intervalo = setInterval(() => {
@@ -480,41 +480,43 @@ export default function PaginaConductorColectivo() {
         setAudioDesbloqueado(true);
       });
 
-      obtenerPosicionActual({ altaPresicion: true, timeout: 8000, usarFallback: true })
-        .then((pos) => {
-          setUbicacionChofer({ latitud: pos.latitud, longitud: pos.longitud });
+      if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setUbicacionChofer({ latitud: lat, longitud: lng });
           socket.emit('driver:online', {
             driverId: choferSesion?.id,
-            lat: pos.latitud,
-            lng: pos.longitud,
+            lat,
+            lng,
           });
-        })
-        .catch((err) => console.warn('[Driver] Error GPS al iniciar turno:', err));
+        });
+      }
     } else {
       // Si pasa a Fuera de Servicio: emitir driver:offline y detener rastreo GPS inmediatamente
       if (choferSesion?.id) {
         socket.emit('driver:offline', { driverId: choferSesion.id });
       }
-      if (detenerRastreoRef.current) {
-        detenerRastreoRef.current();
-        detenerRastreoRef.current = null;
+      if (watchIdRef.current !== null && typeof window !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
       }
     }
 
     setMensajeExito(nuevoEstado ? 'Turno iniciado: En servicio transmitiendo GPS' : 'Turno finalizado: Fuera de servicio');
   };
 
-  // Asignar l├¡nea de colectivo
+  // Asignar línea de colectivo
   const cambiarLineaColectivo = async (nuevaLineaId: string) => {
     try {
       await api.post('/colectivos/conductor/linea', { lineaId: nuevaLineaId });
       const lineaEncontrada = lineasDisponibles.find((l) => l.id === nuevaLineaId) || null;
       setLineaActual(lineaEncontrada);
       setConductoresEnVivo([]);
-      setMensajeExito(`L├¡nea cambiada a ${lineaEncontrada?.nombre}`);
+      setMensajeExito(`Línea cambiada a ${lineaEncontrada?.nombre}`);
     } catch (error) {
-      console.error('Error al cambiar l├¡nea:', error);
-      setMensajeError('No se pudo cambiar la l├¡nea.');
+      console.error('Error al cambiar línea:', error);
+      setMensajeError('No se pudo cambiar la línea.');
     }
   };
 
@@ -555,7 +557,7 @@ export default function PaginaConductorColectivo() {
         setMensajeExito(`Reserva aceptada: ${nombreConfirmado} confirmado.`);
         reproducirSonido('exito');
 
-        // Locuci├│n guiada: Di "A bordo" cuando suba el pasajero
+        // Locución guiada: Di "A bordo" cuando suba el pasajero
         const locucionConfirmada =
           nombreConfirmado && nombreConfirmado !== 'el pasajero'
             ? `Reserva aceptada. Di a bordo cuando suba ${nombreConfirmado}.`
@@ -644,7 +646,7 @@ export default function PaginaConductorColectivo() {
         escuchaAbordajeRef.current = iniciarEscuchaVoz({
           id: 'escucha-abordaje-conductor',
           onAbordo: () => {
-            setTextoDetectadoAbordaje('┬íA BORDO DETECTADO!');
+            setTextoDetectadoAbordaje('¡A BORDO DETECTADO!');
             confirmarAbordaje(primerReservado.id);
           },
           onTextoDetectado: (txt) => {
@@ -744,22 +746,22 @@ export default function PaginaConductorColectivo() {
         telefonoRutPay,
         linkMercadoPago,
       });
-      setMensajeExito('M├®todos de cobro actualizados correctamente.');
+      setMensajeExito('Métodos de cobro actualizados correctamente.');
     } catch (error) {
       console.error('Error al guardar datos de pago:', error);
-      setMensajeError('No se pudieron actualizar los m├®todos de cobro.');
+      setMensajeError('No se pudieron actualizar los métodos de cobro.');
     } finally {
       setGuardandoCobro(false);
     }
   };
 
-  // Cerrar sesi├│n
+  // Cerrar sesión
   const cerrarSesionChofer = () => {
     clearSession();
     router.push('/login?role=driver');
   };
 
-  // Pasajeros en espera formateados para marcadores en el mapa con c├ílculo de ETA cuantitativo
+  // Pasajeros en espera formateados para marcadores en el mapa con cálculo de ETA cuantitativo
   const pasajerosEnEspera: PasajeroEnEspera[] = useMemo(() => {
     return reservasPendientes
       .filter((r) => r.estado === 'reservado')
@@ -808,7 +810,7 @@ export default function PaginaConductorColectivo() {
       .filter(Boolean) as PasajeroEnEspera[];
   }, [reservasPendientes, lineaActual, ubicacionChofer]);
 
-  // ÔöÇÔöÇÔöÇ Desglose de Asientos por Estado (Libre: Verde, Reservado: Naranjo, A Bordo: Rojo) ÔöÇÔöÇÔöÇ
+  // ─── Desglose de Asientos por Estado (Libre: Verde, Reservado: Naranjo, A Bordo: Rojo) ───
   const conteoAsientos = useMemo(() => {
     // 1. Asientos de pasajeros ya a bordo o pagando
     const abordados = reservasPendientes
@@ -838,7 +840,7 @@ export default function PaginaConductorColectivo() {
   return (
     <div style={{ minHeight: '100vh', background: '#0A0A0A', color: '#FFFFFF', padding: '8px 10px', maxWidth: '800px', margin: '0 auto', width: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
       
-      {/* ÔöÇÔöÇ Encabezado Principal ÔöÇÔöÇ */}
+      {/* ── Encabezado Principal ── */}
       <header style={{
         display: 'flex',
         alignItems: 'center',
@@ -868,7 +870,7 @@ export default function PaginaConductorColectivo() {
               Fim <span style={{ color: '#FACC15' }}>Colectivo Chofer</span>
             </h1>
             <p style={{ margin: 0, fontSize: '11px', color: '#A3A3A3' }}>
-              {choferSesion ? choferSesion.name : 'Conductor'} ÔÇó {lineaActual ? lineaActual.nombre : 'L├¡nea no asignada'}
+              {choferSesion ? choferSesion.name : 'Conductor'} • {lineaActual ? lineaActual.nombre : 'Línea no asignada'}
             </p>
           </div>
         </div>
@@ -878,7 +880,7 @@ export default function PaginaConductorColectivo() {
             onClick={() => {
               desbloquearAudioYVoz('Audio y voz activados para el servicio de colectivos', () => {
                 setAudioDesbloqueado(true);
-                setMensajeExito('Altavoz y s├¡ntesis de voz verificados correctamente.');
+                setMensajeExito('Altavoz y síntesis de voz verificados correctamente.');
               });
             }}
             style={{
@@ -939,7 +941,7 @@ export default function PaginaConductorColectivo() {
         </div>
       </header>
 
-      {/* ÔöÇÔöÇ Alertas ÔöÇÔöÇ */}
+      {/* ── Alertas ── */}
       {mensajeExito && (
         <div style={{ background: 'rgba(250, 204, 21, 0.15)', border: '1px solid #FACC15', padding: '10px 14px', borderRadius: '10px', color: '#FACC15', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -959,7 +961,7 @@ export default function PaginaConductorColectivo() {
         </div>
       )}
 
-      {/* ÔöÇÔöÇ SECCI├ôN 1: MAPA EN VIVO DEL CONDUCTOR ÔöÇÔöÇ */}
+      {/* ── SECCIÓN 1: MAPA EN VIVO DEL CONDUCTOR ── */}
       <section style={{
         position: 'relative',
         borderRadius: '16px',
@@ -994,7 +996,7 @@ export default function PaginaConductorColectivo() {
             gap: '6px',
           }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#FACC15' }} />
-            {lineaActual ? `${lineaActual.nombre} ÔÇó ${sentidoRuta.toUpperCase()}` : 'L├¡nea'}
+            {lineaActual ? `${lineaActual.nombre} • ${sentidoRuta.toUpperCase()}` : 'Línea'}
           </div>
 
           <div style={{
@@ -1034,24 +1036,7 @@ export default function PaginaConductorColectivo() {
 
         {/* Botón flotante para centrar mapa en el colectivo */}
         <button
-          onClick={async () => {
-            // Si ya tenemos ubicación, solo centrar
-            if (ubicacionChofer) {
-              setDisparadorCentrado((prev) => prev + 1);
-              return;
-            }
-            // Si no hay ubicación, obtenerla primero (útil en Android si el GPS tardó)
-            try {
-              const pos = await obtenerPosicionActual({ altaPresicion: true, timeout: 8000, usarFallback: false });
-              setUbicacionChofer({ latitud: pos.latitud, longitud: pos.longitud });
-              // Pequeño delay para que el estado se actualice antes de centrar
-              setTimeout(() => setDisparadorCentrado((prev) => prev + 1), 200);
-            } catch {
-              // Si falla el GPS, igual incrementar por si el mapa tiene coords de respaldo
-              setDisparadorCentrado((prev) => prev + 1);
-            }
-          }}
-
+          onClick={() => setDisparadorCentrado((prev) => prev + 1)}
           style={{
             position: 'absolute',
             bottom: '16px',
@@ -1094,7 +1079,7 @@ export default function PaginaConductorColectivo() {
         </div>
       </section>
 
-      {/* ÔöÇÔöÇ SECCI├ôN 2: PASAJEROS EN RUTA Y ACCI├ôN R├üPIDA DE ABORDO / COBRO (INMEDIATAMENTE DEBAJO DEL MAPA) ÔöÇÔöÇ */}
+      {/* ── SECCIÓN 2: PASAJEROS EN RUTA Y ACCIÓN RÁPIDA DE ABORDO / COBRO (INMEDIATAMENTE DEBAJO DEL MAPA) ── */}
       <section style={{
         background: '#121212',
         borderRadius: '16px',
@@ -1106,7 +1091,7 @@ export default function PaginaConductorColectivo() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <IconoPasajero size={18} color="#FACC15" />
             <h2 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#FFFFFF' }}>
-              Pasajeros en Ruta (Acci├│n R├ípida de Abordaje)
+              Pasajeros en Ruta (Acción Rápida de Abordaje)
             </h2>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1124,7 +1109,7 @@ export default function PaginaConductorColectivo() {
                 gap: '5px',
               }}>
                 <IconoMicrofono size={13} color="#FACC15" />
-                <span>Di &quot;A bordo&quot; o pulsa el bot├│n</span>
+                <span>Di &quot;A bordo&quot; o pulsa el botón</span>
               </span>
             )}
             <span style={{
@@ -1172,14 +1157,14 @@ export default function PaginaConductorColectivo() {
                 }}
               >
                 {anunciandoAbordajeVoz ? (
-                  <span style={{ fontSize: '18px' }}>­ƒöè</span>
+                  <span style={{ fontSize: '18px' }}>🔊</span>
                 ) : (
                   <IconoMicrofono size={18} color="#FACC15" />
                 )}
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: '11px', fontWeight: '800', color: anunciandoAbordajeVoz ? '#93C5FD' : '#FACC15', letterSpacing: '0.5px' }}>
-                  {anunciandoAbordajeVoz ? 'ANUNCIANDO INSTRUCCIONES DE ABORDAJE...' : 'CONTROL POR VOZ ACTIVO ÔÇö DI "A BORDO" AL SUBIR'}
+                  {anunciandoAbordajeVoz ? 'ANUNCIANDO INSTRUCCIONES DE ABORDAJE...' : 'CONTROL POR VOZ ACTIVO — DI "A BORDO" AL SUBIR'}
                 </div>
                 <div
                   style={{
@@ -1199,10 +1184,10 @@ export default function PaginaConductorColectivo() {
                   }}
                 >
                   {anunciandoAbordajeVoz
-                    ? '­ƒöè "Reserva aceptada. Di a bordo cuando suba el pasajero"'
+                    ? '🔊 "Reserva aceptada. Di a bordo cuando suba el pasajero"'
                     : textoDetectadoAbordaje
                     ? `Escuchado: "${textoDetectadoAbordaje}"`
-                    : 'Esperando tu voz ("A bordo", "Subi├│")...'}
+                    : 'Esperando tu voz ("A bordo", "Subió")...'}
                 </div>
               </div>
             </div>
@@ -1502,7 +1487,7 @@ export default function PaginaConductorColectivo() {
                         </button>
                       </div>
                     ) : (
-                      /* BOT├ôN DESTACADO "SUBIR A BORDO" */
+                      /* BOTÓN DESTACADO "SUBIR A BORDO" */
                       <button
                         onClick={() => confirmarAbordaje(reserva.id)}
                         disabled={cargandoAccion === reserva.id}
@@ -1553,7 +1538,7 @@ export default function PaginaConductorColectivo() {
         )}
       </section>
 
-      {/* ÔöÇÔöÇ SECCI├ôN 3: BOT├ôN DE TURNO (PONER EN L├ìNEA / DESCONECTARME) ÔöÇÔöÇ */}
+      {/* ── SECCIÓN 3: BOTÓN DE TURNO (PONER EN LÍNEA / DESCONECTARME) ── */}
       <div style={{ marginBottom: '10px' }}>
         <button
           onClick={alternarServicio}
@@ -1580,11 +1565,11 @@ export default function PaginaConductorColectivo() {
           }}
         >
           <IconoPuntoEstado activo={enServicio} size={12} />
-          <span>{enServicio ? 'DESCONECTARME' : 'PONER EN L├ìNEA'}</span>
+          <span>{enServicio ? 'DESCONECTARME' : 'PONER EN LÍNEA'}</span>
         </button>
       </div>
 
-      {/* ÔöÇÔöÇ SECCI├ôN 4: CONTROL R├üPIDO DE ASIENTOS (BARRA SIMPLE: ASIENTOS : + O -) ÔöÇÔöÇ */}
+      {/* ── SECCIÓN 4: CONTROL RÁPIDO DE ASIENTOS (BARRA SIMPLE: ASIENTOS : + O -) ── */}
       <div
         style={{
           display: 'flex',
@@ -1639,7 +1624,7 @@ export default function PaginaConductorColectivo() {
             }}
             onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
           >
-            ÔêÆ
+            −
           </button>
 
           <button
@@ -1675,7 +1660,7 @@ export default function PaginaConductorColectivo() {
         </div>
       </div>
 
-      {/* ÔöÇÔöÇ SECCI├ôN 6: CONFIGURACI├ôN DE COBROS (RUTPAY Y MERCADOPAGO) ÔöÇÔöÇ */}
+      {/* ── SECCIÓN 6: CONFIGURACIÓN DE COBROS (RUTPAY Y MERCADOPAGO) ── */}
       {mostrarConfigCobro && (
         <section style={{
           background: '#121212',
@@ -1687,7 +1672,7 @@ export default function PaginaConductorColectivo() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <IconoTarjeta size={16} color="#FACC15" />
-              <span>M├®todos de Cobro Electr├│nico</span>
+              <span>Métodos de Cobro Electrónico</span>
             </h3>
             <button
               onClick={() => setMostrarConfigCobro(false)}
@@ -1697,13 +1682,13 @@ export default function PaginaConductorColectivo() {
             </button>
           </div>
           <p style={{ fontSize: '12px', color: '#A3A3A3', margin: '0 0 14px 0' }}>
-            Permite a los pasajeros transferirte v├¡a RutPay BancoEstado o pagarte con MercadoPago directamente en el colectivo.
+            Permite a los pasajeros transferirte vía RutPay BancoEstado o pagarte con MercadoPago directamente en el colectivo.
           </p>
 
           <form onSubmit={guardarDatosCobro} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12px', color: '#D4D4D4', marginBottom: '4px', fontWeight: '600' }}>
-                Tel├®fono para RutPay BancoEstado:
+                Teléfono para RutPay BancoEstado:
               </label>
               <input
                 type="text"
@@ -1769,7 +1754,7 @@ export default function PaginaConductorColectivo() {
         </section>
       )}
 
-      {/* ÔöÇÔöÇ MODAL MANOS LIBRES: ALERTA DE VOZ Y BOTONES GIGANTES (LEY NO CHAT 21.377) ÔöÇÔöÇ */}
+      {/* ── MODAL MANOS LIBRES: ALERTA DE VOZ Y BOTONES GIGANTES (LEY NO CHAT 21.377) ── */}
       {solicitudActiva && (
         <AlertaVozReserva
           solicitud={solicitudActiva}
@@ -1779,7 +1764,7 @@ export default function PaginaConductorColectivo() {
         />
       )}
 
-      {/* ÔöÇÔöÇ MODAL: PASAJERO QUIERE PAGAR Y BAJARSE ÔöÇÔöÇ */}
+      {/* ── MODAL: PASAJERO QUIERE PAGAR Y BAJARSE ── */}
       {pagoPendiente && (
         <div
           style={{
@@ -1850,7 +1835,7 @@ export default function PaginaConductorColectivo() {
                 Pasajero {pagoPendiente.pasajeroNombre}
               </h2>
               <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#A3A3A3' }}>
-                Desea pagar y descender del veh├¡culo
+                Desea pagar y descender del vehículo
               </p>
             </div>
 
@@ -1884,7 +1869,7 @@ export default function PaginaConductorColectivo() {
               </div>
             </div>
 
-            {/* RETROALIMENTACI├ôN DE VOZ EN TIEMPO REAL: S├ì / NO */}
+            {/* RETROALIMENTACIÓN DE VOZ EN TIEMPO REAL: SÍ / NO */}
             <div
               style={{
                 display: 'flex',
@@ -1894,7 +1879,7 @@ export default function PaginaConductorColectivo() {
                 background: '#171717',
                 borderRadius: '14px',
                 border: '2px solid #FACC15',
-                boxShadow: textoDetectadoPago.includes('S├ì')
+                boxShadow: textoDetectadoPago.includes('SÍ')
                   ? '0 0 25px rgba(250, 204, 21, 0.7)'
                   : textoDetectadoPago.includes('NO')
                   ? '0 0 25px rgba(239, 68, 68, 0.7)'
@@ -1908,7 +1893,7 @@ export default function PaginaConductorColectivo() {
                     width: '10px',
                     height: '10px',
                     borderRadius: '50%',
-                    background: textoDetectadoPago.includes('S├ì')
+                    background: textoDetectadoPago.includes('SÍ')
                       ? '#22C55E'
                       : textoDetectadoPago.includes('NO')
                       ? '#EF4444'
@@ -1920,14 +1905,14 @@ export default function PaginaConductorColectivo() {
                   }}
                 />
                 <span style={{ fontSize: '11px', fontWeight: '800', color: '#FACC15', letterSpacing: '0.6px', textTransform: 'uppercase' }}>
-                  {textoDetectadoPago ? 'VOZ DETECTADA' : anunciandoPagoVoz ? 'ANUNCIANDO COBRO...' : 'MICR├ôFONO EN VIVO ÔÇö DI TU RESPUESTA:'}
+                  {textoDetectadoPago ? 'VOZ DETECTADA' : anunciandoPagoVoz ? 'ANUNCIANDO COBRO...' : 'MICRÓFONO EN VIVO — DI TU RESPUESTA:'}
                 </span>
               </div>
               <div
                 style={{
                   fontSize: '18px',
                   fontWeight: '900',
-                  color: textoDetectadoPago.includes('S├ì')
+                  color: textoDetectadoPago.includes('SÍ')
                     ? '#FACC15'
                     : textoDetectadoPago.includes('NO')
                     ? '#EF4444'
@@ -1940,11 +1925,11 @@ export default function PaginaConductorColectivo() {
                   textShadow: (textoDetectadoPago || !anunciandoPagoVoz) ? '0 0 12px rgba(250, 204, 21, 0.5)' : 'none',
                 }}
               >
-                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? '­ƒöè Cliente solicita pagar. ┬┐Liberamos asiento?' : '­ƒÄÖ´©Å Escuchando... Di "S├ì" o "NO"'}
+                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? '🔊 Cliente solicita pagar. ¿Liberamos asiento?' : '🎙️ Escuchando... Di "SÍ" o "NO"'}
               </div>
             </div>
 
-            {/* BOTONES GIGANTES: S├ì / NO */}
+            {/* BOTONES GIGANTES: SÍ / NO */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
               <button
                 onClick={() => confirmarPagoPasajero(pagoPendiente.reservaId)}
