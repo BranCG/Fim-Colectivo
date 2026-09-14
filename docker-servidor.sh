@@ -34,7 +34,11 @@ pm2 save --force 2>/dev/null || true
 # Asegurar permisos sobre el socket de Docker
 sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 
-# 3. Reconstruir y levantar contenedores en segundo plano
+# 3. Detener contenedores anteriores para evitar conflictos de nombres
+echo "🔄 Deteniendo contenedores previos..."
+sudo docker compose down 2>/dev/null || true
+
+# 4. Reconstruir y levantar contenedores en segundo plano
 echo "🔨 Construyendo imágenes y levantando contenedores Docker..."
 sudo docker compose up -d --build
 
