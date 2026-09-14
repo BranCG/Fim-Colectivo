@@ -42,7 +42,17 @@ if (!getApps().length) {
     }
   }
 
-  if (foundPath) {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      initializeApp({
+        credential: cert(serviceAccount),
+      });
+      console.log('[FCM] Firebase Admin inicializado desde variable FIREBASE_SERVICE_ACCOUNT_JSON.');
+    } catch (e) {
+      console.error('[FCM] Error al parsear FIREBASE_SERVICE_ACCOUNT_JSON:', e);
+    }
+  } else if (foundPath) {
     try {
       const serviceAccount = JSON.parse(fs.readFileSync(foundPath, 'utf8'));
       initializeApp({

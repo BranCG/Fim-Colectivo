@@ -40,7 +40,7 @@ ENV PORT=3011
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/database ./packages/database
-COPY --from=builder /app/apps/api/package*.json ./apps/api/
+COPY --from=builder /app/apps/api/*.json ./apps/api/
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 EXPOSE 3011
