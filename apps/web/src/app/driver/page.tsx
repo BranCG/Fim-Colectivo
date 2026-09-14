@@ -27,6 +27,7 @@ import {
   IconoGuardar,
   IconoReloj,
   IconoMicrofono,
+  IconoParlante,
 } from '@/components/icons/Iconos';
 
 // Cargar mapa dinámico sin SSR para Leaflet
@@ -1149,7 +1150,7 @@ export default function PaginaConductorColectivo() {
                 }}
               >
                 {anunciandoAbordajeVoz ? (
-                  <span style={{ fontSize: '18px' }}>🔊</span>
+                  <IconoParlante size={18} color="#93C5FD" />
                 ) : (
                   <IconoMicrofono size={18} color="#FACC15" />
                 )}
@@ -1176,7 +1177,7 @@ export default function PaginaConductorColectivo() {
                   }}
                 >
                   {anunciandoAbordajeVoz
-                    ? '🔊 "Reserva aceptada. Di a bordo cuando suba el pasajero"'
+                    ? '"Reserva aceptada. Di a bordo cuando suba el pasajero"'
                     : textoDetectadoAbordaje
                     ? `Escuchado: "${textoDetectadoAbordaje}"`
                     : 'Esperando tu voz ("A bordo", "Subió")...'}
@@ -1917,7 +1918,7 @@ export default function PaginaConductorColectivo() {
                   textShadow: (textoDetectadoPago || !anunciandoPagoVoz) ? '0 0 12px rgba(250, 204, 21, 0.5)' : 'none',
                 }}
               >
-                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? '🔊 Cliente solicita pagar. ¿Liberamos asiento?' : '🎙️ Escuchando... Di "SÍ" o "NO"'}
+                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? 'Cliente solicita pagar. ¿Liberamos asiento?' : 'Escuchando... Di "SÍ" o "NO"'}
               </div>
             </div>
 

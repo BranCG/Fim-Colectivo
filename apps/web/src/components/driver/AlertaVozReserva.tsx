@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
-import { hablarTexto, iniciarEscuchaVoz, reproducirSonido, detenerVoz } from '@/lib/voice';
-import { IconoCheck, IconoCruz, IconoAsiento, IconoReloj } from '@/components/icons/Iconos';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { hablarTexto, iniciarEscuchaVoz, reproducirSonido, detenerVoz, forzarReinicioVoz } from '@/lib/voice';
+import { IconoCheck, IconoCruz, IconoAsiento, IconoReloj, IconoMicrofono, IconoParlante } from '@/components/icons/Iconos';
 
 export interface DatosSolicitudDirigida {
   reservaId: string;
@@ -50,46 +50,62 @@ export default function AlertaVozReserva({
   // Frase limpia sin palabras clave disparadoras para evitar auto-aceptación por eco del parlante
   const textoVoz = `${nombre}, solicita ${textoAsientos}. ¿Aceptas el viaje?`;
 
-  // 1. Al montar: Notificar por Chime y Text-to-Speech (TTS), y activar micrófono SOLO tras concluir la locución
+  // Función para activar / asegurar escucha del micrófono
+  const activarMicrofono = useCallback(() => {
+    if (respondido) return;
+    if (escuchaRef.current) {
+      try {
+        escuchaRef.current.detener();
+      } catch {}
+      escuchaRef.current = null;
+    }
+
+    escuchaRef.current = iniciarEscuchaVoz({
+      id: 'alerta-voz-reserva',
+      onSi: () => {
+        setComandoDetectado('si');
+        setTextoDetectado('¡SÍ DETECTADO!');
+        manejarAceptar();
+      },
+      onNo: () => {
+        setComandoDetectado('no');
+        setTextoDetectado('¡PASO DETECTADO!');
+        manejarRechazar();
+      },
+      onEscuchando: (activo) => {
+        setEscuchandoVoz(activo);
+      },
+      onTextoDetectado: (texto) => {
+        setTextoDetectado(texto);
+      },
+    });
+  }, [respondido]);
+
+  // 1. Al montar o recibir solicitud:
+  // Reproducir chime, armar micrófono de inmediato para no perder comandos rápidos,
+  // y si la pantalla está en primer plano emitir la locución sintetizada.
   useEffect(() => {
-    // Sonido de alerta chime inicial
     reproducirSonido('alerta');
     setAnunciandoVoz(true);
 
-    // Permitir que el doble tono de aviso de reserva suene limpio antes de iniciar la locución
-    const timerInicioVoz = setTimeout(() => {
-      hablarTexto(textoVoz, () => {
-        setAnunciandoVoz(false);
+    // Armar escucha de inmediato para estar listos ante cualquier respuesta rápida
+    activarMicrofono();
 
-        // Iniciar escucha del micrófono ÚNICAMENTE tras finalizar la locución del parlante
-        // con un búfer de seguridad acústica de 350ms para evitar auto-disparo
-        setTimeout(() => {
-          if (respondido) return;
-          escuchaRef.current = iniciarEscuchaVoz({
-            id: 'alerta-voz-reserva',
-            onSi: () => {
-              setComandoDetectado('si');
-              setTextoDetectado('¡SÍ!');
-              manejarAceptar();
-            },
-            onNo: () => {
-              setComandoDetectado('no');
-              setTextoDetectado('¡NO / PASO!');
-              manejarRechazar();
-            },
-            onEscuchando: (activo) => {
-              setEscuchandoVoz(activo);
-            },
-            onTextoDetectado: (texto) => {
-              setTextoDetectado(texto);
-            },
-          });
-        }, 350);
-      });
-    }, 400);
+    let timerInicioVoz: NodeJS.Timeout | null = null;
+    if (typeof document !== 'undefined' && !document.hidden) {
+      timerInicioVoz = setTimeout(() => {
+        hablarTexto(textoVoz, () => {
+          setAnunciandoVoz(false);
+          activarMicrofono();
+        });
+      }, 350);
+    } else {
+      // Si la app está en segundo plano, evitar colgar el flujo con TTS diferido
+      setAnunciandoVoz(false);
+    }
 
     return () => {
-      clearTimeout(timerInicioVoz);
+      if (timerInicioVoz) clearTimeout(timerInicioVoz);
       detenerVoz();
       if (escuchaRef.current) {
         try {
@@ -100,6 +116,31 @@ export default function AlertaVozReserva({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [solicitud]);
+
+  // 2. Reactivación inmediata al maximizar / volver a primer plano
+  // Soluciona el error en que minimizar la app desactiva el micrófono en Android
+  useEffect(() => {
+    const alReanudarPrimerPlano = () => {
+      if (!document.hidden && !respondido) {
+        console.log('[AlertaVozReserva] Regreso a primer plano detectado. Reactivando micrófono...');
+        reproducirSonido('alerta');
+        forzarReinicioVoz();
+        activarMicrofono();
+      }
+    };
+
+    document.addEventListener('visibilitychange', alReanudarPrimerPlano);
+    document.addEventListener('resume', alReanudarPrimerPlano);
+    window.addEventListener('focus', alReanudarPrimerPlano);
+    window.addEventListener('pageshow', alReanudarPrimerPlano);
+
+    return () => {
+      document.removeEventListener('visibilitychange', alReanudarPrimerPlano);
+      document.removeEventListener('resume', alReanudarPrimerPlano);
+      window.removeEventListener('focus', alReanudarPrimerPlano);
+      window.removeEventListener('pageshow', alReanudarPrimerPlano);
+    };
+  }, [respondido, activarMicrofono]);
 
   // 2. Temporizador regresivo de 15 segundos
   useEffect(() => {
@@ -186,8 +227,17 @@ export default function AlertaVozReserva({
 
   const porcentajeTiempo = (segundosRestantes / tiempoTotal) * 100;
 
+  const manejarToquePantalla = () => {
+    if (!escuchandoVoz && !respondido) {
+      forzarReinicioVoz();
+      activarMicrofono();
+    }
+  };
+
   return (
     <div
+      onClick={manejarToquePantalla}
+      onTouchStart={manejarToquePantalla}
       style={{
         position: 'fixed',
         inset: 0,
@@ -239,6 +289,11 @@ export default function AlertaVozReserva({
 
         {/* Indicador de Escucha por Voz */}
         <div
+          onClick={(e) => {
+            e.stopPropagation();
+            forzarReinicioVoz();
+            activarMicrofono();
+          }}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -248,16 +303,13 @@ export default function AlertaVozReserva({
             padding: '5px 12px',
             borderRadius: '20px',
             maxWidth: '60%',
+            cursor: 'pointer',
           }}
         >
           {anunciandoVoz ? (
-            <span style={{ fontSize: '13px' }}>🔊</span>
+            <IconoParlante size={14} color="#D4D4D4" />
           ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={escuchandoVoz ? '#FACC15' : '#A3A3A3'} strokeWidth="2.5">
-              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" y1="19" x2="12" y2="22" />
-            </svg>
+            <IconoMicrofono size={14} color={escuchandoVoz ? '#FACC15' : '#A3A3A3'} />
           )}
           <span style={{ fontSize: '11px', fontWeight: '800', color: anunciandoVoz ? '#D4D4D4' : escuchandoVoz ? '#FACC15' : '#A3A3A3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {anunciandoVoz ? 'ANUNCIANDO...' : textoDetectado ? `"${textoDetectado}"` : 'DI "SÍ" O "NO"'}
@@ -401,14 +453,14 @@ export default function AlertaVozReserva({
                 }}
               >
                 {comandoDetectado === 'si'
-                  ? '✓ ¡SÍ DETECTADO!'
+                  ? '¡SÍ DETECTADO!'
                   : comandoDetectado === 'no'
-                  ? '✕ ¡PASO DETECTADO!'
+                  ? '¡PASO DETECTADO!'
                   : anunciandoVoz
-                  ? `🔊 ${nombre}, ${textoAsientos}. ¿Tomamos?`
+                  ? `${nombre}, ${textoAsientos}. ¿Tomamos?`
                   : textoDetectado
                   ? `"${textoDetectado}"`
-                  : '🎙️ Escuchando... Di "SÍ" o "NO"'}
+                  : 'Escuchando... Di "SÍ" o "NO"'}
               </div>
             </div>
           </div>
