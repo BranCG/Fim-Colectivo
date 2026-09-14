@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo, PasajeroEnEspera } from '@/components/map/ColectivoMap';
+import { obtenerPosicionActual, iniciarRastreoGps } from '@/lib/geolocalizacion';
 import { calcularInfoLlegada } from '@/lib/geo';
 import {
   IconoColectivo,
@@ -104,6 +105,7 @@ export default function PaginaConductorColectivo() {
 
   // Referencia a rastreo GPS y deduplicaci├│n de eventos
   const watchIdRef = useRef<number | null>(null);
+  const detenerRastreoRef = useRef<(() => void) | null>(null);
   const ubicacionChoferRef = useRef(ubicacionChofer);
   const ultimaSolicitudNotificadaRef = useRef<{ id: string; timestamp: number } | null>(null);
   const escuchaPagoRef = useRef<{ detener: () => void } | null>(null);
@@ -123,22 +125,17 @@ export default function PaginaConductorColectivo() {
     setChoferSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener ubicaci├│n GPS inicial del dispositivo
+  // 2. Obtener ubicación GPS inicial del dispositivo (nativo en Android, web en browser)
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUbicacionChofer({
-            latitud: pos.coords.latitude,
-            longitud: pos.coords.longitude,
-          });
-        },
-        (err) => {
-          console.warn('GPS inicial no disponible, usando ├║ltima posici├│n guardada:', err.message);
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    }
+    obtenerPosicionActual({ altaPresicion: true, timeout: 8000, usarFallback: false })
+      .then((pos) => {
+        setUbicacionChofer({ latitud: pos.latitud, longitud: pos.longitud });
+      })
+      .catch((err) => {
+        console.warn('[Driver] GPS inicial no disponible:', err);
+        // No asignamos fallback aquí para no mover el mapa a Santiago si el conductor
+        // está en otra ciudad — esperamos el lastLat del backend.
+      });
   }, []);
 
   // 3. Cargar datos del chofer y l├¡neas disponibles
@@ -404,27 +401,30 @@ export default function PaginaConductorColectivo() {
     socket.on('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
     socket.on('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
 
-    // Si est├í en servicio, transmitir ubicaci├│n GPS continua
-    if (enServicio && typeof window !== 'undefined' && 'geolocation' in navigator) {
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        (posicion) => {
-          const nuevaLat = posicion.coords.latitude;
-          const nuevaLng = posicion.coords.longitude;
+    // Si está en servicio, transmitir ubicación GPS continua (nativo en Android, web en browser)
+    if (enServicio) {
+      // Detener rastreo previo si existía
+      if (detenerRastreoRef.current) {
+        detenerRastreoRef.current();
+        detenerRastreoRef.current = null;
+      }
 
-          setUbicacionChofer({ latitud: nuevaLat, longitud: nuevaLng });
-
+      iniciarRastreoGps(
+        (pos) => {
+          setUbicacionChofer({ latitud: pos.latitud, longitud: pos.longitud });
           socket.emit('driver:location', {
             driverId: choferSesion.id,
-            lat: nuevaLat,
-            lng: nuevaLng,
+            lat: pos.latitud,
+            lng: pos.longitud,
           });
         },
-        (err) => console.warn('Error en GPS del chofer:', err),
-        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
-      );
-    } else if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
+        (err) => console.warn('[Driver] Error en rastreo GPS:', err)
+      ).then((detener) => {
+        detenerRastreoRef.current = detener;
+      });
+    } else if (detenerRastreoRef.current) {
+      detenerRastreoRef.current();
+      detenerRastreoRef.current = null;
     }
 
     return () => {
@@ -444,9 +444,9 @@ export default function PaginaConductorColectivo() {
       if (lineaActual?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaActual.id });
       }
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
+      if (detenerRastreoRef.current) {
+        detenerRastreoRef.current();
+        detenerRastreoRef.current = null;
       }
     };
   }, [enServicio, choferSesion?.id, lineaActual?.id]);
@@ -480,26 +480,24 @@ export default function PaginaConductorColectivo() {
         setAudioDesbloqueado(true);
       });
 
-      if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setUbicacionChofer({ latitud: lat, longitud: lng });
+      obtenerPosicionActual({ altaPresicion: true, timeout: 8000, usarFallback: true })
+        .then((pos) => {
+          setUbicacionChofer({ latitud: pos.latitud, longitud: pos.longitud });
           socket.emit('driver:online', {
             driverId: choferSesion?.id,
-            lat,
-            lng,
+            lat: pos.latitud,
+            lng: pos.longitud,
           });
-        });
-      }
+        })
+        .catch((err) => console.warn('[Driver] Error GPS al iniciar turno:', err));
     } else {
       // Si pasa a Fuera de Servicio: emitir driver:offline y detener rastreo GPS inmediatamente
       if (choferSesion?.id) {
         socket.emit('driver:offline', { driverId: choferSesion.id });
       }
-      if (watchIdRef.current !== null && typeof window !== 'undefined' && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
+      if (detenerRastreoRef.current) {
+        detenerRastreoRef.current();
+        detenerRastreoRef.current = null;
       }
     }
 

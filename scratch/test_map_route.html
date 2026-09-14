@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Test MapLibre Route Line</title>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    body { margin: 0; padding: 0; background: #111; color: white; font-family: sans-serif; }
+    #map { width: 100vw; height: 100vh; }
+    #status { position: absolute; top: 10px; left: 10px; z-index: 999; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div id="status">Cargando trazado...</div>
+  <div id="map"></div>
+
+  <script>
+    const ESTILO_MAPLIBRE = {
+      version: 8,
+      sources: {
+        'osm-tiles': {
+          type: 'raster',
+          tiles: [
+            'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          ],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors',
+          maxzoom: 19,
+        },
+      },
+      layers: [
+        {
+          id: 'osm-tiles-layer',
+          type: 'raster',
+          source: 'osm-tiles',
+          minzoom: 0,
+          maxzoom: 19,
+          paint: {
+            'raster-saturation': -0.3,
+            'raster-contrast': 0.1,
+          },
+        },
+      ],
+    };
+
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: ESTILO_MAPLIBRE,
+      center: [-70.62, -33.54],
+      zoom: 13,
+    });
+
+    map.on('load', async () => {
+      try {
+        const res = await fetch('https://colectivo.fimchile.cl/api/colectivos/lineas');
+        const data = await res.json();
+        const linea = data.lineas[0];
+        const trazadoIda = linea.trazados.find(t => t.sentido === 'ida');
+        
+        document.getElementById('status').innerText = 'Puntos ida: ' + trazadoIda.puntos.length;
+        console.log('Trazado ida:', trazadoIda);
+
+        // Coordenadas: [lat, lng] -> [lng, lat]
+        const coordsGeoJson = trazadoIda.puntos.map(([lat, lng]) => [lng, lat]);
+
+        map.addSource('fuente-linea-colectivo', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'LineString',
+              coordinates: coordsGeoJson,
+            },
+          },
+        });
+
+        map.addLayer({
+          id: 'capa-linea-glow',
+          type: 'line',
+          source: 'fuente-linea-colectivo',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': '#000000',
+            'line-width': 8.5,
+            'line-opacity': 0.85,
+          },
+        });
+
+        map.addLayer({
+          id: 'capa-linea-principal',
+          type: 'line',
+          source: 'fuente-linea-colectivo',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': '#FACC15',
+            'line-width': 5,
+            'line-opacity': 0.95,
+          },
+        });
+
+        // Car marker
+        const el = document.createElement('div');
+        el.style.width = '24px';
+        el.style.height = '24px';
+        el.style.backgroundColor = '#FACC15';
+        el.style.borderRadius = '50%';
+        el.style.border = '2px solid black';
+        new maplibregl.Marker({ element: el }).setLngLat([-70.6205, -33.541]).addTo(map);
+
+        document.getElementById('status').innerText += ' | Trazado dibujado exitosamente!';
+      } catch (err) {
+        document.getElementById('status').innerText = 'ERROR: ' + err.message;
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>
