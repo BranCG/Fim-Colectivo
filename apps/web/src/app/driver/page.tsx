@@ -1032,9 +1032,26 @@ export default function PaginaConductorColectivo() {
           </div>
         </div>
 
-        {/* Bot├│n flotante para centrar mapa en el colectivo */}
+        {/* Botón flotante para centrar mapa en el colectivo */}
         <button
-          onClick={() => setDisparadorCentrado((prev) => prev + 1)}
+          onClick={async () => {
+            // Si ya tenemos ubicación, solo centrar
+            if (ubicacionChofer) {
+              setDisparadorCentrado((prev) => prev + 1);
+              return;
+            }
+            // Si no hay ubicación, obtenerla primero (útil en Android si el GPS tardó)
+            try {
+              const pos = await obtenerPosicionActual({ altaPresicion: true, timeout: 8000, usarFallback: false });
+              setUbicacionChofer({ latitud: pos.latitud, longitud: pos.longitud });
+              // Pequeño delay para que el estado se actualice antes de centrar
+              setTimeout(() => setDisparadorCentrado((prev) => prev + 1), 200);
+            } catch {
+              // Si falla el GPS, igual incrementar por si el mapa tiene coords de respaldo
+              setDisparadorCentrado((prev) => prev + 1);
+            }
+          }}
+
           style={{
             position: 'absolute',
             bottom: '16px',

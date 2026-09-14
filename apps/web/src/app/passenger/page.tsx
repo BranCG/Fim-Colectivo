@@ -708,9 +708,22 @@ export default function PaginaPasajeroColectivo() {
           estaAbordado={reservaActiva?.estado === 'abordado' || reservaActiva?.estado === 'pagando'}
         />
 
-        {/* Bot├│n flotante para recentrar ubicaci├│n */}
+        {/* Botón flotante para recentrar ubicación */}
         <button
-          onClick={() => setDisparadorCentrado((prev) => prev + 1)}
+          onClick={async () => {
+            if (ubicacionPasajero) {
+              setDisparadorCentrado((prev) => prev + 1);
+              return;
+            }
+            try {
+              const pos = await obtenerPosicionActual({ altaPresicion: true, timeout: 8000, usarFallback: true });
+              setUbicacionPasajero({ latitud: pos.latitud, longitud: pos.longitud });
+              setTimeout(() => setDisparadorCentrado((prev) => prev + 1), 200);
+            } catch {
+              setDisparadorCentrado((prev) => prev + 1);
+            }
+          }}
+
           style={{
             position: 'absolute',
             right: '16px',
