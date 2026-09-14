@@ -1,8 +1,9 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { calcularInfoLlegada } from '@/lib/geo';
+import { obtenerPuntosReferencia, PuntoReferencia } from '@/lib/puntosReferencia';
 
 export interface Parada {
   id: string;
@@ -76,7 +77,7 @@ const ESTILO_MAPLIBRE: any = {
         'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
       ],
       tileSize: 256,
-      attribution: '┬® OpenStreetMap contributors',
+      attribution: '© OpenStreetMap contributors',
       maxzoom: 19,
     },
   },
@@ -95,7 +96,7 @@ const ESTILO_MAPLIBRE: any = {
   ],
 };
 
-// ÔöÇÔöÇÔöÇ Generador de Pin SVG de Colectivo Chileno Ultra-Visible ÔöÇÔöÇÔöÇ
+// ─── Generador de Pin SVG de Colectivo Chileno Ultra-Visible ───
 interface OpcionesColectivoSvg {
   patente?: string;
   textoBadge?: string;
@@ -126,11 +127,11 @@ function generarSvgColectivoHtml({
     svgIconoHtml = `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>`;
   }
 
-  // Ocultar badge superior si est├í vac├¡o o si contiene "TU COLECTIVO"
+  // Ocultar badge superior si está vacío o si contiene "TU COLECTIVO"
   const tieneTextoBadge = Boolean(textoBadge && textoBadge.trim() && !textoBadge.includes('TU COLECTIVO'));
   const badgeHtml = tieneTextoBadge
     ? `
-      <!-- Badge superior con tiempo o texto de identificaci├│n -->
+      <!-- Badge superior con tiempo o texto de identificación -->
       <div style="
         background: ${colorBadge};
         color: #000000;
@@ -153,7 +154,7 @@ function generarSvgColectivoHtml({
     `
     : '';
 
-  // Ocultar placa patente si est├í vac├¡a o si contiene "MI AUTO"
+  // Ocultar placa patente si está vacía o si contiene "MI AUTO"
   const tienePatenteValida = Boolean(patente && patente.trim() && patente !== 'MI AUTO');
   const patenteHtml = tienePatenteValida
     ? `
@@ -182,7 +183,7 @@ function generarSvgColectivoHtml({
     <div class="fim-colectivo-pin" style="display: flex; flex-direction: column; align-items: center; cursor: pointer; user-select: none; z-index: ${zIndex}; pointer-events: auto;">
       ${badgeHtml}
 
-      <!-- Autom├│vil SVG tipo colectivo chileno compacto de tama├▒o fijo -->
+      <!-- Automóvil SVG tipo colectivo chileno compacto de tamaño fijo -->
       <div style="position: relative; width: 24px; height: 30px; display: flex; align-items: center; justify-content: center;">
         <svg width="22" height="28" viewBox="0 0 44 56" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 5px rgba(0,0,0,0.7)); position: relative; z-index: 2;">
           <defs>
@@ -199,10 +200,10 @@ function generarSvgColectivoHtml({
             </linearGradient>
           </defs>
 
-          <!-- Sombra del autom├│vil en el asfalto -->
+          <!-- Sombra del automóvil en el asfalto -->
           <ellipse cx="22" cy="30" rx="16" ry="21" fill="#000000" fill-opacity="0.45" />
 
-          <!-- Neum├íticos laterales -->
+          <!-- Neumáticos laterales -->
           <rect x="4" y="12" width="3.5" height="9" rx="1.5" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
           <rect x="36.5" y="12" width="3.5" height="9" rx="1.5" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
           <rect x="4" y="34" width="3.5" height="9" rx="1.5" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
@@ -212,7 +213,7 @@ function generarSvgColectivoHtml({
           <path d="M5 19 C3.5 19 3 21 4.5 22.5 L7 22 Z" fill="#1E293B" stroke="${colorLetrero}" stroke-width="1.2" />
           <path d="M39 19 C40.5 19 41 21 39.5 22.5 L37 22 Z" fill="#1E293B" stroke="${colorLetrero}" stroke-width="1.2" />
 
-          <!-- Carrocer├¡a sed├ín moderna con borde amarillo colectivo -->
+          <!-- Carrocería sedán moderna con borde amarillo colectivo -->
           <path d="M12 10 C12 6.5 16 5 22 5 C28 5 32 6.5 32 10 L34 20 L35 43 C35 48 31 51 22 51 C13 51 9 48 9 43 L10 20 Z"
                 fill="url(#bodyGrad_${idUnico})" stroke="${colorLetrero}" stroke-width="2.5" stroke-linejoin="round" />
 
@@ -247,6 +248,80 @@ function generarSvgColectivoHtml({
   `;
 }
 
+// ─── Generador de Pin SVG para Puntos de Referencia Clave (Metro, Microbús, Malls) ───
+function generarSvgReferenciaHtml(punto: PuntoReferencia): string {
+  let iconoHtml = '';
+  let colorAcento = '#FFFFFF';
+
+  if (punto.tipo === 'metro') {
+    colorAcento = '#FACC15'; // Amarillo colectivo
+    iconoHtml = `
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#FACC15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;">
+        <rect x="4" y="3" width="16" height="14" rx="2"/>
+        <path d="M4 11h16"/>
+        <path d="M12 3v8"/>
+        <path d="m8 19-2 3"/>
+        <path d="m16 19 2 3"/>
+        <circle cx="9" cy="14" r="1" fill="#FACC15"/>
+        <circle cx="15" cy="14" r="1" fill="#FACC15"/>
+      </svg>
+    `;
+  } else if (punto.tipo === 'microbus') {
+    colorAcento = '#FFFFFF'; // Blanco
+    iconoHtml = `
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;">
+        <path d="M8 6v6"/>
+        <path d="M15 6v6"/>
+        <path d="M2 12h19.6"/>
+        <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.2 6 18.2 6H5.8C4.8 6 3.9 6.8 3.6 7.8L2.2 12.8c-.1.4-.2.8-.2 1.2 0 .4.1.8.2 1.2.3 1.1.8 2.8.8 2.8h3"/>
+        <circle cx="7" cy="18" r="2"/>
+        <circle cx="17" cy="18" r="2"/>
+      </svg>
+    `;
+  } else if (punto.tipo === 'mall') {
+    colorAcento = '#FACC15'; // Amarillo colectivo
+    iconoHtml = `
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#FACC15" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; flex-shrink:0;">
+        <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+        <path d="M3 6h18"/>
+        <path d="M16 10a4 4 0 0 1-8 0"/>
+      </svg>
+    `;
+  }
+
+  return `
+    <div class="fim-referencia-pin" style="display: flex; flex-direction: column; align-items: center; cursor: pointer; user-select: none; z-index: 28; pointer-events: auto;">
+      <div style="
+        background: rgba(10, 10, 10, 0.94);
+        color: #FFFFFF;
+        border: 1.2px solid ${colorAcento};
+        border-radius: 6px;
+        padding: 1.5px 5px;
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.85);
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 3.5px;
+        backdrop-filter: blur(4px);
+      ">
+        ${iconoHtml}
+        <span>${punto.nombre}</span>
+      </div>
+      <div style="
+        width: 0;
+        height: 0;
+        border-left: 3px solid transparent;
+        border-right: 3px solid transparent;
+        border-top: 3.5px solid ${colorAcento};
+        margin-top: -0.5px;
+      "></div>
+    </div>
+  `;
+}
+
 export default function ColectivoMap({
   ubicacionUsuario,
   lineaSeleccionada,
@@ -269,6 +344,8 @@ export default function ColectivoMap({
   const [mapaCargado, setMapaCargado] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const marcadoresRef = useRef<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const marcadoresReferenciaRef = useRef<any[]>([]);
 
   // 1. Inicializar MapLibre GL
   useEffect(() => {
@@ -296,7 +373,7 @@ export default function ColectivoMap({
         attributionControl: false,
       });
 
-      // Controles de navegaci├│n y br├║jula
+      // Controles de navegación y brújula
       mapa.addControl(
         new NavigationControl({
           showCompass: true,
@@ -326,6 +403,8 @@ export default function ColectivoMap({
 
     return () => {
       cancelado = true;
+      marcadoresReferenciaRef.current.forEach((m) => m.remove());
+      marcadoresReferenciaRef.current = [];
       if (mapaRef.current) {
         mapaRef.current.remove();
         mapaRef.current = null;
@@ -334,7 +413,7 @@ export default function ColectivoMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2. Centrar mapa con animaci├│n suave cuando se dispare `disparadorCentrado`
+  // 2. Centrar mapa con animación suave cuando se dispare `disparadorCentrado`
   useEffect(() => {
     if (mapaCargado && mapaRef.current && disparadorCentrado > 0) {
       if (estaAbordado && conductorSeleccionadoId) {
@@ -360,7 +439,7 @@ export default function ColectivoMap({
     }
   }, [disparadorCentrado, ubicacionUsuario, mapaCargado, estaAbordado, conductorSeleccionadoId, conductoresEnVivo]);
 
-  // 2b. Fijar y seguir netamente al GPS del conductor en tiempo real mientras el pasajero est├® a bordo
+  // 2b. Fijar y seguir netamente al GPS del conductor en tiempo real mientras el pasajero esté a bordo
   useEffect(() => {
     if (!mapaCargado || !mapaRef.current || !estaAbordado || !conductorSeleccionadoId) return;
     const choferAsignado = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
@@ -373,7 +452,7 @@ export default function ColectivoMap({
     });
   }, [mapaCargado, estaAbordado, conductorSeleccionadoId, conductoresEnVivo]);
 
-  // 3. Renderizar capa de ruta y marcadores din├ímicos
+  // 3. Renderizar capa de ruta y marcadores dinámicos
   useEffect(() => {
     if (!mapaCargado || !mapaRef.current || !maplibreModuleRef.current) return;
 
@@ -384,7 +463,7 @@ export default function ColectivoMap({
     marcadoresRef.current.forEach((m) => m.remove());
     marcadoresRef.current = [];
 
-    // B. Trazado de ruta GeoJSON nativo de la l├¡nea
+    // B. Trazado de ruta GeoJSON nativo de la línea
     const idFuenteRuta = 'fuente-linea-colectivo';
     const idCapaRutaGlow = 'capa-linea-glow';
     const idCapaRutaLinea = 'capa-linea-principal';
@@ -393,7 +472,7 @@ export default function ColectivoMap({
       try {
         const puntosRaw = JSON.parse(lineaSeleccionada.puntosRuta);
         if (Array.isArray(puntosRaw) && puntosRaw.length > 1) {
-          // Convertir de [lat, lng] a est├índar GeoJSON [lng, lat]
+          // Convertir de [lat, lng] a estándar GeoJSON [lng, lat]
           const coordenadasGeoJson = puntosRaw.map(([lat, lng]: [number, number]) => [lng, lat]);
           const geojsonData = {
             type: 'Feature' as const,
@@ -451,16 +530,16 @@ export default function ColectivoMap({
         console.error('Error al procesar puntos de la ruta:', e);
       }
     } else {
-      // Si no hay l├¡nea, remover capas si existen
+      // Si no hay línea, remover capas si existen
       if (mapa.getLayer(idCapaRutaLinea)) mapa.removeLayer(idCapaRutaLinea);
       if (mapa.getLayer(idCapaRutaGlow)) mapa.removeLayer(idCapaRutaGlow);
       if (mapa.getSource(idFuenteRuta)) mapa.removeSource(idFuenteRuta);
     }
 
-    // C. Marcador: Ubicaci├│n del usuario o Mi Colectivo
+    // C. Marcador: Ubicación del usuario o Mi Colectivo
     if (ubicacionUsuario) {
       if (esModoConductor) {
-        // Modo Conductor: ├ìcono de colectivo limpio sin badges ni p├írrafos de "TU COLECTIVO" ni "MI AUTO"
+        // Modo Conductor: Ícono de colectivo limpio sin badges ni párrafos de "TU COLECTIVO" ni "MI AUTO"
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = 'display: flex; flex-direction: column; align-items: center; z-index: 100; cursor: pointer;';
@@ -486,7 +565,7 @@ export default function ColectivoMap({
 
         marcadoresRef.current.push(marcador);
       } else if (!estaAbordado) {
-        // Modo Pasajero: "Tu Ubicaci├│n" (solo visible antes de abordar)
+        // Modo Pasajero: "Tu Ubicación" (solo visible antes de abordar)
         const el = document.createElement('div');
         el.className = 'fim-marker-container';
         el.style.cssText = 'position: relative; width: 28px; height: 28px; cursor: pointer;';
@@ -499,7 +578,7 @@ export default function ColectivoMap({
           .setLngLat([ubicacionUsuario.longitud, ubicacionUsuario.latitud])
           .setPopup(
             new Popup({ offset: 15, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              '<b>Tu ubicaci├│n actual</b>'
+              '<b>Tu ubicación actual</b>'
             )
           )
           .addTo(mapa);
@@ -508,7 +587,7 @@ export default function ColectivoMap({
       }
     }
 
-    // D. Marcador: Paradas de la l├¡nea
+    // D. Marcador: Paradas de la línea
     if (lineaSeleccionada?.paradas && lineaSeleccionada.paradas.length > 0) {
       lineaSeleccionada.paradas.forEach((parada) => {
         const el = document.createElement('div');
@@ -551,7 +630,7 @@ export default function ColectivoMap({
         const estaLleno = asientosDisponibles <= 0;
         const esSeleccionado = conductorSeleccionadoId === chofer.conductorId;
 
-        // Calcular tiempo y distancia de aproximaci├│n
+        // Calcular tiempo y distancia de aproximación
         const eta = ubicacionUsuario
           ? calcularInfoLlegada(chofer.latitud, chofer.longitud, ubicacionUsuario.latitud, ubicacionUsuario.longitud)
           : null;
@@ -566,18 +645,18 @@ export default function ColectivoMap({
           textoAsientos = '1 libre';
         }
 
-        const textoPill = eta ? `${eta.textoTiempo} ÔÇó ${textoAsientos}` : textoAsientos;
+        const textoPill = eta ? `${eta.textoTiempo} • ${textoAsientos}` : textoAsientos;
         let textoBadge = esSeleccionado
-          ? (eta ? `${eta.textoTiempo} ÔÇó Asignado` : 'Asignado')
+          ? (eta ? `${eta.textoTiempo} • Asignado` : 'Asignado')
           : textoPill;
         let patenteParaRender = chofer.patente;
         let iconoBadge: 'auto' | 'reloj' | 'ninguno' = esSeleccionado ? 'auto' : (eta ? 'reloj' : 'ninguno');
 
-        // Si el pasajero ya abord├│ este colectivo asignado:
-        // Quitar los dos p├írrafos confusos y mostrar ├║nicamente "En ruta" sin texto duplicado de patente
+        // Si el pasajero ya abordó este colectivo asignado:
+        // Quitar los dos párrafos confusos y mostrar únicamente "En ruta" sin texto duplicado de patente
         if (estaAbordado && esSeleccionado) {
           textoBadge = 'En ruta';
-          patenteParaRender = ''; // Oculta el rect├íngulo blanco de patente inferior para eliminar sobrecarga visual
+          patenteParaRender = ''; // Oculta el rectángulo blanco de patente inferior para eliminar sobrecarga visual
           iconoBadge = 'auto';
         }
 
@@ -612,7 +691,7 @@ export default function ColectivoMap({
         });
 
         const infoEtaHtml = estaAbordado && esSeleccionado
-          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-weight: 800;">A bordo ÔÇó En viaje</div>`
+          ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-weight: 800;">A bordo • En viaje</div>`
           : eta
           ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-weight: 800;">Llega en ${eta.textoTiempo} (${eta.textoDistancia})</div>`
           : '';
@@ -652,7 +731,7 @@ export default function ColectivoMap({
         el.style.cssText = 'display: flex; flex-direction: column; align-items: center; cursor: pointer; z-index: 90;';
         el.innerHTML = `
           <div style="background: #000000; color: #FACC15; border: 1.5px solid #FACC15; font-size: 10px; font-weight: 900; padding: 2.5px 8px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.8); margin-bottom: 2px; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
-            ${textoTiempoPasajero ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FACC15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg> ${textoTiempoPasajero} ÔÇó ` : ''}${p.nombre.split(' ')[0]} (${p.asientos} as.)
+            ${textoTiempoPasajero ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FACC15" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg> ${textoTiempoPasajero} • ` : ''}${p.nombre.split(' ')[0]} (${p.asientos} as.)
           </div>
           <div style="background: #FACC15; border: 2px solid #000000; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(250,204,21,0.5);">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -688,6 +767,68 @@ export default function ColectivoMap({
     estaAbordado,
   ]);
 
+  // 4. Renderizar marcadores de puntos de referencia clave (Metro, Microbús y Malls)
+  useEffect(() => {
+    if (!mapaCargado || !mapaRef.current || !maplibreModuleRef.current) return;
+
+    const mapa = mapaRef.current;
+    const { Marker, Popup } = maplibreModuleRef.current;
+
+    marcadoresReferenciaRef.current.forEach((m) => m.remove());
+    marcadoresReferenciaRef.current = [];
+
+    const puntos = obtenerPuntosReferencia();
+
+    puntos.forEach((punto) => {
+      const el = document.createElement('div');
+      el.className = 'fim-marker-container fim-marker-referencia';
+      el.innerHTML = generarSvgReferenciaHtml(punto);
+
+      let distanciaTexto = '';
+      if (ubicacionUsuario) {
+        const info = calcularInfoLlegada(
+          ubicacionUsuario.latitud,
+          ubicacionUsuario.longitud,
+          punto.latitud,
+          punto.longitud
+        );
+        if (info) {
+          distanciaTexto = `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); color: #FACC15; font-size: 10px; font-weight: 800;">A ${info.textoDistancia} de tu ubicación</div>`;
+        }
+      }
+
+      const tipoLabel =
+        punto.tipo === 'metro'
+          ? 'ESTACIÓN DE METRO'
+          : punto.tipo === 'microbus'
+          ? 'ESTACIÓN / INTERMODAL DE MICROBÚS'
+          : 'MALL / CENTRO COMERCIAL';
+
+      const colorAcento = punto.tipo === 'microbus' ? '#FFFFFF' : '#FACC15';
+
+      const marcador = new Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([punto.longitud, punto.latitud])
+        .setPopup(
+          new Popup({ offset: 16, closeButton: false, className: 'fim-map-popup' }).setHTML(
+            `<div style="padding: 2px;">
+              <div style="font-size: 8.5px; font-weight: 800; color: ${colorAcento}; letter-spacing: 0.5px;">${tipoLabel}</div>
+              <div style="font-size: 12px; font-weight: 900; color: #FFFFFF; margin-top: 2px;">${punto.nombre}</div>
+              <div style="font-size: 10px; color: #A3A3A3; margin-top: 2px;">${punto.subtitulo}</div>
+              ${distanciaTexto}
+            </div>`
+          )
+        )
+        .addTo(mapa);
+
+      marcadoresReferenciaRef.current.push(marcador);
+    });
+
+    return () => {
+      marcadoresReferenciaRef.current.forEach((m) => m.remove());
+      marcadoresReferenciaRef.current = [];
+    };
+  }, [mapaCargado, ubicacionUsuario]);
+
   // ETA destacado para mostrar en el HUD flotante superior del mapa
   const etaDestacado = useMemo(() => {
     if (!ubicacionUsuario) return null;
@@ -716,7 +857,7 @@ export default function ColectivoMap({
       const chofer = conductoresEnVivo.find((c) => c.conductorId === conductorSeleccionadoId);
       if (!chofer) return null;
 
-      // Si el pasajero ya abord├│, mostrar "En ruta a destino" sin tiempos de llegada obsoletos
+      // Si el pasajero ya abordó, mostrar "En ruta a destino" sin tiempos de llegada obsoletos
       if (estaAbordado) {
         return {
           tipo: 'a_bordo',
@@ -826,6 +967,10 @@ export default function ColectivoMap({
         }
         .fim-map-popup .maplibregl-popup-tip {
           border-top-color: #0A0A0A !important;
+        }
+        .fim-referencia-pin:hover {
+          transform: scale(1.12);
+          transition: transform 0.15s ease-out;
         }
         @keyframes fimPulse {
           0% {
