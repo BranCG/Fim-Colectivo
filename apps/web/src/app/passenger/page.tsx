@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,6 +7,7 @@ import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo } from '@/components/map/ColectivoMap';
 import { calcularInfoLlegada } from '@/lib/geo';
+import { obtenerPosicionActual } from '@/lib/geolocalizacion';
 import {
   IconoColectivo,
   IconoCheck,
@@ -124,7 +125,7 @@ export default function PaginaPasajeroColectivo() {
     );
   }, [conductorElegido, ubicacionPasajero]);
 
-  // 1. Validar autenticaci├│n
+  // 1. Validar autenticación
   useEffect(() => {
     const sesion = getSession();
     if (!sesion) {
@@ -134,27 +135,19 @@ export default function PaginaPasajeroColectivo() {
     setUsuarioSesion(sesion.user);
   }, [router]);
 
-  // 2. Obtener geolocalizaci├│n del pasajero
+  // 2. Obtener geolocalización del pasajero (nativo en Android, web en browser)
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (posicion) => {
-          setUbicacionPasajero({
-            latitud: posicion.coords.latitude,
-            longitud: posicion.coords.longitude,
-          });
-        },
-        (error) => {
-          console.warn('Geolocalizaci├│n desactivada o denegada:', error);
-          // Coordenadas por defecto (Centro de Santiago de Chile)
-          setUbicacionPasajero({ latitud: -33.4489, longitud: -70.6693 });
-        },
-        { enableHighAccuracy: true }
-      );
-    }
+    obtenerPosicionActual({ altaPresicion: true, timeout: 10000, usarFallback: true })
+      .then((pos) => {
+        setUbicacionPasajero({ latitud: pos.latitud, longitud: pos.longitud });
+      })
+      .catch(() => {
+        // Fallback ya manejado en obtenerPosicionActual cuando usarFallback=true
+        setUbicacionPasajero({ latitud: -33.4489, longitud: -70.6693 });
+      });
   }, []);
 
-  // 3. Cargar l├¡neas de colectivo y reservas activas
+  // 3. Cargar líneas de colectivo y reservas activas
   const cargarLineasYReservas = useCallback(async () => {
     try {
       const [respuestaLineas, respuestaReservas] = await Promise.all([
