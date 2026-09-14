@@ -7,6 +7,7 @@ import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo, PasajeroEnEspera } from '@/components/map/ColectivoMap';
 import { calcularInfoLlegada } from '@/lib/geo';
+import { usePantallaEncendida } from '@/lib/usePantallaEncendida';
 import {
   IconoColectivo,
   IconoAsiento,
@@ -112,6 +113,9 @@ export default function PaginaConductorColectivo() {
   useEffect(() => {
     ubicacionChoferRef.current = ubicacionChofer;
   }, [ubicacionChofer]);
+
+  // Mantener pantalla encendida siempre (conductor activo)
+  usePantallaEncendida(true);
 
   // 1. Validar autenticación de chofer
   useEffect(() => {

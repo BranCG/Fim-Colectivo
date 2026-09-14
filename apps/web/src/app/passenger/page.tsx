@@ -7,6 +7,7 @@ import api, { clearSession, getSession } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
 import { Linea, ConductorColectivo } from '@/components/map/ColectivoMap';
 import { calcularInfoLlegada } from '@/lib/geo';
+import { usePantallaEncendida } from '@/lib/usePantallaEncendida';
 import {
   IconoColectivo,
   IconoCheck,
@@ -123,6 +124,9 @@ export default function PaginaPasajeroColectivo() {
       ubicacionPasajero.longitud
     );
   }, [conductorElegido, ubicacionPasajero]);
+
+  // Mantener pantalla encendida siempre (pasajero activo)
+  usePantallaEncendida(true);
 
   // 1. Validar autenticación
   useEffect(() => {
