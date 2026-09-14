@@ -870,7 +870,7 @@ export default function PaginaConductorColectivo() {
               Fim <span style={{ color: '#FACC15' }}>Colectivo Chofer</span>
             </h1>
             <p style={{ margin: 0, fontSize: '11px', color: '#A3A3A3' }}>
-              {choferSesion ? choferSesion.name : 'Conductor'} • {lineaActual ? lineaActual.nombre : 'Línea no asignada'}
+              {choferSesion ? choferSesion.name : 'Conductor'}
             </p>
           </div>
         </div>
@@ -982,22 +982,6 @@ export default function PaginaConductorColectivo() {
           alignItems: 'center',
           flexWrap: 'wrap',
         }}>
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.85)',
-            backdropFilter: 'blur(8px)',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
-            borderRadius: '20px',
-            padding: '5px 12px',
-            fontSize: '12px',
-            fontWeight: '700',
-            color: '#FFFFFF',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#FACC15' }} />
-            {lineaActual ? `${lineaActual.nombre} • ${sentidoRuta.toUpperCase()}` : 'Línea'}
-          </div>
 
           <div style={{
             background: enServicio ? '#FACC15' : '#262626',

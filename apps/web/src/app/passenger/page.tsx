@@ -592,51 +592,6 @@ export default function PaginaPasajeroColectivo() {
         </button>
       </header>
 
-      {/* ── Selector de Líneas de Colectivo (Pills horizontales) ── */}
-      <div style={{
-        padding: '10px 16px',
-        background: '#121212',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-        display: 'flex',
-        gap: '8px',
-        overflowX: 'auto',
-        whiteSpace: 'nowrap',
-        zIndex: 5,
-      }}>
-        {listaLineas.map((linea) => {
-          const esActiva = lineaSeleccionada?.id === linea.id;
-          return (
-            <button
-              key={linea.id}
-              onClick={() => seleccionarLinea(linea)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 14px',
-                borderRadius: '24px',
-                border: esActiva ? '2px solid #FACC15' : '1px solid rgba(255, 255, 255, 0.15)',
-                background: esActiva ? 'rgba(250, 204, 21, 0.15)' : '#171717',
-                color: esActiva ? '#FACC15' : '#D4D4D4',
-                fontSize: '13px',
-                fontWeight: esActiva ? '700' : '500',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <span style={{
-                width: '10px',
-                height: '10px',
-                borderRadius: '50%',
-                background: esActiva ? '#FACC15' : '#737373',
-                display: 'inline-block',
-              }} />
-              {linea.nombre}
-            </button>
-          );
-        })}
-      </div>
-
       {/* ── Banner de Alerta o Error ── */}
       {mensajeAlerta && (
         <div style={{
