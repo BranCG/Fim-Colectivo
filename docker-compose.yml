@@ -19,6 +19,7 @@ services:
       - MP_ACCESS_TOKEN=
     volumes:
       - api-uploads:/app/uploads
+      - ./apps/api/firebase-service-account.json:/app/firebase-service-account.json:ro
 
   web:
     container_name: fim-colectivo-web
