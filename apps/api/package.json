@@ -10,7 +10,7 @@
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.1",
     "express": "^5.2.1",
     "firebase-admin": "^14.4.0",
     "jsonwebtoken": "^9.0.2",
