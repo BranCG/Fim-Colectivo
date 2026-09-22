@@ -15,7 +15,7 @@
     "firebase-admin": "^14.4.0",
     "jsonwebtoken": "^9.0.2",
     "mercadopago": "^3.6.0",
-    "multer": "^2.3.0",
+    "multer": "^2.4.0",
     "prom-client": "^15.1.0",
     "socket.io": "^4.7.5",
     "uuid": "^14.0.2"
