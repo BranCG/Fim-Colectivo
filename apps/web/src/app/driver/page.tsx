@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -28,6 +28,7 @@ import {
   IconoReloj,
   IconoMicrofono,
   IconoParlante,
+  IconoCampana,
 } from '@/components/icons/Iconos';
 
 // Cargar mapa dinámico sin SSR para Leaflet
@@ -92,6 +93,11 @@ export default function PaginaConductorColectivo() {
 
   // Solicitud de pago y descenso del pasajero
   const [pagoPendiente, setPagoPendiente] = useState<SolicitudPagoActiva | null>(null);
+  const [paradaSolicitada, setParadaSolicitada] = useState<{
+    pasajeroNombre: string;
+    reservaId?: string;
+    hora: string;
+  } | null>(null);
   const [audioDesbloqueado, setAudioDesbloqueado] = useState<boolean>(false);
   const [cargandoAccion, setCargandoAccion] = useState<string | null>(null);
 
@@ -353,6 +359,35 @@ export default function PaginaConductorColectivo() {
       );
     };
 
+    // Evento: Pasajero solicita parada al llegar a destino
+    const manejarSolicitudParada = (datos: {
+      pasajeroNombre?: string;
+      reservaId?: string;
+      conductorId?: string;
+    }) => {
+      if (datos?.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
+        return;
+      }
+      reproducirSonido('alerta');
+      const rawNombre = (datos?.pasajeroNombre || '').trim();
+      const nombre =
+        rawNombre &&
+        rawNombre.toLowerCase() !== 'pasajero' &&
+        rawNombre.toLowerCase() !== 'el pasajero'
+          ? rawNombre.split(' ')[0]
+          : '';
+      const fraseVoz = nombre
+        ? `Favor dejar a ${nombre} en la siguiente parada.`
+        : 'Favor dejar al pasajero en la siguiente parada.';
+      hablarTexto(fraseVoz);
+      setMensajeAlerta(`Parada solicitada: ${fraseVoz}`);
+      setParadaSolicitada({
+        pasajeroNombre: nombre || 'Pasajero',
+        reservaId: datos?.reservaId,
+        hora: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
+      });
+    };
+
     // Evento: Reserva confirmada al chofer
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarReservaConfirmadaChofer = (datos: { reserva: any; asientosOcupados?: number }) => {
@@ -418,6 +453,8 @@ export default function PaginaConductorColectivo() {
     socket.on('colectivo:pasajero-quiere-pagar', manejarPasajeroQuierePagar);
     socket.on('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
     socket.on('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
+    socket.on('colectivo:solicitud-parada', manejarSolicitudParada);
+    socket.on('colectivo:solicitar-parada', manejarSolicitudParada);
 
     // Si está en servicio, transmitir ubicación GPS continua
     if (enServicio && typeof window !== 'undefined' && 'geolocation' in navigator) {
@@ -455,6 +492,8 @@ export default function PaginaConductorColectivo() {
       socket.off('colectivo:pasajero-quiere-pagar', manejarPasajeroQuierePagar);
       socket.off('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
       socket.off('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
+      socket.off('colectivo:solicitud-parada', manejarSolicitudParada);
+      socket.off('colectivo:solicitar-parada', manejarSolicitudParada);
       socket.off('connect', suscribirSalas);
       if (lineaActual?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaActual.id });
@@ -745,7 +784,7 @@ export default function PaginaConductorColectivo() {
     reproducirSonido('rechazo');
   };
 
-  // Confirmar pago del pasajero y liberar asiento
+  // Confirmar pago del pasajero (el pasajero sigue a bordo en ruta)
   const confirmarPagoPasajero = async (reservaId: string) => {
     try {
       if (escuchaPagoRef.current) {
@@ -755,28 +794,55 @@ export default function PaginaConductorColectivo() {
         escuchaPagoRef.current = null;
       }
       setCargandoAccion(reservaId);
-      const res = await api.post(`/colectivos/reservas/${reservaId}/confirmar-pago`);
+      await api.post(`/colectivos/reservas/${reservaId}/confirmar-pago`);
       setPagoPendiente((prev) => (prev?.reservaId === reservaId ? null : prev));
-      setMensajeExito(res.data.mensaje || 'Pago confirmado y asiento liberado.');
+      setMensajeExito('Pago confirmado exitosamente.');
       reproducirSonido('exito');
-      // Anunciar al conductor que deje aqui al pasajero
-      const nombrePasajero = pagoPendiente?.pasajeroNombre?.split(' ')[0] || 'el pasajero';
-      setTimeout(() => {
-        hablarTexto(`Deja aquí al pasajero ${nombrePasajero}. Hasta luego.`);
-      }, 350);
+      // No decir nada por voz: el pasajero sigue a bordo del automóvil
 
-      // Actualizar estado local de reservas y chofer
-      setReservasPendientes((prev) => prev.filter((r) => r.id !== reservaId));
-      if (res.data.asientosOcupados !== undefined) {
-        setAsientosOcupados(res.data.asientosOcupados);
-        setChoferSesion((prev: any) =>
-          prev ? { ...prev, asientosOcupados: res.data.asientosOcupados } : null
-        );
-      }
+      // Mantener pasajero en ruta marcado como pagado
+      setReservasPendientes((prev) =>
+        prev.map((r) => (r.id === reservaId ? { ...r, estado: 'pagado' } : r))
+      );
     } catch (error) {
       console.error('Error al confirmar pago:', error);
       setMensajeError('No se pudo confirmar el pago.');
       reproducirSonido('rechazo');
+    } finally {
+      setCargandoAccion(null);
+    }
+  };
+
+  // Liberar asiento cuando el pasajero desciende en su parada
+  const liberarAsientoParada = async (reservaId?: string) => {
+    try {
+      if (reservaId) {
+        setCargandoAccion(reservaId);
+        const res = await api.post(`/colectivos/reservas/${reservaId}/liberar-asiento`).catch(() => null);
+        if (res?.data?.asientosOcupados !== undefined) {
+          setAsientosOcupados(res.data.asientosOcupados);
+          setChoferSesion((prev: any) =>
+            prev ? { ...prev, asientosOcupados: res.data.asientosOcupados } : null
+          );
+        } else {
+          setAsientosOcupados((prev) => Math.max(0, prev - 1));
+          setChoferSesion((prev: any) =>
+            prev ? { ...prev, asientosOcupados: Math.max(0, (prev.asientosOcupados || 1) - 1) } : null
+          );
+        }
+        setReservasPendientes((prev) => prev.filter((r) => r.id !== reservaId));
+      } else {
+        setAsientosOcupados((prev) => Math.max(0, prev - 1));
+        setChoferSesion((prev: any) =>
+          prev ? { ...prev, asientosOcupados: Math.max(0, (prev.asientosOcupados || 1) - 1) } : null
+        );
+      }
+      setParadaSolicitada(null);
+      setMensajeExito('Asiento liberado exitosamente.');
+      reproducirSonido('exito');
+    } catch (err) {
+      console.error('Error al liberar asiento:', err);
+      setParadaSolicitada(null);
     } finally {
       setCargandoAccion(null);
     }
@@ -1807,6 +1873,95 @@ export default function PaginaConductorColectivo() {
         />
       )}
 
+      {/* ── MODAL: PASAJERO SOLICITA PARADA ── */}
+      {paradaSolicitada && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: 'rgba(0, 0, 0, 0.88)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              background: '#0D0D0D',
+              border: '2px solid #FACC15',
+              borderRadius: '24px',
+              padding: '28px 24px',
+              boxShadow: '0 20px 60px rgba(250, 204, 21, 0.35)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div
+                style={{
+                  width: '72px',
+                  height: '72px',
+                  borderRadius: '50%',
+                  background: 'rgba(250, 204, 21, 0.15)',
+                  border: '2px solid #FACC15',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 0 30px rgba(250, 204, 21, 0.3)',
+                }}
+              >
+                <IconoCampana size={38} color="#FACC15" />
+              </div>
+            </div>
+
+            <div>
+              <span style={{ fontSize: '11px', fontWeight: '800', color: '#FACC15', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+                SOLICITUD DE PARADA ({paradaSolicitada.hora})
+              </span>
+              <h2 style={{ margin: '8px 0 0 0', fontSize: '22px', fontWeight: '900', color: '#FFFFFF', lineHeight: '1.3' }}>
+                {paradaSolicitada.pasajeroNombre.toLowerCase() !== 'pasajero'
+                  ? `Favor dejar a ${paradaSolicitada.pasajeroNombre} en la siguiente parada`
+                  : 'Favor dejar al pasajero en la siguiente parada'}
+              </h2>
+              <p style={{ margin: '8px 0 0 0', fontSize: '14px', color: '#A3A3A3' }}>
+                El pasajero ha solicitado descender del colectivo en la próxima parada.
+              </p>
+            </div>
+
+            <button
+              onClick={() => liberarAsientoParada(paradaSolicitada.reservaId)}
+              style={{
+                width: '100%',
+                padding: '16px',
+                borderRadius: '14px',
+                background: '#FACC15',
+                border: 'none',
+                color: '#000000',
+                fontSize: '16px',
+                fontWeight: '900',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                boxShadow: '0 6px 20px rgba(250, 204, 21, 0.4)',
+              }}
+            >
+              <IconoCheck size={20} color="#000000" />
+              <span>ENTENDIDO / LIBERAR ASIENTO</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── MODAL: PASAJERO QUIERE PAGAR Y BAJARSE ── */}
       {pagoPendiente && (
         <div
@@ -1911,7 +2066,7 @@ export default function PaginaConductorColectivo() {
               </div>
               <div style={{ width: '1px', height: '30px', background: 'rgba(255, 255, 255, 0.1)' }} />
               <div>
-                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Asientos a Liberar</span>
+                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Asientos a Bordo</span>
                 <span style={{ fontSize: '14px', fontWeight: '800', color: '#FACC15' }}>
                   {pagoPendiente.cantidadAsientos} Asiento{pagoPendiente.cantidadAsientos > 1 ? 's' : ''}
                 </span>
@@ -2030,7 +2185,7 @@ export default function PaginaConductorColectivo() {
                   gap: '8px',
                 }}
               >
-                <span>CANCELAR / MANTENER ASIENTO</span>
+                <span>CANCELAR</span>
               </button>
             </div>
           </div>

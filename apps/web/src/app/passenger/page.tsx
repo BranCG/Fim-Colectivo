@@ -21,6 +21,8 @@ import {
   IconoEfectivo,
   IconoAsiento,
   IconoReloj,
+  IconoParada,
+  IconoCampana,
 } from '@/components/icons/Iconos';
 import { reproducirSonido, hablarTexto } from '@/lib/voice';
 
@@ -73,6 +75,7 @@ export default function PaginaPasajeroColectivo() {
   const [solicitandoPago, setSolicitandoPago] = useState<boolean>(false);
   const [bajandose, setBajandose] = useState<boolean>(false);
   const [telefonoCopiado, setTelefonoCopiado] = useState<boolean>(false);
+  const [paradaSolicitada, setParadaSolicitada] = useState<boolean>(false);
 
   // Estado de asignación dirigida al primer móvil en tránsito
   const [buscandoMovil, setBuscandoMovil] = useState(false);
@@ -306,7 +309,7 @@ export default function PaginaPasajeroColectivo() {
       );
     };
 
-    // Evento: Conductor confirmó el pago — el pasajero sigue a bordo, ahora solo ve BAJARME
+    // Evento: Conductor confirmó el pago — el pasajero sigue a bordo, ahora solo ve SOLICITAR PARADA
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarPagoConfirmado = (datos: any) => {
       if (datos?.pasajeroId && usuarioSesion?.id && datos.pasajeroId !== usuarioSesion.id) {
@@ -315,7 +318,9 @@ export default function PaginaPasajeroColectivo() {
       // El pago fue confirmado: cambiar estado a 'pagado' (el pasajero sigue en el colectivo)
       setReservaActiva((prev) => (prev ? { ...prev, estado: 'pagado' } : null));
       setMostrarModalPago(false);
-      setMensajeAlerta('Pago confirmado. Cuando llegues a destino, presiona BAJARME.');
+      setMostrarModalAbordaje(false);
+      setParadaSolicitada(false);
+      setMensajeAlerta('Pago confirmado. Cuando llegues a destino, presiona SOLICITAR PARADA.');
       reproducirSonido('exito');
     };
 
@@ -532,6 +537,42 @@ export default function PaginaPasajeroColectivo() {
       setMensajeError('No se pudo enviar la solicitud de pago.');
     } finally {
       setSolicitandoPago(false);
+    }
+  };
+
+  // Solicitar parada al conductor cuando el pasajero ya pagó y llega a destino
+  const solicitarParada = async () => {
+    if (!reservaActiva) return;
+    try {
+      setParadaSolicitada(true);
+      reproducirSonido('exito');
+      const nombrePax = usuarioSesion?.name?.trim() || 'Pasajero';
+      const nombreCorto = (nombrePax.toLowerCase() !== 'pasajero' && nombrePax.toLowerCase() !== 'el pasajero')
+        ? nombrePax.split(' ')[0]
+        : '';
+      setMensajeAlerta('Parada solicitada. El conductor se detendrá aquí.');
+
+      const conductorDestinoId = reservaActiva.conductorId || (reservaActiva.conductor as any)?.id;
+      const lineaDestinoId = (reservaActiva as any).lineaId || (reservaActiva.linea as any)?.id || lineaSeleccionada?.id;
+
+      // 1. Emitir vía WebSocket directo al chofer y a la línea
+      socket.emit('colectivo:solicitar-parada', {
+        reservaId: reservaActiva.id,
+        conductorId: conductorDestinoId,
+        lineaId: lineaDestinoId,
+        pasajeroNombre: nombreCorto || nombrePax,
+      });
+
+      // 2. Notificar vía endpoint al backend
+      api.post(`/colectivos/reservas/${reservaActiva.id}/solicitar-parada`, {
+        conductorId: conductorDestinoId,
+        pasajeroNombre: nombreCorto || nombrePax,
+      }).catch((err) => {
+        console.warn('Endpoint solicitar-parada fallback socket:', err);
+      });
+    } catch (error) {
+      console.error('Error al solicitar parada:', error);
+      setMensajeError('No se pudo solicitar la parada.');
     }
   };
 
@@ -929,32 +970,34 @@ export default function PaginaPasajeroColectivo() {
 
             {/* BOTONES PRINCIPALES DE ACCIÓN según estado */}
             <div style={{ display: 'flex', gap: '8px' }}>
-              {/* Estado: pagado → solo BAJARME */}
+              {/* Estado: pagado → SOLO UN BOTÓN: SOLICITAR PARADA */}
               {reservaActiva.estado === 'pagado' && (
                 <button
-                  id="btn-bajarme-colectivo"
-                  onClick={bajarseDelColectivo}
-                  disabled={bajandose}
+                  id="btn-solicitar-parada"
+                  onClick={solicitarParada}
+                  disabled={paradaSolicitada}
                   style={{
                     flex: 1,
-                    padding: '14px',
-                    borderRadius: '10px',
-                    background: bajandose ? '#262626' : '#FACC15',
-                    color: bajandose ? '#A3A3A3' : '#000000',
+                    padding: '16px',
+                    borderRadius: '12px',
+                    background: paradaSolicitada ? '#16A34A' : '#FACC15',
+                    color: paradaSolicitada ? '#FFFFFF' : '#000000',
                     border: 'none',
                     fontWeight: '900',
-                    fontSize: '15px',
-                    cursor: bajandose ? 'default' : 'pointer',
+                    fontSize: '16px',
+                    cursor: paradaSolicitada ? 'default' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '8px',
-                    boxShadow: bajandose ? 'none' : '0 4px 18px rgba(250, 204, 21, 0.5)',
+                    gap: '10px',
+                    boxShadow: paradaSolicitada
+                      ? '0 4px 18px rgba(22, 163, 74, 0.4)'
+                      : '0 6px 20px rgba(250, 204, 21, 0.4)',
                     letterSpacing: '0.5px',
                   }}
                 >
-                  <IconoGps size={18} color={bajandose ? '#A3A3A3' : '#000000'} />
-                  <span>{bajandose ? 'Liberando asiento...' : 'BAJARME'}</span>
+                  <IconoParada size={22} color={paradaSolicitada ? '#FFFFFF' : '#000000'} />
+                  <span>{paradaSolicitada ? 'PARADA SOLICITADA' : 'SOLICITAR PARADA'}</span>
                 </button>
               )}
 
@@ -1422,32 +1465,23 @@ export default function PaginaPasajeroColectivo() {
               </p>
             </div>
 
-            {/* Info conductor y tarifa */}
+            {/* Info conductor (sin monto) */}
             <div style={{
               background: '#171717',
-              padding: '12px 16px',
+              padding: '14px 16px',
               borderRadius: '12px',
               fontSize: '13px',
               border: '1px solid rgba(255, 255, 255, 0.08)',
               display: 'flex',
-              justifyContent: 'space-between',
               alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
             }}>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ color: '#A3A3A3', fontSize: '11px', marginBottom: '2px' }}>Conductor</div>
-                <div style={{ fontWeight: '700', color: '#FFFFFF' }}>
+              <div>
+                <div style={{ color: '#A3A3A3', fontSize: '11px', marginBottom: '3px' }}>Conductor Asignado</div>
+                <div style={{ fontWeight: '800', color: '#FFFFFF', fontSize: '15px' }}>
                   {reservaActiva.conductor.name} ({reservaActiva.conductor.vehiclePlate})
                 </div>
-              </div>
-              <div style={{
-                background: '#FACC15',
-                color: '#000000',
-                padding: '6px 12px',
-                borderRadius: '10px',
-                fontWeight: '900',
-                fontSize: '14px',
-              }}>
-                ${reservaActiva.tarifa?.toLocaleString?.() || reservaActiva.linea?.tarifa?.toLocaleString?.() || '—'}
               </div>
             </div>
 

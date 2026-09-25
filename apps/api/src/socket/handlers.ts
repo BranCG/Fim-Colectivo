@@ -166,6 +166,22 @@ export function setupSocketHandlers(io: Server) {
       }
     });
 
+    // ─── COLECTIVOS: Solicitar parada al conductor ────────────────────────
+    socket.on('colectivo:solicitar-parada', (datos: {
+      conductorId: string;
+      lineaId?: string;
+      pasajeroNombre?: string;
+      reservaId?: string;
+    }) => {
+      console.log(`[Socket] Solicitud de parada para conductor ${datos.conductorId}:`, datos);
+      if (datos.conductorId) {
+        io.to(`driver:${datos.conductorId}`).emit('colectivo:solicitud-parada', datos);
+      }
+      if (datos.lineaId) {
+        io.to(`linea:${datos.lineaId}`).emit('colectivo:solicitud-parada', datos);
+      }
+    });
+
     socket.on('driver:join', ({ driverId, conductorId }: { driverId?: string; conductorId?: string }) => {
       const id = driverId || conductorId;
       if (id) {

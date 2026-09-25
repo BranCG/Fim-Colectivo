@@ -800,6 +800,107 @@ router.post('/reservas/:id/solicitar-pago', requireAuth, async (peticion: Reques
   }
 });
 
+// ─── PASAJERO: Solicitar parada al conductor ──────────────────────────────
+router.post('/reservas/:id/solicitar-parada', requireAuth, async (peticion: Request, respuesta: Response) => {
+  try {
+    const pasajeroId = peticion.user!.id;
+    const { id } = peticion.params;
+
+    const reserva = await prisma.reservaAsiento.findFirst({
+      where: { id: String(id), pasajeroId },
+      include: {
+        pasajero: { select: { id: true, name: true, phone: true } },
+        conductor: true,
+      },
+    });
+
+    if (!reserva) {
+      return respuesta.status(404).json({ error: 'Reserva no encontrada' });
+    }
+
+    const nombreRaw = reserva.pasajero.name || 'el pasajero';
+    const nombreCorto = (nombreRaw.toLowerCase() !== 'pasajero' && nombreRaw.toLowerCase() !== 'el pasajero')
+      ? nombreRaw.trim().split(' ')[0]
+      : '';
+
+    const payload = {
+      reservaId: id,
+      conductorId: reserva.conductorId,
+      pasajeroNombre: nombreCorto || nombreRaw,
+      lineaId: reserva.lineaId,
+    };
+
+    io.to(`driver:${reserva.conductorId}`).emit('colectivo:solicitud-parada', payload);
+    if (reserva.lineaId) {
+      io.to(`linea:${reserva.lineaId}`).emit('colectivo:solicitud-parada', payload);
+    }
+
+    notificarConductor(
+      reserva.conductorId,
+      'Solicitud de parada',
+      nombreCorto ? `Favor dejar a ${nombreCorto} en la siguiente parada.` : 'Favor dejar al pasajero en la siguiente parada.',
+      {
+        tipo: 'solicitud_parada',
+        reservaId: String(id),
+        pasajeroNombre: nombreCorto || nombreRaw,
+      }
+    ).catch((err) => console.error('[FCM] Error notificando parada al conductor:', err));
+
+    respuesta.json({ ok: true, mensaje: 'Parada solicitada con éxito' });
+  } catch (error) {
+    console.error('Error al solicitar parada:', error);
+    respuesta.status(500).json({ error: 'Error al procesar solicitud de parada' });
+  }
+});
+
+// ─── CONDUCTOR: Liberar asiento cuando el pasajero desciende en su parada ──
+router.post('/reservas/:id/liberar-asiento', requireAuth, requireRole('driver', 'admin'), async (peticion: Request, respuesta: Response) => {
+  try {
+    const conductorId = peticion.user!.id;
+    const { id } = peticion.params;
+
+    const reserva = await prisma.reservaAsiento.findFirst({
+      where: { id: String(id), conductorId },
+    });
+
+    if (!reserva) {
+      return respuesta.status(404).json({ error: 'Reserva no encontrada' });
+    }
+
+    const choferActual = await prisma.driver.findUnique({ where: { id: conductorId } });
+    const nuevosOcupados = Math.max(0, (choferActual?.asientosOcupados || 0) - reserva.cantidadAsientos);
+
+    await prisma.$transaction([
+      prisma.reservaAsiento.update({
+        where: { id: String(id) },
+        data: { estado: 'completado' },
+      }),
+      prisma.driver.update({
+        where: { id: conductorId },
+        data: { asientosOcupados: nuevosOcupados },
+      }),
+    ]);
+
+    if (choferActual?.lineaId) {
+      io.to(`linea:${choferActual.lineaId}`).emit('colectivo:cambio-asientos', {
+        conductorId,
+        asientosOcupados: nuevosOcupados,
+        asientosTotales: choferActual.asientosTotales,
+      });
+    }
+
+    io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:viaje-finalizado', {
+      reservaId: id,
+      mensaje: '¡Gracias por viajar con Fim Colectivo!',
+    });
+
+    respuesta.json({ ok: true, asientosOcupados: nuevosOcupados, mensaje: 'Asiento liberado exitosamente' });
+  } catch (error) {
+    console.error('Error al liberar asiento:', error);
+    respuesta.status(500).json({ error: 'Error al liberar asiento' });
+  }
+});
+
 // ─── CONDUCTOR: Aceptar pago y liberar asiento ────────────────────────────
 router.post('/reservas/:id/confirmar-pago', requireAuth, requireRole('driver', 'admin'), async (peticion: Request, respuesta: Response) => {
   try {
@@ -819,67 +920,52 @@ router.post('/reservas/:id/confirmar-pago', requireAuth, requireRole('driver', '
     }
 
     const choferActual = await prisma.driver.findUnique({ where: { id: conductorId } });
-    const nuevosOcupados = Math.max(0, (choferActual?.asientosOcupados || 0) - reserva.cantidadAsientos);
+    const asientosActuales = choferActual?.asientosOcupados || 0;
 
-    const [reservaActualizada, choferActualizado] = await prisma.$transaction([
-      prisma.reservaAsiento.update({
-        where: { id: String(id) },
-        data: { estado: 'completado' },
-        include: {
-          pasajero: { select: { id: true, name: true, phone: true } },
-        },
-      }),
-      prisma.driver.update({
-        where: { id: conductorId },
-        data: { asientosOcupados: nuevosOcupados },
-      }),
-    ]);
+    const reservaActualizada = await prisma.reservaAsiento.update({
+      where: { id: String(id) },
+      data: { estado: 'pagado' },
+      include: {
+        pasajero: { select: { id: true, name: true, phone: true } },
+      },
+    });
 
-    // Notificar a la flota de la línea sobre el nuevo cupo liberado
-    if (choferActualizado.lineaId) {
-      io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:cambio-asientos', {
-        conductorId: choferActualizado.id,
-        asientosOcupados: choferActualizado.asientosOcupados,
-        asientosTotales: choferActualizado.asientosTotales,
-      });
-    }
-
-    // Notificar al pasajero que el pago fue recibido y el viaje culminó (liberando su pantalla)
+    // Notificar al pasajero que el pago fue recibido (sigue a bordo en ruta)
     io.to(`pasajero:${reserva.pasajeroId}`).emit('colectivo:pago-confirmado', {
       reservaId: id,
       pasajeroId: reserva.pasajeroId,
-      mensaje: '¡Pago confirmado por el conductor! Gracias por viajar.',
+      mensaje: '¡Pago confirmado! Sigue en tu viaje.',
     });
-    if (choferActualizado.lineaId) {
-      io.to(`linea:${choferActualizado.lineaId}`).emit('colectivo:pago-confirmado', {
+    if (choferActual?.lineaId) {
+      io.to(`linea:${choferActual.lineaId}`).emit('colectivo:pago-confirmado', {
         reservaId: id,
         pasajeroId: reserva.pasajeroId,
-        mensaje: '¡Pago confirmado por el conductor! Gracias por viajar.',
+        mensaje: '¡Pago confirmado! Sigue en tu viaje.',
       });
     }
 
     // Notificar al conductor confirmación
     io.to(`driver:${conductorId}`).emit('colectivo:pago-confirmado-chofer', {
       reservaId: id,
-      asientosOcupados: nuevosOcupados,
+      asientosOcupados: asientosActuales,
     });
 
     // FCM: notificar al pasajero confirmación de pago
     notificarPasajero(
       reserva.pasajeroId,
-      'Viaje finalizado',
-      'El conductor ha confirmado tu pago. ¡Gracias por viajar con Fim Colectivo!',
+      'Pago confirmado',
+      'El conductor ha confirmado tu pago. Sigue a bordo hasta tu destino.',
       {
         tipo: 'pago_confirmado',
         reservaId: String(id),
       }
-    ).catch((err) => console.error('[FCM] Error notificando fin de viaje al pasajero:', err));
+    ).catch((err) => console.error('[FCM] Error notificando pago al pasajero:', err));
 
     respuesta.json({
       ok: true,
       reserva: reservaActualizada,
-      asientosOcupados: nuevosOcupados,
-      mensaje: 'Pago confirmado y asiento liberado exitosamente',
+      asientosOcupados: asientosActuales,
+      mensaje: 'Pago confirmado exitosamente',
     });
   } catch (error) {
     console.error('Error al confirmar pago:', error);
