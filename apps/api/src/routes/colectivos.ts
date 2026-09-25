@@ -800,6 +800,59 @@ router.post('/reservas/:id/solicitar-pago', requireAuth, async (peticion: Reques
   }
 });
 
+// ─── PASAJERO: Solicitar parada al conductor ──────────────────────────────
+router.post('/reservas/:id/solicitar-parada', requireAuth, async (peticion: Request, respuesta: Response) => {
+  try {
+    const pasajeroId = peticion.user!.id;
+    const { id } = peticion.params;
+
+    const reserva = await prisma.reservaAsiento.findFirst({
+      where: { id: String(id), pasajeroId },
+      include: {
+        pasajero: { select: { id: true, name: true, phone: true } },
+        conductor: true,
+      },
+    });
+
+    if (!reserva) {
+      return respuesta.status(404).json({ error: 'Reserva no encontrada' });
+    }
+
+    const nombreRaw = reserva.pasajero.name || 'el pasajero';
+    const nombreCorto = (nombreRaw.toLowerCase() !== 'pasajero' && nombreRaw.toLowerCase() !== 'el pasajero')
+      ? nombreRaw.trim().split(' ')[0]
+      : '';
+
+    const payload = {
+      reservaId: id,
+      conductorId: reserva.conductorId,
+      pasajeroNombre: nombreCorto || nombreRaw,
+      lineaId: reserva.lineaId,
+    };
+
+    io.to(`driver:${reserva.conductorId}`).emit('colectivo:solicitud-parada', payload);
+    if (reserva.lineaId) {
+      io.to(`linea:${reserva.lineaId}`).emit('colectivo:solicitud-parada', payload);
+    }
+
+    notificarConductor(
+      reserva.conductorId,
+      'Solicitud de parada',
+      nombreCorto ? `Deja al pasajero ${nombreCorto} aquí.` : 'El pasajero solicita parada aquí.',
+      {
+        tipo: 'solicitud_parada',
+        reservaId: String(id),
+        pasajeroNombre: nombreCorto || nombreRaw,
+      }
+    ).catch((err) => console.error('[FCM] Error notificando parada al conductor:', err));
+
+    respuesta.json({ ok: true, mensaje: 'Parada solicitada con éxito' });
+  } catch (error) {
+    console.error('Error al solicitar parada:', error);
+    respuesta.status(500).json({ error: 'Error al procesar solicitud de parada' });
+  }
+});
+
 // ─── CONDUCTOR: Aceptar pago y liberar asiento ────────────────────────────
 router.post('/reservas/:id/confirmar-pago', requireAuth, requireRole('driver', 'admin'), async (peticion: Request, respuesta: Response) => {
   try {

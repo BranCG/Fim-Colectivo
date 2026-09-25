@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -28,6 +28,7 @@ import {
   IconoReloj,
   IconoMicrofono,
   IconoParlante,
+  IconoCampana,
 } from '@/components/icons/Iconos';
 
 // Cargar mapa dinámico sin SSR para Leaflet
@@ -92,6 +93,11 @@ export default function PaginaConductorColectivo() {
 
   // Solicitud de pago y descenso del pasajero
   const [pagoPendiente, setPagoPendiente] = useState<SolicitudPagoActiva | null>(null);
+  const [paradaSolicitada, setParadaSolicitada] = useState<{
+    pasajeroNombre: string;
+    reservaId?: string;
+    hora: string;
+  } | null>(null);
   const [audioDesbloqueado, setAudioDesbloqueado] = useState<boolean>(false);
   const [cargandoAccion, setCargandoAccion] = useState<string | null>(null);
 
@@ -353,6 +359,33 @@ export default function PaginaConductorColectivo() {
       );
     };
 
+    // Evento: Pasajero solicita parada al llegar a destino
+    const manejarSolicitudParada = (datos: {
+      pasajeroNombre?: string;
+      reservaId?: string;
+      conductorId?: string;
+    }) => {
+      if (datos?.conductorId && choferSesion?.id && datos.conductorId !== choferSesion.id) {
+        return;
+      }
+      reproducirSonido('alerta');
+      const rawNombre = (datos?.pasajeroNombre || '').trim();
+      const nombre =
+        rawNombre &&
+        rawNombre.toLowerCase() !== 'pasajero' &&
+        rawNombre.toLowerCase() !== 'el pasajero'
+          ? rawNombre.split(' ')[0]
+          : '';
+      const fraseVoz = nombre ? `Deja al pasajero ${nombre} aquí.` : 'Deja al pasajero aquí.';
+      hablarTexto(fraseVoz);
+      setMensajeAlerta(`Parada solicitada: ${fraseVoz}`);
+      setParadaSolicitada({
+        pasajeroNombre: nombre || 'Pasajero',
+        reservaId: datos?.reservaId,
+        hora: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
+      });
+    };
+
     // Evento: Reserva confirmada al chofer
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manejarReservaConfirmadaChofer = (datos: { reserva: any; asientosOcupados?: number }) => {
@@ -418,6 +451,8 @@ export default function PaginaConductorColectivo() {
     socket.on('colectivo:pasajero-quiere-pagar', manejarPasajeroQuierePagar);
     socket.on('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
     socket.on('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
+    socket.on('colectivo:solicitud-parada', manejarSolicitudParada);
+    socket.on('colectivo:solicitar-parada', manejarSolicitudParada);
 
     // Si está en servicio, transmitir ubicación GPS continua
     if (enServicio && typeof window !== 'undefined' && 'geolocation' in navigator) {
@@ -455,6 +490,8 @@ export default function PaginaConductorColectivo() {
       socket.off('colectivo:pasajero-quiere-pagar', manejarPasajeroQuierePagar);
       socket.off('colectivo:pago-confirmado-chofer', manejarPagoConfirmadoChofer);
       socket.off('colectivo:reserva-confirmada-chofer', manejarReservaConfirmadaChofer);
+      socket.off('colectivo:solicitud-parada', manejarSolicitudParada);
+      socket.off('colectivo:solicitar-parada', manejarSolicitudParada);
       socket.off('connect', suscribirSalas);
       if (lineaActual?.id) {
         socket.emit('colectivo:salir-linea', { lineaId: lineaActual.id });
@@ -757,13 +794,9 @@ export default function PaginaConductorColectivo() {
       setCargandoAccion(reservaId);
       const res = await api.post(`/colectivos/reservas/${reservaId}/confirmar-pago`);
       setPagoPendiente((prev) => (prev?.reservaId === reservaId ? null : prev));
-      setMensajeExito(res.data.mensaje || 'Pago confirmado y asiento liberado.');
+      setMensajeExito(res.data.mensaje || 'Pago confirmado.');
       reproducirSonido('exito');
-      // Anunciar al conductor que deje aqui al pasajero
-      const nombrePasajero = pagoPendiente?.pasajeroNombre?.split(' ')[0] || 'el pasajero';
-      setTimeout(() => {
-        hablarTexto(`Deja aquí al pasajero ${nombrePasajero}. Hasta luego.`);
-      }, 350);
+      // Al confirmar el pago no se dice nada por voz: el pasajero sigue a bordo del colectivo.
 
       // Actualizar estado local de reservas y chofer
       setReservasPendientes((prev) => prev.filter((r) => r.id !== reservaId));
@@ -1805,6 +1838,95 @@ export default function PaginaConductorColectivo() {
           alRechazar={(id) => responderSolicitudDirigida(id, 'rechazar')}
           alExpirar={() => setSolicitudActiva(null)}
         />
+      )}
+
+      {/* ── MODAL: PASAJERO SOLICITA PARADA ── */}
+      {paradaSolicitada && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: 'rgba(0, 0, 0, 0.88)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              background: '#0D0D0D',
+              border: '2px solid #FACC15',
+              borderRadius: '24px',
+              padding: '28px 24px',
+              boxShadow: '0 20px 60px rgba(250, 204, 21, 0.35)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div
+                style={{
+                  width: '72px',
+                  height: '72px',
+                  borderRadius: '50%',
+                  background: 'rgba(250, 204, 21, 0.15)',
+                  border: '2px solid #FACC15',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 0 30px rgba(250, 204, 21, 0.3)',
+                }}
+              >
+                <IconoCampana size={38} color="#FACC15" />
+              </div>
+            </div>
+
+            <div>
+              <span style={{ fontSize: '11px', fontWeight: '800', color: '#FACC15', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+                SOLICITUD DE PARADA ({paradaSolicitada.hora})
+              </span>
+              <h2 style={{ margin: '8px 0 0 0', fontSize: '22px', fontWeight: '900', color: '#FFFFFF', lineHeight: '1.3' }}>
+                {paradaSolicitada.pasajeroNombre.toLowerCase() !== 'pasajero'
+                  ? `Deja al pasajero ${paradaSolicitada.pasajeroNombre} aquí`
+                  : 'Deja al pasajero aquí'}
+              </h2>
+              <p style={{ margin: '8px 0 0 0', fontSize: '14px', color: '#A3A3A3' }}>
+                El pasajero ha solicitado descender del colectivo en este punto.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setParadaSolicitada(null)}
+              style={{
+                width: '100%',
+                padding: '16px',
+                borderRadius: '14px',
+                background: '#FACC15',
+                border: 'none',
+                color: '#000000',
+                fontSize: '16px',
+                fontWeight: '900',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                boxShadow: '0 6px 20px rgba(250, 204, 21, 0.4)',
+              }}
+            >
+              <IconoCheck size={20} color="#000000" />
+              <span>ENTENDIDO</span>
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── MODAL: PASAJERO QUIERE PAGAR Y BAJARSE ── */}
