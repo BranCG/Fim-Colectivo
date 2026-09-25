@@ -1465,32 +1465,23 @@ export default function PaginaPasajeroColectivo() {
               </p>
             </div>
 
-            {/* Info conductor y tarifa */}
+            {/* Info conductor (sin monto) */}
             <div style={{
               background: '#171717',
-              padding: '12px 16px',
+              padding: '14px 16px',
               borderRadius: '12px',
               fontSize: '13px',
               border: '1px solid rgba(255, 255, 255, 0.08)',
               display: 'flex',
-              justifyContent: 'space-between',
               alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
             }}>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ color: '#A3A3A3', fontSize: '11px', marginBottom: '2px' }}>Conductor</div>
-                <div style={{ fontWeight: '700', color: '#FFFFFF' }}>
+              <div>
+                <div style={{ color: '#A3A3A3', fontSize: '11px', marginBottom: '3px' }}>Conductor Asignado</div>
+                <div style={{ fontWeight: '800', color: '#FFFFFF', fontSize: '15px' }}>
                   {reservaActiva.conductor.name} ({reservaActiva.conductor.vehiclePlate})
                 </div>
-              </div>
-              <div style={{
-                background: '#FACC15',
-                color: '#000000',
-                padding: '6px 12px',
-                borderRadius: '10px',
-                fontWeight: '900',
-                fontSize: '14px',
-              }}>
-                ${reservaActiva.tarifa?.toLocaleString?.() || reservaActiva.linea?.tarifa?.toLocaleString?.() || '—'}
               </div>
             </div>
 

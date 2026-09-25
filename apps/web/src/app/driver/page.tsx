@@ -376,7 +376,9 @@ export default function PaginaConductorColectivo() {
         rawNombre.toLowerCase() !== 'el pasajero'
           ? rawNombre.split(' ')[0]
           : '';
-      const fraseVoz = nombre ? `Deja al pasajero ${nombre} aquí.` : 'Deja al pasajero aquí.';
+      const fraseVoz = nombre
+        ? `Favor dejar a ${nombre} en la siguiente parada.`
+        : 'Favor dejar al pasajero en la siguiente parada.';
       hablarTexto(fraseVoz);
       setMensajeAlerta(`Parada solicitada: ${fraseVoz}`);
       setParadaSolicitada({
@@ -782,7 +784,7 @@ export default function PaginaConductorColectivo() {
     reproducirSonido('rechazo');
   };
 
-  // Confirmar pago del pasajero y liberar asiento
+  // Confirmar pago del pasajero (el pasajero sigue a bordo en ruta)
   const confirmarPagoPasajero = async (reservaId: string) => {
     try {
       if (escuchaPagoRef.current) {
@@ -792,24 +794,55 @@ export default function PaginaConductorColectivo() {
         escuchaPagoRef.current = null;
       }
       setCargandoAccion(reservaId);
-      const res = await api.post(`/colectivos/reservas/${reservaId}/confirmar-pago`);
+      await api.post(`/colectivos/reservas/${reservaId}/confirmar-pago`);
       setPagoPendiente((prev) => (prev?.reservaId === reservaId ? null : prev));
-      setMensajeExito(res.data.mensaje || 'Pago confirmado.');
+      setMensajeExito('Pago confirmado exitosamente.');
       reproducirSonido('exito');
-      // Al confirmar el pago no se dice nada por voz: el pasajero sigue a bordo del colectivo.
+      // No decir nada por voz: el pasajero sigue a bordo del automóvil
 
-      // Actualizar estado local de reservas y chofer
-      setReservasPendientes((prev) => prev.filter((r) => r.id !== reservaId));
-      if (res.data.asientosOcupados !== undefined) {
-        setAsientosOcupados(res.data.asientosOcupados);
-        setChoferSesion((prev: any) =>
-          prev ? { ...prev, asientosOcupados: res.data.asientosOcupados } : null
-        );
-      }
+      // Mantener pasajero en ruta marcado como pagado
+      setReservasPendientes((prev) =>
+        prev.map((r) => (r.id === reservaId ? { ...r, estado: 'pagado' } : r))
+      );
     } catch (error) {
       console.error('Error al confirmar pago:', error);
       setMensajeError('No se pudo confirmar el pago.');
       reproducirSonido('rechazo');
+    } finally {
+      setCargandoAccion(null);
+    }
+  };
+
+  // Liberar asiento cuando el pasajero desciende en su parada
+  const liberarAsientoParada = async (reservaId?: string) => {
+    try {
+      if (reservaId) {
+        setCargandoAccion(reservaId);
+        const res = await api.post(`/colectivos/reservas/${reservaId}/liberar-asiento`).catch(() => null);
+        if (res?.data?.asientosOcupados !== undefined) {
+          setAsientosOcupados(res.data.asientosOcupados);
+          setChoferSesion((prev: any) =>
+            prev ? { ...prev, asientosOcupados: res.data.asientosOcupados } : null
+          );
+        } else {
+          setAsientosOcupados((prev) => Math.max(0, prev - 1));
+          setChoferSesion((prev: any) =>
+            prev ? { ...prev, asientosOcupados: Math.max(0, (prev.asientosOcupados || 1) - 1) } : null
+          );
+        }
+        setReservasPendientes((prev) => prev.filter((r) => r.id !== reservaId));
+      } else {
+        setAsientosOcupados((prev) => Math.max(0, prev - 1));
+        setChoferSesion((prev: any) =>
+          prev ? { ...prev, asientosOcupados: Math.max(0, (prev.asientosOcupados || 1) - 1) } : null
+        );
+      }
+      setParadaSolicitada(null);
+      setMensajeExito('Asiento liberado exitosamente.');
+      reproducirSonido('exito');
+    } catch (err) {
+      console.error('Error al liberar asiento:', err);
+      setParadaSolicitada(null);
     } finally {
       setCargandoAccion(null);
     }
@@ -1895,16 +1928,16 @@ export default function PaginaConductorColectivo() {
               </span>
               <h2 style={{ margin: '8px 0 0 0', fontSize: '22px', fontWeight: '900', color: '#FFFFFF', lineHeight: '1.3' }}>
                 {paradaSolicitada.pasajeroNombre.toLowerCase() !== 'pasajero'
-                  ? `Deja al pasajero ${paradaSolicitada.pasajeroNombre} aquí`
-                  : 'Deja al pasajero aquí'}
+                  ? `Favor dejar a ${paradaSolicitada.pasajeroNombre} en la siguiente parada`
+                  : 'Favor dejar al pasajero en la siguiente parada'}
               </h2>
               <p style={{ margin: '8px 0 0 0', fontSize: '14px', color: '#A3A3A3' }}>
-                El pasajero ha solicitado descender del colectivo en este punto.
+                El pasajero ha solicitado descender del colectivo en la próxima parada.
               </p>
             </div>
 
             <button
-              onClick={() => setParadaSolicitada(null)}
+              onClick={() => liberarAsientoParada(paradaSolicitada.reservaId)}
               style={{
                 width: '100%',
                 padding: '16px',
@@ -1923,7 +1956,7 @@ export default function PaginaConductorColectivo() {
               }}
             >
               <IconoCheck size={20} color="#000000" />
-              <span>ENTENDIDO</span>
+              <span>ENTENDIDO / LIBERAR ASIENTO</span>
             </button>
           </div>
         </div>
@@ -2033,7 +2066,7 @@ export default function PaginaConductorColectivo() {
               </div>
               <div style={{ width: '1px', height: '30px', background: 'rgba(255, 255, 255, 0.1)' }} />
               <div>
-                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Asientos a Liberar</span>
+                <span style={{ fontSize: '11px', color: '#A3A3A3', display: 'block' }}>Asientos a Bordo</span>
                 <span style={{ fontSize: '14px', fontWeight: '800', color: '#FACC15' }}>
                   {pagoPendiente.cantidadAsientos} Asiento{pagoPendiente.cantidadAsientos > 1 ? 's' : ''}
                 </span>
@@ -2152,7 +2185,7 @@ export default function PaginaConductorColectivo() {
                   gap: '8px',
                 }}
               >
-                <span>CANCELAR / MANTENER ASIENTO</span>
+                <span>CANCELAR</span>
               </button>
             </div>
           </div>
