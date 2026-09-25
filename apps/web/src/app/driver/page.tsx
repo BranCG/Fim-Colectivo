@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -325,8 +325,14 @@ export default function PaginaConductorColectivo() {
         },
       });
 
-      // Frase clara sin incluir las palabras disparadoras "sí" o "no" para evitar auto-disparo del parlante
-      const mensajeVoz = 'Cliente solicita pagar. ¿Liberamos asiento?';
+      // Frase clara incluyendo nombre y forma de pago sin auto-disparo del parlante
+      const nombrePasajeroCorto = (datos.pasajeroNombre || 'el pasajero').split(' ')[0];
+      const formaPagoTexto = datos.metodoPago === 'rutpay'
+        ? 'RutPay'
+        : datos.metodoPago === 'mercadopago'
+        ? 'MercadoPago'
+        : 'efectivo';
+      const mensajeVoz = `Pasajero ${nombrePasajeroCorto} quiere pagar con ${formaPagoTexto}. ¿Confirmas?`;
       setAnunciandoPagoVoz(true);
 
       // Esperar a que concluya el chime de alerta (350ms) antes de emitir la voz
@@ -753,8 +759,10 @@ export default function PaginaConductorColectivo() {
       setPagoPendiente((prev) => (prev?.reservaId === reservaId ? null : prev));
       setMensajeExito(res.data.mensaje || 'Pago confirmado y asiento liberado.');
       reproducirSonido('exito');
+      // Anunciar al conductor que deje aqui al pasajero
+      const nombrePasajero = pagoPendiente?.pasajeroNombre?.split(' ')[0] || 'el pasajero';
       setTimeout(() => {
-        hablarTexto('Pago confirmado. Asiento liberado.');
+        hablarTexto(`Deja aquí al pasajero ${nombrePasajero}. Hasta luego.`);
       }, 350);
 
       // Actualizar estado local de reservas y chofer
@@ -1859,7 +1867,7 @@ export default function PaginaConductorColectivo() {
                   textTransform: 'uppercase',
                 }}
               >
-                SOLICITUD DE PAGO Y DESCENSO
+                CONFIRMACION DE PAGO
               </span>
               <h2
                 style={{
@@ -1869,10 +1877,14 @@ export default function PaginaConductorColectivo() {
                   color: '#FFFFFF',
                 }}
               >
-                Pasajero {pagoPendiente.pasajeroNombre}
+                {pagoPendiente.pasajeroNombre}
               </h2>
               <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#A3A3A3' }}>
-                Desea pagar y descender del vehículo
+                {pagoPendiente.metodoPago === 'rutpay'
+                  ? `Quiere pagar con RutPay BancoEstado`
+                  : pagoPendiente.metodoPago === 'mercadopago'
+                  ? `Quiere pagar con MercadoPago`
+                  : `Quiere pagar en efectivo`}
               </p>
             </div>
 
@@ -1962,7 +1974,7 @@ export default function PaginaConductorColectivo() {
                   textShadow: (textoDetectadoPago || !anunciandoPagoVoz) ? '0 0 12px rgba(250, 204, 21, 0.5)' : 'none',
                 }}
               >
-                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? 'Cliente solicita pagar. ¿Liberamos asiento?' : 'Escuchando... Di "SÍ" o "NO"'}
+                {textoDetectadoPago ? `"${textoDetectadoPago}"` : anunciandoPagoVoz ? `Pasajero ${pagoPendiente.pasajeroNombre?.split(' ')[0]} quiere pagar. ¿Confirmas?` : 'Escuchando... Di "SÍ" para confirmar'}
               </div>
             </div>
 
@@ -1993,8 +2005,8 @@ export default function PaginaConductorColectivo() {
                 <IconoCheck size={24} color="#000000" />
                 <span>
                   {cargandoAccion === pagoPendiente.reservaId
-                    ? 'Liberando Asiento...'
-                    : 'ACEPTAR PAGO Y LIBERAR'}
+                    ? 'Confirmando Pago...'
+                    : 'CONFIRMAR PAGO'}
                 </span>
               </button>
 
