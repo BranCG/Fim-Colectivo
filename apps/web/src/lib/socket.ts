@@ -5,11 +5,10 @@ const getSocketUrl = () => {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    const isNativeApp = Capacitor.isNativePlatform() || window.location.protocol === 'capacitor:' || host === 'localhost';
-    if (isNativeApp) {
+    if (host === 'localhost' || host === '127.0.0.1') {
       return 'https://colectivo.fimchile.cl';
     }
-    return `http://${host}:3011`;
+    return `${window.location.protocol}//${host}`;
   }
   return 'https://colectivo.fimchile.cl';
 };
