@@ -937,9 +937,9 @@ export default function PaginaConductorColectivo() {
 
   // ─── Desglose de Asientos por Estado (Libre: Verde, Reservado: Naranjo, A Bordo: Rojo) ───
   const conteoAsientos = useMemo(() => {
-    // 1. Asientos de pasajeros ya a bordo o pagando
+    // 1. Asientos de pasajeros ya a bordo, pagando o pagados
     const abordados = reservasPendientes
-      .filter((r) => r.estado === 'abordado' || r.estado === 'pagando')
+      .filter((r) => r.estado === 'abordado' || r.estado === 'pagando' || r.estado === 'pagado')
       .reduce((sum, r) => sum + (r.cantidadAsientos || 1), 0);
 
     // 2. Asientos con reserva aceptada esperando subir al colectivo
@@ -1364,6 +1364,8 @@ export default function PaginaConductorColectivo() {
                   borderRadius: '12px',
                   border: reserva.estado === 'reservado'
                     ? '2px solid #FACC15'
+                    : reserva.estado === 'pagado'
+                    ? '1px solid #22C55E'
                     : reserva.estado === 'abordado'
                     ? '1px solid rgba(255, 255, 255, 0.25)'
                     : '1px solid #FACC15',
@@ -1380,16 +1382,16 @@ export default function PaginaConductorColectivo() {
                     </h4>
                     <span style={{
                       fontSize: '12px',
-                      color: reserva.estado === 'reservado' ? '#FACC15' : reserva.estado === 'abordado' ? '#FFFFFF' : '#FACC15',
+                      color: reserva.estado === 'reservado' ? '#FACC15' : reserva.estado === 'pagado' ? '#22C55E' : reserva.estado === 'abordado' ? '#FFFFFF' : '#FACC15',
                       fontWeight: '700',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '5px',
                       marginTop: '2px',
                     }}>
-                      <IconoAsiento size={14} color={reserva.estado === 'reservado' ? '#FACC15' : reserva.estado === 'abordado' ? '#FFFFFF' : '#FACC15'} />
+                      <IconoAsiento size={14} color={reserva.estado === 'reservado' ? '#FACC15' : reserva.estado === 'pagado' ? '#22C55E' : reserva.estado === 'abordado' ? '#FFFFFF' : '#FACC15'} />
                       <span>
-                        {reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} {reserva.estado === 'reservado' ? 'reservado (esperando subir)' : reserva.estado === 'abordado' ? 'a bordo (asiento ocupado)' : 'en proceso de pago'}
+                        {reserva.cantidadAsientos} asiento{reserva.cantidadAsientos > 1 ? 's' : ''} {reserva.estado === 'reservado' ? 'reservado (esperando subir)' : reserva.estado === 'pagado' ? 'a bordo (pagado - en viaje)' : reserva.estado === 'abordado' ? 'a bordo (asiento ocupado)' : 'en proceso de pago'}
                       </span>
                     </span>
                   </div>
@@ -1401,11 +1403,15 @@ export default function PaginaConductorColectivo() {
                       borderRadius: '8px',
                       background: reserva.estado === 'reservado'
                         ? 'rgba(250, 204, 21, 0.15)'
+                        : reserva.estado === 'pagado'
+                        ? 'rgba(34, 197, 94, 0.15)'
                         : reserva.estado === 'abordado'
                         ? '#262626'
                         : 'rgba(250, 204, 21, 0.15)',
                       color: reserva.estado === 'reservado'
                         ? '#FACC15'
+                        : reserva.estado === 'pagado'
+                        ? '#22C55E'
                         : reserva.estado === 'abordado'
                         ? '#FFFFFF'
                         : '#FACC15',
@@ -1413,6 +1419,8 @@ export default function PaginaConductorColectivo() {
                     }}>
                       {reserva.estado === 'reservado'
                         ? 'RESERVADO (POR SUBIR)'
+                        : reserva.estado === 'pagado'
+                        ? 'PAGADO (A BORDO)'
                         : reserva.estado === 'abordado'
                         ? 'A BORDO'
                         : reserva.estado === 'pagando'
@@ -1555,8 +1563,30 @@ export default function PaginaConductorColectivo() {
                           gap: '6px',
                         }}
                       >
-                        <IconoCheck size={15} color="#000000" />
-                        <span>{cargandoAccion === reserva.id ? 'Liberando...' : 'Cobrar y Liberar'}</span>
+                        <IconoTarjeta size={15} color="#000000" />
+                        <span>{cargandoAccion === reserva.id ? 'Confirmando...' : 'Confirmar Pago'}</span>
+                      </button>
+                    ) : reserva.estado === 'pagado' ? (
+                      <button
+                        onClick={() => liberarAsientoParada(reserva.id)}
+                        disabled={cargandoAccion === reserva.id}
+                        style={{
+                          padding: '10px 16px',
+                          borderRadius: '10px',
+                          background: '#16A34A',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          fontWeight: '800',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 10px rgba(22, 163, 74, 0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <IconoCheck size={15} color="#FFFFFF" />
+                        <span>{cargandoAccion === reserva.id ? 'Liberando...' : 'Liberar Asiento'}</span>
                       </button>
                     ) : reserva.estado === 'pendiente_chofer' ? (
                       <div style={{ display: 'flex', gap: '6px' }}>
@@ -1962,7 +1992,7 @@ export default function PaginaConductorColectivo() {
         </div>
       )}
 
-      {/* ── MODAL: PASAJERO QUIERE PAGAR Y BAJARSE ── */}
+      {/* ── MODAL: PASAJERO SOLICITA PAGAR ── */}
       {pagoPendiente && (
         <div
           onClick={() => forzarReinicioVoz()}

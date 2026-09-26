@@ -260,7 +260,7 @@ router.post('/reservar', requireAuth, async (peticion: Request, respuesta: Respo
     const reservaExistente = await prisma.reservaAsiento.findFirst({
       where: {
         pasajeroId,
-        estado: { in: ['pendiente_chofer', 'reservado', 'abordado', 'pagando'] },
+        estado: { in: ['pendiente_chofer', 'reservado', 'abordado', 'pagando', 'pagado'] },
       },
     });
     if (reservaExistente) {
@@ -387,7 +387,7 @@ router.get('/reservas/mis-reservas', requireAuth, async (peticion: Request, resp
     const reservas = await prisma.reservaAsiento.findMany({
       where: {
         pasajeroId,
-        estado: { in: ['reservado', 'pendiente_chofer', 'abordado', 'pagando'] },
+        estado: { in: ['reservado', 'pendiente_chofer', 'abordado', 'pagando', 'pagado'] },
       },
       include: {
         linea: {
@@ -462,7 +462,7 @@ router.get('/conductor/estado', requireAuth, requireRole('driver', 'admin'), asy
           },
         },
         reservasAsiento: {
-          where: { estado: { in: ['reservado', 'pendiente_chofer', 'abordado', 'pagando'] } },
+          where: { estado: { in: ['reservado', 'pendiente_chofer', 'abordado', 'pagando', 'pagado'] } },
           include: {
             pasajero: { select: { id: true, name: true, phone: true } },
           },
@@ -991,8 +991,8 @@ router.post('/reservas/:id/cancelar', requireAuth, async (peticion: Request, res
       data: { estado: 'cancelado' },
     });
 
-    // Si ya había reservado, abordado o estaba pagando y se cancela, liberar el asiento
-    if (['reservado', 'abordado', 'pagando'].includes(reserva.estado) && reserva.conductorId) {
+    // Si ya había reservado, abordado o estaba pagando/pagado y se cancela, liberar el asiento
+    if (['reservado', 'abordado', 'pagando', 'pagado'].includes(reserva.estado) && reserva.conductorId) {
       const choferActual = await prisma.driver.findUnique({ where: { id: reserva.conductorId } });
       if (choferActual) {
         const nuevosOcupados = Math.max(0, choferActual.asientosOcupados - reserva.cantidadAsientos);
@@ -1249,7 +1249,7 @@ router.post('/solicitar-dirigido', requireAuth, async (peticion: Request, respue
     const reservaActiva = await prisma.reservaAsiento.findFirst({
       where: {
         pasajeroId,
-        estado: { in: ['pendiente_chofer', 'reservado', 'abordado', 'pagando'] },
+        estado: { in: ['pendiente_chofer', 'reservado', 'abordado', 'pagando', 'pagado'] },
       },
     });
     if (reservaActiva) {
@@ -1411,7 +1411,7 @@ router.post('/reservas/:id/responder', requireAuth, requireRole('driver', 'admin
       solicitudesDirigidasActivas.delete(String(id));
 
       const choferActual = await prisma.driver.findUnique({ where: { id: conductorId } });
-      const yaOcupaba = reserva.estado === 'reservado' || reserva.estado === 'abordado';
+      const yaOcupaba = reserva.estado === 'reservado' || reserva.estado === 'abordado' || reserva.estado === 'pagado';
       const nuevosOcupados = yaOcupaba
         ? (choferActual?.asientosOcupados || 0)
         : Math.min(
