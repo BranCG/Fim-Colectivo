@@ -24,6 +24,7 @@ export interface Linea {
 }
 
 export interface ConductorColectivo {
+  lastSeen?: string;
   conductorId: string;
   nombre: string;
   patente: string;

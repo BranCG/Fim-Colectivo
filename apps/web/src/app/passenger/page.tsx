@@ -42,6 +42,10 @@ interface ReservaActiva {
     vehicleModel: string;
     lastLat?: number;
     lastLng?: number;
+    lastSeen?: string;
+    asientosOcupados?: number;
+    asientosTotales?: number;
+    sentidoRuta?: string;
   };
   cantidadAsientos: number;
   metodoPago?: 'efectivo' | 'rutpay';
@@ -237,6 +241,7 @@ export default function PaginaPasajeroColectivo() {
           asientosOcupados: c.asientosOcupados,
           asientosTotales: c.asientosTotales,
           sentidoRuta: c.sentidoRuta,
+          lastSeen: c.lastSeen,
         }));
         setConductoresEnVivo(mapeados);
       });
@@ -255,13 +260,15 @@ export default function PaginaPasajeroColectivo() {
           asientosOcupados: datos.asientosOcupados,
           asientosTotales: datos.asientosTotales,
           sentidoRuta: datos.sentidoRuta,
+          lastSeen: datos.lastSeen || new Date().toISOString(),
         };
         if (indice >= 0) {
           const copia = [...prev];
           copia[indice] = { ...copia[indice], ...actualizado };
           return copia;
         }
-        // Si el chofer no está en servicio activo en la lista, no agregarlo
+        if (reservaActivaRef.current?.conductor.id === datos.conductorId) return [...prev, actualizado];
+        // No agregar a la flota conductores ajenos al viaje sin un aviso de servicio.
         return prev;
       });
     };
@@ -578,11 +585,16 @@ export default function PaginaPasajeroColectivo() {
     accionEnCurso.current = true; setEnviandoParada(true); setMensajeError('');
     try {
       const res = await api.post('/colectivos/reservas/' + reservaActiva.id + '/solicitar-parada');
+      if (!res.data?.reserva || !['parada_solicitada', 'completado'].includes(res.data.reserva.estado)) {
+        throw new Error('El servidor no confirmó la parada. Debe actualizarse la API.');
+      }
       setReservaActiva(res.data.reserva);
       setParadaSolicitada(true);
       reproducirSonido('exito');
     } catch (error: any) {
-      setMensajeError(error.response?.data?.error || 'No se pudo solicitar la parada. Vuelve a intentarlo.');
+      setMensajeError(error.response?.status === 404
+        ? 'La versión del servidor no permite solicitar la parada. Debe actualizarse la API.'
+        : error.response?.data?.error || (error.response ? 'No se pudo solicitar la parada. Vuelve a intentarlo.' : error.message || 'Sin conexión. Vuelve a intentarlo.'));
     } finally { accionEnCurso.current = false; setEnviandoParada(false); }
   };
 
@@ -621,12 +633,24 @@ export default function PaginaPasajeroColectivo() {
   if (soloMapa && reservaActiva) {
     const conductorId = reservaActiva.conductor.id;
     const detenido = reservaActiva.estado === 'parada_solicitada';
+    const driver = reservaActiva.conductor;
+    const candidate = conductoresEnVivo.find(c => c.conductorId === conductorId);
+    const live = candidate && (!driver.lastSeen || Date.parse(candidate.lastSeen || '') >= Date.parse(driver.lastSeen)) ? candidate : undefined;
+    const position: ConductorColectivo | undefined = live || (
+      typeof driver.lastLat === 'number' && typeof driver.lastLng === 'number' ? {
+        conductorId, nombre: driver.name, patente: driver.vehiclePlate,
+        latitud: driver.lastLat, longitud: driver.lastLng, lastSeen: driver.lastSeen,
+        asientosOcupados: driver.asientosOcupados ?? reservaActiva.cantidadAsientos,
+        asientosTotales: driver.asientosTotales ?? 4, sentidoRuta: driver.sentidoRuta || 'ida',
+      } : undefined);
+    const gpsSinActualizar = !position?.lastSeen || Date.now() - Date.parse(position.lastSeen) > 90000;
     return <main style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: '#0A0A0A' }}>
       <div style={{ flex: 1, position: 'relative' }}>
         <ColectivoMap ubicacionUsuario={ubicacionPasajero} lineaSeleccionada={lineaSeleccionada}
-          conductoresEnVivo={conductoresEnVivo.filter(c => c.conductorId === conductorId)}
+          conductoresEnVivo={position ? [position] : []}
           conductorSeleccionadoId={conductorId} estaAbordado />
       </div>
+      {gpsSinActualizar && <p role="status" style={{ color: '#FACC15', padding: '4px 12px', margin: 0 }}>Esperando GPS del conductor. Se conserva la última ubicación disponible.</p>}
       {mensajeError && <p role="alert" style={{ color: '#FACC15', padding: 12 }}>{mensajeError}</p>}
       <button id="btn-solicitar-parada" onClick={solicitarParada} disabled={enviandoParada || detenido}
         style={{ margin: 16, marginBottom: 'max(16px, env(safe-area-inset-bottom))', padding: 22, border: 0, borderRadius: 16, background: '#FACC15', color: '#000', fontWeight: 900, fontSize: 22 }}>

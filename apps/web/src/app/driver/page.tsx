@@ -9,6 +9,7 @@ import { Linea, ConductorColectivo, PasajeroEnEspera } from '@/components/map/Co
 import { calcularInfoLlegada } from '@/lib/geo';
 import { usePantallaEncendida } from '@/lib/usePantallaEncendida';
 import { useFcmToken } from '@/lib/useFcmToken';
+import { DriverLocation, isAndroidTracking, stopDriverLocation } from '@/lib/driverLocation';
 import {
   IconoColectivo,
   IconoAsiento,
@@ -66,6 +67,9 @@ export default function PaginaConductorColectivo() {
   const [lineasDisponibles, setLineasDisponibles] = useState<Linea[]>([]);
   const [lineaActual, setLineaActual] = useState<Linea | null>(null);
   const [enServicio, setEnServicio] = useState<boolean>(false);
+  const [servicioCargado, setServicioCargado] = useState(false);
+  const [errorGps, setErrorGps] = useState('');
+  const cambiandoServicio = useRef(false);
   const [asientosOcupados, setAsientosOcupados] = useState<number>(0);
   const [sentidoRuta, setSentidoRuta] = useState<'ida' | 'vuelta'>('ida');
 
@@ -169,6 +173,7 @@ export default function PaginaConductorColectivo() {
       if (resEstado?.data?.chofer) {
         const datos = resEstado.data.chofer;
         setEnServicio(datos.isOnline || false);
+        setServicioCargado(true);
         setAsientosOcupados(datos.asientosOcupados || 0);
         setSentidoRuta(datos.sentidoRuta || 'ida');
 
@@ -251,6 +256,41 @@ export default function PaginaConductorColectivo() {
 
   // 4. WebSockets y transmisión de ubicación en tiempo real
   useEffect(() => {
+    if (!isAndroidTracking() || !servicioCargado || !choferSesion?.id) return;
+    if (!enServicio) { void stopDriverLocation().catch(console.warn); setErrorGps(''); return; }
+    let alive = true;
+    let starting = false;
+    const update = async () => {
+      if (document.hidden) return;
+      try {
+        const status = await DriverLocation.status();
+        if (!alive) return;
+        if (status.running || status.error) setErrorGps(status.error || '');
+        if (typeof status.lat === 'number' && typeof status.lng === 'number') {
+          setUbicacionChofer({ latitud: status.lat, longitud: status.lng });
+        }
+      } catch { if (alive) setErrorGps('No se pudo consultar el GPS del turno.'); }
+    };
+    const start = async () => {
+      if (!alive || starting || document.hidden) return;
+      const session = getSession();
+      if (!session) return;
+      starting = true;
+      try {
+        await DriverLocation.start({ endpoint: api.defaults.baseURL + '/colectivos/conductor/ubicacion', token: session.token });
+        if (alive) await update();
+      } catch (error: any) {
+        if (alive) setErrorGps(error.message || 'Activa el GPS y el permiso de ubicación para compartir tu recorrido.');
+      } finally { starting = false; }
+    };
+    void start();
+    document.addEventListener('visibilitychange', start);
+    const timer = setInterval(update, 3000);
+    // El servicio continúa al minimizar. Solo Desconectarme/Salir lo detienen.
+    return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', start); };
+  }, [servicioCargado, enServicio, choferSesion?.id]);
+
+  useEffect(() => {
     if (!choferSesion?.id) return;
 
     const socket = connectSocket();
@@ -259,15 +299,11 @@ export default function PaginaConductorColectivo() {
     const suscribirSalas = () => {
       if (choferSesion?.id) {
         socket.emit('conductor:unirse', { conductorId: choferSesion.id });
-        if (enServicio) {
+        if (enServicio && !isAndroidTracking() && ubicacionChoferRef.current) {
           socket.emit('driver:online', {
             driverId: choferSesion.id,
-            lat: ubicacionChoferRef.current?.latitud || -33.4489,
-            lng: ubicacionChoferRef.current?.longitud || -70.6693,
-          });
-        } else {
-          socket.emit('driver:offline', {
-            driverId: choferSesion.id,
+            lat: ubicacionChoferRef.current.latitud,
+            lng: ubicacionChoferRef.current.longitud,
           });
         }
       }
@@ -422,7 +458,8 @@ export default function PaginaConductorColectivo() {
 
 
     // Si está en servicio, transmitir ubicación GPS continua
-    if (enServicio && typeof window !== 'undefined' && 'geolocation' in navigator) {
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    if (enServicio && !isAndroidTracking() && typeof window !== 'undefined' && 'geolocation' in navigator) {
       watchIdRef.current = navigator.geolocation.watchPosition(
         (posicion) => {
           const nuevaLat = posicion.coords.latitude;
@@ -439,12 +476,19 @@ export default function PaginaConductorColectivo() {
         (err) => console.warn('Error en GPS del chofer:', err),
         { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
       );
+      heartbeat = setInterval(() => {
+        navigator.geolocation.getCurrentPosition(pos => {
+          setUbicacionChofer({ latitud: pos.coords.latitude, longitud: pos.coords.longitude });
+          socket.emit('driver:location', { driverId: choferSesion.id, lat: pos.coords.latitude, lng: pos.coords.longitude });
+        }, () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+      }, 15000);
     } else if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
 
     return () => {
+      if (heartbeat) clearInterval(heartbeat);
       socket.off('colectivo:nueva-reserva', manejarNuevaReserva);
       socket.off('colectivo:reserva-cancelada', manejarReservaCancelada);
       socket.off('colectivo:actualizacion-ubicacion', manejarUbicacionFlota);
@@ -479,14 +523,20 @@ export default function PaginaConductorColectivo() {
 
   // Alternar estado En Servicio / Fuera de Servicio
   const alternarServicio = async () => {
+    if (cambiandoServicio.current) return;
+    cambiandoServicio.current = true;
     const nuevoEstado = !enServicio;
-    setEnServicio(nuevoEstado);
 
     try {
       // Persistir inmediatamente en base de datos para que el polling de 7s y el backend no se desincronicen
       await api.post('/colectivos/conductor/servicio', { enServicio: nuevoEstado });
+      setEnServicio(nuevoEstado);
     } catch (error) {
       console.error('Error al actualizar estado de servicio en backend:', error);
+      setMensajeError('No se pudo cambiar el turno. Comprueba la conexión y reintenta.');
+      return;
+    } finally {
+      cambiandoServicio.current = false;
     }
 
     const socket = connectSocket();
@@ -510,6 +560,7 @@ export default function PaginaConductorColectivo() {
         });
       }
     } else {
+      await stopDriverLocation().catch(console.warn);
       // Si pasa a Fuera de Servicio: emitir driver:offline y detener rastreo GPS inmediatamente
       if (choferSesion?.id) {
         socket.emit('driver:offline', { driverId: choferSesion.id });
@@ -725,7 +776,12 @@ export default function PaginaConductorColectivo() {
   };
 
   // Cerrar sesión
-  const cerrarSesionChofer = () => {
+  const cerrarSesionChofer = async () => {
+    await stopDriverLocation().catch(console.warn);
+    if (choferSesion?.id) {
+      await api.post('/colectivos/conductor/servicio', { enServicio: false }).catch(() => {});
+      connectSocket().emit('driver:offline', { driverId: choferSesion.id });
+    }
     clearSession();
     router.push('/login?role=driver');
   };
@@ -900,6 +956,7 @@ export default function PaginaConductorColectivo() {
           <button onClick={() => setMensajeExito('')} style={{ background: 'transparent', border: 'none', color: '#FACC15', cursor: 'pointer' }}><IconoCruz size={14} color="#FACC15" /></button>
         </div>
       )}
+      {errorGps && <p role="status" style={{ color: '#FACC15', padding: 12 }}>{errorGps}</p>}
       {mensajeError && (
         <div style={{ background: '#171717', border: '1px solid rgba(255, 255, 255, 0.3)', padding: '10px 14px', borderRadius: '10px', color: '#FFFFFF', marginBottom: '14px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

@@ -7,6 +7,7 @@ import { onlineDrivers } from '../socket/handlers';
 import { consultarPatenteMtt } from '../utils/mttValidator';
 import { notificarConductor, notificarPasajero } from '../utils/fcm';
 import { withoutPaymentData } from '../utils/withoutPaymentData';
+import { recordDriverLocation, publishDriverLocation } from '../utils/driverTracking';
 import { transitionReservation, reservationTransaction, updateOccupiedSeats, activeReservationStates, validatePickup, ReservationFlowError, ReservationAction } from '../utils/reservationFlow';
 
 // Mapa de solicitudes dirigidas en tránsito con cascada automática
@@ -27,6 +28,14 @@ export interface SolicitudDirigidaActiva {
 export const solicitudesDirigidasActivas = new Map<string, SolicitudDirigidaActiva>();
 
 const router: Router = Router();
+
+router.post('/conductor/ubicacion', requireAuth, requireRole('driver'), async (req: Request, res: Response) => {
+  try {
+    const driver = await recordDriverLocation(prisma, req.user!.id, req.body?.lat, req.body?.lng, req.body?.capturedAt);
+    publishDriverLocation(io, driver);
+    return res.json({ ok: true });
+  } catch (error) { return flowError(error, res); }
+});
 
 // ─── PÚBLICO / PASAJERO: Listar todas las líneas activas ──────────────────
 router.get('/lineas', async (peticion: Request, respuesta: Response) => {
@@ -388,6 +397,7 @@ router.get('/reservas/:id/estado', requireAuth, async (req: Request, res: Respon
       include: { linea: true, conductor: { select: {
         id: true, name: true, phone: true, vehiclePlate: true,
         vehicleBrand: true, vehicleModel: true, lastLat: true, lastLng: true,
+        lastSeen: true, asientosOcupados: true, asientosTotales: true, sentidoRuta: true,
       } } },
     });
     if (!reserva) return res.status(404).json({ error: 'Reserva no encontrada.' });
@@ -433,6 +443,10 @@ router.get('/reservas/mis-reservas', requireAuth, async (peticion: Request, resp
             vehicleModel: true,
             lastLat: true,
             lastLng: true,
+            lastSeen: true,
+            asientosOcupados: true,
+            asientosTotales: true,
+            sentidoRuta: true,
           },
         },
       },
@@ -606,7 +620,7 @@ router.post('/conductor/servicio', requireAuth, requireRole('driver', 'admin'), 
 
     const choferActualizado = await prisma.driver.update({
       where: { id: conductorId },
-      data: { isOnline },
+      data: { isOnline, ...(isOnline ? { lastSeen: new Date() } : {}) },
       select: {
         id: true,
         lineaId: true,

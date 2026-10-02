@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(VoiceRecognitionPlugin.class);
+        registerPlugin(DriverLocationPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Mantener pantalla siempre encendida (conductor e ui activa)

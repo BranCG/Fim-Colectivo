@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import prisma from '../utils/prisma';
 import { calculateDistance } from '../utils/pricing';
 import { withoutPaymentData } from '../utils/withoutPaymentData';
+import { expireDriverLocations } from '../utils/driverTracking';
 
 // ─── Mapa de conductores online ───────────────────────────────────────────
 // driverId -> { socketId, lat, lng }
@@ -17,19 +18,33 @@ const activeSearches = new Map<string, {
 }>();
 
 export function setupSocketHandlers(io: Server) {
+  let expiring = false;
+  const timer = setInterval(async () => {
+    if (expiring) return;
+    expiring = true;
+    try {
+      for (const driver of await expireDriverLocations(prisma)) {
+        onlineDrivers.delete(driver.id);
+        if (driver.lineaId) io.to('linea:' + driver.lineaId).emit('colectivo:conductor-offline', { conductorId: driver.id });
+      }
+    } catch (error) { console.error('No se pudo comprobar la vigencia del GPS:', error); }
+    finally { expiring = false; }
+  }, 30_000);
+  timer.unref();
 
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] Conectado: ${socket.id}`);
 
     // ─── CONDUCTOR: se conecta y anuncia su posición ───────────────────────
     socket.on('driver:online', async ({ driverId, lat, lng }: { driverId: string; lat: number; lng: number }) => {
-      onlineDrivers.set(driverId, { socketId: socket.id, lat, lng });
       socket.data.driverId = driverId;
       socket.join(`driver:${driverId}`);
 
       const chofer = await prisma.driver.update({
-        where: { id: driverId },
-        data: { isOnline: true, lastLat: lat, lastLng: lng, lastSeen: new Date() },
+        // El turno se inicia por la ruta autenticada. Un callback GPS retrasado
+        // o una reconexión del WebView no puede reabrir un turno terminado.
+        where: { id: driverId, isOnline: true },
+        data: { lastLat: lat, lastLng: lng, lastSeen: new Date() },
         select: {
           id: true,
           lineaId: true,
@@ -40,8 +55,10 @@ export function setupSocketHandlers(io: Server) {
           vehiclePlate: true,
           name: true,
         },
-      }).catch(console.error);
+      }).catch(() => null);
 
+      if (!chofer) return;
+      onlineDrivers.set(driverId, { socketId: socket.id, lat, lng });
       if (chofer && chofer.lineaId) {
         socket.join(`linea:${chofer.lineaId}`);
         io.to(`linea:${chofer.lineaId}`).emit('colectivo:conductor-online', {
@@ -368,23 +385,12 @@ export function setupSocketHandlers(io: Server) {
     });
 
     // ─── DESCONEXIÓN ──────────────────────────────────────────────────────
-    socket.on('disconnect', async () => {
+    socket.on('disconnect', () => {
       const driverId = socket.data.driverId;
       if (driverId) {
-        onlineDrivers.delete(driverId);
-        const chofer = await prisma.driver.update({
-          where: { id: driverId },
-          data: { isOnline: false },
-          select: { id: true, lineaId: true },
-        }).catch(console.error);
-
-        if (chofer && chofer.lineaId) {
-          io.to(`linea:${chofer.lineaId}`).emit('colectivo:conductor-offline', {
-            conductorId: chofer.id,
-            lineaId: chofer.lineaId,
-          });
-        }
-        console.log(`[Socket] Conductor ${driverId} desconectado`);
+        if (onlineDrivers.get(driverId)?.socketId === socket.id) onlineDrivers.delete(driverId);
+        // El servicio nativo puede seguir enviando GPS con el WebView suspendido.
+        // Solo terminar turno explícitamente o vencer lastSeen lo pone fuera de servicio.
       }
     });
   });

@@ -11,13 +11,14 @@ async function scenario(browser, method) {
   let reserva = null;
   let occupied = 0;
   let failStop = true;
+  let missingStopRoute = true;
   let detailChecks = 0;
   let failDetail = false;
   const posts = [];
   const errors = [];
   const linea = { id:'l', nombre:'Línea de prueba', codigo:'233', color:'#FACC15', paradas:[] };
   const driver = { id:'d', name:'Carlos', phone:'900000000', vehiclePlate:'AA0001', vehicleBrand:'Test', vehicleModel:'Auto', asientosTotales:4,
-    lastLat:-33.45, lastLng:-70.66, isOnline:true, status:'active', lineaId:'l', sentidoRuta:'ida' };
+    lastLat:-33.45, lastLng:-70.66, lastSeen:new Date().toISOString(), isOnline:true, status:'active', lineaId:'l', sentidoRuta:'ida' };
   const active = () => reserva && !['completado','cancelado'].includes(reserva.estado) ? [reserva] : [];
   const contexts = [];
   async function pageFor(role) {
@@ -56,7 +57,7 @@ async function scenario(browser, method) {
       if (req.method()==='OPTIONS') return route.fulfill({status:204,headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*'}});
       if (req.method()==='GET') {
         if (endpoint.endsWith('/lineas')) body={lineas:[linea]};
-        else if (endpoint.endsWith('/lineas/l')) body={linea:{...linea,conductores:[{...driver,asientosOcupados:occupied}]}};
+        else if (endpoint.endsWith('/lineas/l')) body={linea:{...linea,conductores:reserva?.estado==='pagado' ? [] : [{...driver,asientosOcupados:occupied}]}};
         // Reproduce la omisión del viaje en la lista después de aceptar el método.
         else if (endpoint.endsWith('/mis-reservas')) body={reservas:reserva?.estado==='pagado' ? [] : active()};
         else if (endpoint.endsWith('/reservas/r/estado')) {
@@ -77,7 +78,8 @@ async function scenario(browser, method) {
         else if(endpoint.endsWith('/solicitar-pago')) { assert.equal(data.metodoPago,method); reserva.metodoPago=data.metodoPago; reserva.estado='pagando'; }
         else if(endpoint.endsWith('/confirmar-pago')) { reserva.estado='pagado'; }
         else if(endpoint.endsWith('/solicitar-parada')) {
-          if(failStop) { failStop=false; status=500; body={error:'Fallo de red simulado. Reintenta.'}; }
+          if(missingStopRoute) { missingStopRoute=false; status=404; body={}; }
+          else if(failStop) { failStop=false; status=500; body={error:'Fallo de red simulado. Reintenta.'}; }
           else { reserva.estado='parada_solicitada'; occupied=0; }
         } else if(endpoint.endsWith('/liberar-asiento')) { reserva.estado='completado'; }
         if(status===200) body={ok:true,reserva,chofer:{...driver,asientosOcupados:occupied},asientosOcupados:occupied};
@@ -127,6 +129,9 @@ async function scenario(browser, method) {
     assert.equal(occupied,1);
     await passenger.reload();
     await passenger.locator('#btn-solicitar-parada').waitFor({timeout:15000});
+    // Aunque el conductor no figure en la flota, conservar su marcador del viaje.
+    await passenger.locator('.maplibregl-marker').waitFor({timeout:15000});
+    assert.equal(await passenger.locator('.maplibregl-marker').count(),1);
     failDetail = true;
     const before = detailChecks;
     await passenger.waitForTimeout(6500);
@@ -137,6 +142,10 @@ async function scenario(browser, method) {
     assert.equal(await passenger.getByText('Carlos (AA0001)',{exact:true}).count(),0);
     assert.equal(await passenger.locator('#btn-pagar-efectivo').count(),0);
     await passenger.screenshot({path:path.join(output,'viaje-'+method+'.png')});
+    await passenger.locator('#btn-solicitar-parada').click();
+    await passenger.getByRole('alert').filter({hasText:'Debe actualizarse la API'}).waitFor();
+    assert.equal(occupied,1);
+    assert.equal(await passenger.locator('#btn-solicitar-parada').isEnabled(),true);
     await passenger.locator('#btn-solicitar-parada').click();
     await passenger.getByRole('alert').filter({hasText:'Fallo de red simulado'}).waitFor();
     assert.equal(occupied,1);

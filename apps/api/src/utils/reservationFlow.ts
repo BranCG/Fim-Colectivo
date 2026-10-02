@@ -62,7 +62,7 @@ export async function transitionReservation(db: PrismaClient, input: {
       where: { id: input.id },
       include: {
         pasajero: { select: { id: true, name: true, phone: true } },
-        conductor: { select: { id: true, name: true, phone: true, vehiclePlate: true, vehicleBrand: true, vehicleModel: true, lastLat: true, lastLng: true } },
+        conductor: { select: { id: true, name: true, phone: true, vehiclePlate: true, vehicleBrand: true, vehicleModel: true, lastLat: true, lastLng: true, lastSeen: true, asientosOcupados: true, asientosTotales: true, sentidoRuta: true } },
         linea: true,
       },
     });
