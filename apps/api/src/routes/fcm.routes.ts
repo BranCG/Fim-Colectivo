@@ -9,7 +9,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import prisma from '../utils/prisma';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * POST /api/fcm/token

@@ -19,7 +19,6 @@ export interface Linea {
   codigo: string;
   descripcion?: string | null;
   color: string;
-  tarifa: number;
   puntosRuta?: string | null;
   paradas?: Parada[];
 }
@@ -33,8 +32,6 @@ export interface ConductorColectivo {
   asientosOcupados: number;
   asientosTotales: number;
   sentidoRuta: string;
-  telefonoRutPay?: string | null;
-  mercadoPagoLink?: string | null;
 }
 
 export interface PasajeroEnEspera {
@@ -44,7 +41,6 @@ export interface PasajeroEnEspera {
   longitud: number;
   asientos: number;
   paradaNombre?: string;
-  metodoPago?: string;
   minutosLlegada?: number;
   distanciaTexto?: string;
 }
@@ -561,7 +557,7 @@ export default function ColectivoMap({
           .setLngLat([p.longitud, p.latitud])
           .setPopup(
             new Popup({ offset: 18, closeButton: false, className: 'fim-map-popup' }).setHTML(
-              `<b>Reserva de Pasajero</b><br/>Pasajero: ${p.nombre}<br/>Asientos: ${p.asientos}<br/>Pago: ${p.metodoPago?.toUpperCase() || 'EFECTIVO'}${p.paradaNombre ? '<br/>En: ' + p.paradaNombre : ''}${infoLlegadaChoferHtml}`
+              `<b>Reserva de Pasajero</b><br/>Pasajero: ${p.nombre}<br/>Asientos: ${p.asientos}${p.paradaNombre ? '<br/>En: ' + p.paradaNombre : ''}${infoLlegadaChoferHtml}`
             )
           )
           .addTo(mapa);

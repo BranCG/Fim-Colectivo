@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main]
 
+concurrency:
+  group: fim-colectivo-production
+  cancel-in-progress: false
+
 jobs:
   build-check:
     name: Validar Compilación
@@ -34,6 +38,14 @@ jobs:
           JWT_SECRET: "ci-secret-key"
           JWT_REFRESH_SECRET: "ci-refresh-secret"
 
+      - name: Verificar reservas y cupos
+        run: npm run test --workspace=apps/api
+
+      - name: Verificar tipos de la aplicación
+        run: |
+          npx tsc --noEmit --incremental false -p apps/web/tsconfig.json
+          npx tsc --noEmit --incremental false -p apps/admin/tsconfig.json
+
   deploy:
     name: Desplegar en Servidor AWS
     runs-on: ubuntu-latest
@@ -48,24 +60,30 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           script: |
-            echo "🚀 Iniciando despliegue automático de Fim Colectivo..."
-            
+            set -eu
             APP_DIR="/var/www/fim-colectivo"
-            if [ -d "$APP_DIR" ]; then
-              cd "$APP_DIR"
-              echo "🔄 Obteniendo últimos cambios de Git..."
-              git fetch origin
-              CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-              git pull origin $CURRENT_BRANCH
-              
-              echo "🐳 Reconstruyendo y actualizando contenedores Docker..."
-              docker compose up -d --build
-              
-              echo "🧹 Limpiando imágenes y contenedores en desuso..."
-              docker image prune -f
-              
-              echo "✅ Despliegue completado con éxito en https://colectivo.fimchile.cl"
-            else
-              echo "❌ Error: El directorio $APP_DIR no existe en el servidor."
+            cd "$APP_DIR"
+            if [ "$(git branch --show-current)" != "main" ]; then
+              echo "Despliegue detenido: configura la copia del servidor en main antes de continuar."
               exit 1
             fi
+            if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+              echo "Despliegue detenido: hay cambios locales en archivos versionados del servidor."
+              exit 1
+            fi
+            echo "Commit anterior: $(git rev-parse HEAD)"
+            git fetch origin main
+            git merge --ff-only '${{ github.sha }}'
+            test "$(git rev-parse HEAD)" = '${{ github.sha }}'
+
+            docker compose up -d --build api web
+            ready=false
+            for attempt in $(seq 1 12); do
+              if docker compose exec -T api node -e "fetch('http://127.0.0.1:3011/api/health', {signal: AbortSignal.timeout(5000)}).then(r => r.json()).then(s => process.exit(s.status === 'ok' && s.database === 'connected' ? 0 : 1)).catch(() => process.exit(1))" && curl --fail --silent --max-time 5 --output /dev/null http://127.0.0.1:3010/; then
+                ready=true
+                break
+              fi
+              sleep 5
+            done
+            test "$ready" = true
+            echo "API y web disponibles. Commit desplegado: $(git rev-parse HEAD)"

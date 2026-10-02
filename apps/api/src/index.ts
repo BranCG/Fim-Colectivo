@@ -13,7 +13,6 @@ import driverRoutes from './routes/drivers';
 import tripRoutes from './routes/trips';
 import adminRoutes from './routes/admin';
 import uploadRoutes from './routes/uploads';
-import paymentRoutes from './routes/payments.routes';
 import colectivosRoutes from './routes/colectivos';
 import fcmRoutes from './routes/fcm.routes';
 
@@ -21,6 +20,7 @@ import fcmRoutes from './routes/fcm.routes';
 import './utils/fcm';
 
 import prisma from './utils/prisma';
+import { withoutPaymentData } from './utils/withoutPaymentData';
 
 // Socket handler
 import { setupSocketHandlers } from './socket/handlers';
@@ -57,6 +57,13 @@ const io = new Server(httpServer, {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// No entregar datos monetarios legados mientras existan columnas antiguas.
+app.use('/api', (_req, res, next) => {
+  const sendJson = res.json.bind(res);
+  res.json = ((body: unknown) => sendJson(withoutPaymentData(body))) as typeof res.json;
+  next();
+});
 
 import client from 'prom-client';
 import { PrismaClient } from '@prisma/client';
@@ -98,7 +105,6 @@ app.use('/api/drivers', driverRoutes);
 app.use('/api/trips', tripRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
-app.use('/api/payments', paymentRoutes);
 app.use('/api/colectivos', colectivosRoutes);
 app.use('/api/fcm', fcmRoutes);
 

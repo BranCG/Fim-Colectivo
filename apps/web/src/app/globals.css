@@ -493,13 +493,6 @@ a:hover { opacity: 0.85; }
   color: var(--accent);
 }
 
-.price-display {
-  font-size: 2.2rem;
-  font-weight: 900;
-  color: var(--accent);
-  letter-spacing: -0.03em;
-}
-
 /* ─── Animations ─────────────────────────────────────────────────────────── */
 @keyframes slideUp {
   from { transform: translateY(100%); opacity: 0; }

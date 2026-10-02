@@ -61,9 +61,6 @@ async function main() {
       vehiclePhotoUrl: 'https://placehold.co/600x400?text=Car',
       tagNumber: 'TAG-111',
       status: 'active',
-      membershipPaid: true,
-      membershipPlan: 'PREPAID',
-      membershipGoal: 100000
     }
   });
 
@@ -88,9 +85,6 @@ async function main() {
       vehiclePhotoUrl: 'https://placehold.co/600x400?text=Car',
       tagNumber: 'TAG-222',
       status: 'active',
-      membershipPaid: false,
-      membershipPlan: 'PROGRESSIVE',
-      membershipGoal: 120000
     }
   });
 

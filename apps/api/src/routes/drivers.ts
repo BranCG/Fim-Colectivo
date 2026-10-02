@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 
-const router = Router();
+const router: Router = Router();
 
 // ─── ESTADO DEL CONDUCTOR (para el dashboard) ─────────────────────────────
 router.get('/me', requireAuth, requireRole('driver'), async (req: Request, res: Response) => {
@@ -11,14 +11,12 @@ router.get('/me', requireAuth, requireRole('driver'), async (req: Request, res: 
       where: { id: req.user!.id },
       select: {
         id: true, name: true, email: true, phone: true,
-        status: true, membershipPaid: true, membershipDate: true,
-        membershipPlan: true, membershipGoal: true, membershipProgress: true,
-        dailyCashTripsCount: true,
+        status: true,
         isOnline: true, lastLat: true, lastLng: true,
         vehicleBrand: true, vehicleModel: true, vehicleYear: true,
         vehiclePlate: true, vehiclePhotoUrl: true, tagNumber: true,
         totalRating: true, totalTrips: true,
-        adminNotes: true, mercadoPagoLink: true, walletBalance: true,
+        adminNotes: true,
       },
     });
 
@@ -57,10 +55,6 @@ router.post('/toggle-online', requireAuth, requireRole('driver'), async (req: Re
       return res.status(403).json({ error: 'Debes estar aprobado por un administrador' });
     }
 
-    if (!driver.membershipPaid && driver.membershipPlan === 'PREPAID') {
-      return res.status(403).json({ error: 'Debes pagar tu membresía prepago para activarte' });
-    }
-
     const updated = await prisma.driver.update({
       where: { id: req.user!.id },
       data: { isOnline },
@@ -88,20 +82,6 @@ router.get('/active-trip', requireAuth, requireRole('driver'), async (req: Reque
     return res.json({ trip });
   } catch (err) {
     return res.status(500).json({ error: 'Error interno' });
-  }
-});
-
-// ─── ACTUALIZAR LINK DE PAGO ─────────────────────────────────────────────
-router.post('/payment-link', requireAuth, requireRole('driver'), async (req: Request, res: Response) => {
-  try {
-    const { mercadoPagoLink } = req.body;
-    await prisma.driver.update({
-      where: { id: req.user!.id },
-      data: { mercadoPagoLink },
-    });
-    return res.json({ ok: true });
-  } catch (err) {
-    return res.status(500).json({ error: 'Error al actualizar link de pago' });
   }
 });
 

@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { calculateDistance, calculateTripPrice, estimateDuration } from '../utils/pricing';
+import { calculateDistance, estimateDuration } from '../utils/pricing';
 
-const router = Router();
+const router: Router = Router();
 
 // ─── SOLICITAR VIAJE ──────────────────────────────────────────────────────
 router.post('/request', requireAuth, requireRole('passenger'), async (req: Request, res: Response) => {
@@ -11,21 +11,10 @@ router.post('/request', requireAuth, requireRole('passenger'), async (req: Reque
     const {
       originLat, originLng, originAddress,
       destLat, destLng, destAddress,
-      paymentMethod,
     } = req.body;
 
     const distanceKm = calculateDistance(originLat, originLng, destLat, destLng);
     const durationMin = estimateDuration(distanceKm);
-    let estimatedPrice = calculateTripPrice(distanceKm, durationMin);
-
-    // 50% de Descuento en el PRIMER viaje del pasajero (Tope $8.000)
-    const pastTripsCount = await prisma.trip.count({ where: { passengerId: req.user!.id } });
-    let isDiscounted = false;
-    if (pastTripsCount === 0) {
-      const discount = Math.min(Math.round(estimatedPrice * 0.5), 8000);
-      estimatedPrice = estimatedPrice - discount;
-      isDiscounted = true;
-    }
 
     const trip = await prisma.trip.create({
       data: {
@@ -34,9 +23,9 @@ router.post('/request', requireAuth, requireRole('passenger'), async (req: Reque
         destLat, destLng, destAddress,
         distanceKm,
         durationMin,
-        estimatedPrice,
-        isDiscounted,
-        paymentMethod: paymentMethod || 'cash',
+        // Columnas legadas obligatorias; no representan un precio ni un cobro.
+        estimatedPrice: 0,
+        paymentMethod: 'none',
         status: 'searching',
       },
       include: { passenger: { select: { id: true, name: true, phone: true } } },
@@ -49,26 +38,15 @@ router.post('/request', requireAuth, requireRole('passenger'), async (req: Reque
   }
 });
 
-// ─── PRECIO ESTIMADO (SIN CREAR VIAJE) ───────────────────────────────────
+// ─── DISTANCIA Y TIEMPO ESTIMADOS (SIN PRECIO) ───────────────────────────
 router.post('/estimate', requireAuth, async (req: Request, res: Response) => {
   try {
     const { originLat, originLng, destLat, destLng } = req.body;
     const distanceKm = calculateDistance(originLat, originLng, destLat, destLng);
     const durationMin = estimateDuration(distanceKm);
-    let estimatedPrice = calculateTripPrice(distanceKm, durationMin);
-
-    // 50% de Descuento en el PRIMER viaje del pasajero (Tope $8.000)
-    const pastTripsCount = await prisma.trip.count({ where: { passengerId: req.user!.id } });
-    let isDiscounted = false;
-    if (pastTripsCount === 0) {
-      const discount = Math.min(Math.round(estimatedPrice * 0.5), 8000);
-      estimatedPrice = estimatedPrice - discount;
-      isDiscounted = true;
-    }
-
-    return res.json({ distanceKm, durationMin, estimatedPrice, isDiscounted });
+    return res.json({ distanceKm, durationMin });
   } catch (err) {
-    return res.status(500).json({ error: 'Error al calcular precio' });
+    return res.status(500).json({ error: 'Error al calcular distancia' });
   }
 });
 
@@ -101,9 +79,7 @@ router.get('/driver-trips', requireAuth, requireRole('driver'), async (req: Requ
       },
     });
 
-    const totalEarnings = trips.reduce((sum: number, t: any) => sum + (t.finalPrice || t.estimatedPrice), 0);
-
-    return res.json({ trips, totalEarnings });
+    return res.json({ trips });
   } catch (err) {
     return res.status(500).json({ error: 'Error al obtener historial' });
   }

@@ -37,6 +37,9 @@ export default function AlertaVozReserva({
   const [respondido, setRespondido] = useState(false);
 
   const escuchaRef = useRef<{ detener: () => void } | null>(null);
+  const respondidoRef = useRef(false);
+  const accionesRef = useRef({ alAceptar, alRechazar, alExpirar });
+  accionesRef.current = { alAceptar, alRechazar, alExpirar };
 
   // Estimación cuantitativa de llegada a recoger al pasajero
   const minutosLlegada = Math.max(1, Math.round((solicitud.distanciaMetros * 1.25) / 400));
@@ -163,7 +166,8 @@ export default function AlertaVozReserva({
 
   // Acciones de respuesta
   const manejarAceptar = () => {
-    if (respondido) return;
+    if (respondidoRef.current) return;
+    respondidoRef.current = true;
     setRespondido(true);
     detenerVoz();
     if (escuchaRef.current) {
@@ -177,14 +181,15 @@ export default function AlertaVozReserva({
     } catch {}
 
     try {
-      alAceptar(solicitud.reservaId);
+      accionesRef.current.alAceptar(solicitud.reservaId);
     } catch (err) {
       console.error('Error en alAceptar:', err);
     }
   };
 
   const manejarRechazar = () => {
-    if (respondido) return;
+    if (respondidoRef.current) return;
+    respondidoRef.current = true;
     setRespondido(true);
     detenerVoz();
     if (escuchaRef.current) {
@@ -198,14 +203,15 @@ export default function AlertaVozReserva({
     } catch {}
 
     try {
-      alRechazar(solicitud.reservaId);
+      accionesRef.current.alRechazar(solicitud.reservaId);
     } catch (err) {
       console.error('Error en alRechazar:', err);
     }
   };
 
   const manejarExpiracion = () => {
-    if (respondido) return;
+    if (respondidoRef.current) return;
+    respondidoRef.current = true;
     setRespondido(true);
     detenerVoz();
     if (escuchaRef.current) {
@@ -219,7 +225,7 @@ export default function AlertaVozReserva({
     } catch {}
 
     try {
-      alExpirar(solicitud.reservaId);
+      accionesRef.current.alExpirar(solicitud.reservaId);
     } catch (err) {
       console.error('Error en alExpirar:', err);
     }

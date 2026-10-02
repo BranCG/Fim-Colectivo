@@ -3,6 +3,8 @@
 // para evitar que el conductor desvíe la vista o manipule el teléfono mientras conduce.
 
 import { Capacitor } from '@capacitor/core';
+import { NativeSpeechRecognition } from './nativeSpeech';
+import { interpretarComando } from './voiceCommands';
 
 let contextoAudio: AudioContext | null = null;
 
@@ -407,6 +409,7 @@ class GestorReconocimientoVoz {
   private timerReintento: NodeJS.Timeout | null = null;
   private bloqueoAbordoHasta = 0;
   private tiempoUltimoError = 0;
+  private reintentoBloqueado = false;
 
   static obtener(): GestorReconocimientoVoz {
     if (!GestorReconocimientoVoz.instancia) {
@@ -423,6 +426,7 @@ class GestorReconocimientoVoz {
     if (typeof window !== 'undefined' && typeof document !== 'undefined') {
       const alReanudarPrimerPlano = () => {
         if (!document.hidden) {
+          this.reintentoBloqueado = false;
           console.log('[Voz Chofer] Ventana activa en primer plano detectada (visibilitychange/focus/resume). Reactivando motor de voz...');
           // Despertar AudioContext y Synthesis si Android los suspendió
           const ctx = obtenerAudioContext();
@@ -445,6 +449,13 @@ class GestorReconocimientoVoz {
           }
         } else {
           // En segundo plano, pausar timers para no saturar Android WebView
+          if (this.reconocimiento) {
+            this.reconocimiento.onend = null;
+            this.reconocimiento.abort();
+            this.reconocimiento = null;
+          }
+          this.estaCorriendo = false;
+          this.notificarEstadoEscucha(false);
           if (this.timerReintento) {
             clearTimeout(this.timerReintento);
             this.timerReintento = null;
@@ -460,6 +471,7 @@ class GestorReconocimientoVoz {
   }
 
   forzarReinicio() {
+    this.reintentoBloqueado = false;
     console.log('[Voz Chofer] Forzando reinicio manual del reconocimiento de voz...');
     this.escuchandoDeseado = true;
     this.silenciadoPorHabla = false;
@@ -554,7 +566,7 @@ class GestorReconocimientoVoz {
   }
 
   private iniciarCiclo() {
-    if (this.silenciadoPorHabla || !this.escuchandoDeseado || this.suscriptores.size === 0) return;
+    if (document.hidden || this.reintentoBloqueado || this.silenciadoPorHabla || !this.escuchandoDeseado || this.suscriptores.size === 0) return;
 
     // Destruir instancia previa de forma limpia para que Android no bloquee el micrófono
     if (this.reconocimiento) {
@@ -569,10 +581,12 @@ class GestorReconocimientoVoz {
     }
 
     const windowAny = typeof window !== 'undefined' ? (window as any) : {};
-    const SpeechRecognitionClass = windowAny.SpeechRecognition || windowAny.webkitSpeechRecognition;
+    const SpeechRecognitionClass = Capacitor.getPlatform() === 'android'
+      ? NativeSpeechRecognition : windowAny.SpeechRecognition || windowAny.webkitSpeechRecognition;
 
     if (!SpeechRecognitionClass) {
       console.info('[Voz Chofer] SpeechRecognition no soportado en este navegador');
+      this.notificarError('Reconocimiento de voz no disponible.');
       return;
     }
 
@@ -601,7 +615,7 @@ class GestorReconocimientoVoz {
 
         for (let i = evento.resultIndex; i < resultados.length; i++) {
           const item = resultados[i];
-          const numAlternativas = item.length || 1;
+          const numAlternativas = Math.min(item.length || 1, 1);
 
           for (let altIdx = 0; altIdx < numAlternativas; altIdx++) {
             const rawTranscript = (item[altIdx]?.transcript || '').trim();
@@ -609,6 +623,8 @@ class GestorReconocimientoVoz {
 
             // Notificar de inmediato al suscriptor/UI para que el conductor vea en pantalla lo que dice en tiempo real
             this.notificarTextoDetectado(rawTranscript);
+            // Esperar la frase final evita actuar sobre un «sí» parcial seguido de «no».
+            if (!item.isFinal) continue;
 
             if (!textoDetectadoReciente) {
               textoDetectadoReciente = rawTranscript;
@@ -627,130 +643,14 @@ class GestorReconocimientoVoz {
 
             console.log('[Voz Chofer] Escuchado:', normalizado, item.isFinal ? '(final)' : '(interim)');
 
-            const palabras = normalizado.split(' ');
-
-            // 3. Comando: NO (rechazar/pasar/cancelar)
-            const esNo =
-              normalizado === 'no' ||
-              normalizado === 'nop' ||
-              normalizado === 'nopo' ||
-              normalizado === 'paso' ||
-              normalizado === 'rechazo' ||
-              normalizado === 'rechazar' ||
-              normalizado === 'cancelar' ||
-              normalizado === 'cancela' ||
-              normalizado === 'dejalo' ||
-              palabras.includes('no') ||
-              palabras.includes('nop') ||
-              palabras.includes('nopo') ||
-              palabras.includes('paso') ||
-              palabras.includes('rechazo') ||
-              palabras.includes('rechazar') ||
-              palabras.includes('cancelar') ||
-              palabras.includes('cancela') ||
-              /(^|\s)(no|nop|nopo|paso|rechazo|rechazar|dejalo|dejala|cancelar|cancela|negativo)($|\s)/i.test(
-                normalizado
-              );
-
-            if (esNo && ahora - this.ultimoDisparoComando > 300) {
+            const comando = interpretarComando(normalizado);
+            if (comando && ahora - this.ultimoDisparoComando > 500 &&
+                (comando !== 'onAbordo' || ahora > this.bloqueoAbordoHasta)) {
               this.ultimoDisparoComando = ahora;
-              this.notificarTextoDetectado('¡NO DETECTADO!');
               detenerVoz();
-              const ejecutado = this.despacharComando('onNo');
-              if (ejecutado) return;
+              if (this.despacharComando(comando)) return;
             }
 
-            // 1. Comando: SÍ (confirmar/aceptar reserva o pago)
-            // Asegurarse de que no contenga negación ni palabras ambiguas
-            const contieneNegacion = esNo || palabras.includes('no') || /(^|\s)no($|\s)/i.test(normalizado);
-
-            const esSi =
-              !contieneNegacion &&
-              (
-                normalizado === 'si' ||
-                normalizado === 'sí' ||
-                normalizado === 'sip' ||
-                normalizado === 'sipo' ||
-                normalizado === 'dale' ||
-                normalizado === 'bueno' ||
-                normalizado === 'ok' ||
-                normalizado === 'oka' ||
-                normalizado === 'okay' ||
-                normalizado === 'acepto' ||
-                normalizado === 'aceptar' ||
-                normalizado === 'confirmo' ||
-                normalizado === 'confirmar' ||
-                normalizado === 'claro' ||
-                normalizado === 'afirmativo' ||
-                palabras.includes('si') ||
-                palabras.includes('sí') ||
-                palabras.includes('sip') ||
-                palabras.includes('sipo') ||
-                palabras.includes('dale') ||
-                palabras.includes('bueno') ||
-                palabras.includes('ok') ||
-                palabras.includes('oka') ||
-                palabras.includes('okay') ||
-                palabras.includes('acepto') ||
-                palabras.includes('aceptar') ||
-                palabras.includes('confirmo') ||
-                palabras.includes('confirmar') ||
-                /(^|\s)(s+[ií]+|s+[ií]+p+o*|dale|bueno|ok|oka|okay|acepto|aceptar|confirmo|confirmar|claro|afirmativo)($|\s)/i.test(
-                  normalizado
-                )
-              );
-
-            if (esSi && ahora - this.ultimoDisparoComando > 300) {
-              this.ultimoDisparoComando = ahora;
-              this.notificarTextoDetectado('¡SÍ DETECTADO!');
-              detenerVoz();
-              const ejecutado = this.despacharComando('onSi');
-              if (ejecutado) return;
-            }
-
-            // 2. Comando: A BORDO (sube pasajero)
-            // Cubre todas las variaciones acústicas y fonéticas comunes ("abordo", "agordo", "a gordo", "subió", "listo", etc.)
-            const esAbordo =
-              normalizado === 'a bordo' ||
-              normalizado === 'abordo' ||
-              normalizado === 'agordo' ||
-              normalizado === 'a gordo' ||
-              normalizado === 'bordo' ||
-              normalizado === 'gordo' ||
-              normalizado === 'subio' ||
-              normalizado === 'subió' ||
-              normalizado === 'subieron' ||
-              normalizado.includes('bordo') ||
-              normalizado.includes('abordo') ||
-              normalizado.includes('agordo') ||
-              normalizado.includes('a gordo') ||
-              normalizado.includes('subio') ||
-              normalizado.includes('subieron') ||
-              normalizado.includes('sube') ||
-              normalizado.includes('arriba') ||
-              normalizado.includes('adentro') ||
-              palabras.includes('bordo') ||
-              palabras.includes('abordo') ||
-              palabras.includes('agordo') ||
-              palabras.includes('gordo') ||
-              palabras.includes('subio') ||
-              palabras.includes('subieron') ||
-              palabras.includes('sube') ||
-              palabras.includes('arriba') ||
-              palabras.includes('adentro') ||
-              palabras.includes('listo') ||
-              palabras.includes('vamos') ||
-              /(^|\s)(a\s*bordo|abordo|agordo|a\s*gordo|bordo|gordo|subi[oó]|sube|subieron|subir|ya\s*subi[oó]|ya\s*subieron|arriba|adentro|al\s*auto|aborde|listo|vamos|nos\s*fuimos)($|\s)/i.test(
-                normalizado
-              );
-
-            if (esAbordo && ahora - this.ultimoDisparoComando > 300 && ahora > this.bloqueoAbordoHasta) {
-              this.ultimoDisparoComando = ahora;
-              this.notificarTextoDetectado('¡A BORDO DETECTADO!');
-              detenerVoz();
-              const ejecutado = this.despacharComando('onAbordo');
-              if (ejecutado) return;
-            }
           }
         }
 
@@ -771,19 +671,18 @@ class GestorReconocimientoVoz {
           return;
         }
 
-        if (err?.error === 'not-allowed' || err?.error === 'service-not-allowed' || err?.error === 'audio-capture') {
-          this.estaCorriendo = false;
-          // Reintentar de forma suave tras 1.2s para permitir que Android restaure el hardware de audio
-          if (this.timerReintento) clearTimeout(this.timerReintento);
-          this.timerReintento = setTimeout(() => {
-            if (this.escuchandoDeseado && this.suscriptores.size > 0 && !document.hidden) {
-              this.iniciarCiclo();
-            }
-          }, 1200);
+        this.estaCorriendo = false;
+        this.notificarEstadoEscucha(false);
+        if (this.timerReintento) clearTimeout(this.timerReintento);
+        if (err?.error === 'not-allowed' || err?.error === 'service-not-allowed') {
+          this.reintentoBloqueado = true;
+          this.notificarError(err.error === 'not-allowed'
+            ? 'Permite el micrófono para usar los comandos de voz.'
+            : 'El servicio de reconocimiento de voz no está disponible.');
           return;
         }
-
-        this.estaCorriendo = false;
+        // También reiniciar tras silencio o fallo de red: onend respeta esta espera.
+        this.timerReintento = setTimeout(() => this.iniciarCiclo(), 1200);
       };
 
       rec.onend = () => {
@@ -897,4 +796,3 @@ export function forzarReinicioVoz() {
   }
   GestorReconocimientoVoz.obtener().forzarReinicio();
 }
-

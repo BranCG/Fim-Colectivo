@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import prisma from '../utils/prisma';
 import { calculateDistance } from '../utils/pricing';
+import { withoutPaymentData } from '../utils/withoutPaymentData';
 
 // ─── Mapa de conductores online ───────────────────────────────────────────
 // driverId -> { socketId, lat, lng }
@@ -166,21 +167,7 @@ export function setupSocketHandlers(io: Server) {
       }
     });
 
-    // ─── COLECTIVOS: Solicitar parada al conductor ────────────────────────
-    socket.on('colectivo:solicitar-parada', (datos: {
-      conductorId: string;
-      lineaId?: string;
-      pasajeroNombre?: string;
-      reservaId?: string;
-    }) => {
-      console.log(`[Socket] Solicitud de parada para conductor ${datos.conductorId}:`, datos);
-      if (datos.conductorId) {
-        io.to(`driver:${datos.conductorId}`).emit('colectivo:solicitud-parada', datos);
-      }
-      if (datos.lineaId) {
-        io.to(`linea:${datos.lineaId}`).emit('colectivo:solicitud-parada', datos);
-      }
-    });
+    // Las paradas se guardan y notifican únicamente por la ruta autenticada.
 
     socket.on('driver:join', ({ driverId, conductorId }: { driverId?: string; conductorId?: string }) => {
       const id = driverId || conductorId;
@@ -245,7 +232,6 @@ export function setupSocketHandlers(io: Server) {
                 vehiclePlate: true, vehiclePhotoUrl: true,
                 totalRating: true, totalTrips: true,
                 lastLat: true, lastLng: true,
-                mercadoPagoLink: true,
               },
             },
             passenger: { select: { id: true, name: true, phone: true } },
@@ -255,9 +241,9 @@ export function setupSocketHandlers(io: Server) {
         socket.join(`trip:${tripId}`);
 
         // Notificar al pasajero que fue aceptado
-        io.to(`trip:${tripId}`).emit('trip:accepted', { trip });
+        io.to(`trip:${tripId}`).emit('trip:accepted', { trip: withoutPaymentData(trip) });
         // Notificar al conductor confirmación
-        socket.emit('trip:confirmed', { trip });
+        socket.emit('trip:confirmed', { trip: withoutPaymentData(trip) });
 
         console.log(`[Socket] Viaje ${tripId} aceptado por conductor ${driverId}`);
       } catch (err) {
@@ -294,7 +280,7 @@ export function setupSocketHandlers(io: Server) {
           data: { status: 'in_progress', startedAt: new Date() },
         });
 
-        io.to(`trip:${tripId}`).emit('trip:started', { trip: updated });
+        io.to(`trip:${tripId}`).emit('trip:started', { trip: withoutPaymentData(updated) });
         console.log(`[Socket] Viaje ${tripId} iniciado con éxito`);
       } catch (err) {
         console.error('[Socket] Error iniciando viaje:', err);
@@ -311,12 +297,6 @@ export function setupSocketHandlers(io: Server) {
       io.to(`trip:${tripId}`).emit('trip:driver-arrived', { tripId });
     });
 
-    // ─── CONDUCTOR: solicita pago al pasajero ───────────────────────────
-    socket.on('trip:request-payment', ({ tripId }: { tripId: string }) => {
-      console.log(`[Socket] Conductor solicita pago para viaje ${tripId}`);
-      io.to(`trip:${tripId}`).emit('trip:payment-requested');
-    });
-
     // ─── CHAT EN VIVO: Mensajes de texto ──────────────────────────────────
     socket.on('trip:message', (data: { tripId: string, senderId: string, senderName: string, text: string }) => {
       console.log(`[Socket] Mensaje de chat recibido para viaje ${data.tripId} de ${data.senderName}: ${data.text}`);
@@ -324,12 +304,6 @@ export function setupSocketHandlers(io: Server) {
         ...data,
         timestamp: new Date().toISOString()
       });
-    });
-
-    // ─── PASAJERO: confirma que envió el pago ─────────────────────────────
-    socket.on('trip:passenger-confirmed-payment', ({ tripId, receiptUrl }: { tripId: string, receiptUrl?: string }) => {
-      console.log(`[Socket] Pasajero confirma pago para viaje ${tripId}`);
-      io.to(`trip:${tripId}`).emit('trip:passenger-confirmed-payment', { receiptUrl });
     });
 
     // ─── REPORTE DE SEGURIDAD ─────────────────────────────────────────────
@@ -354,24 +328,19 @@ export function setupSocketHandlers(io: Server) {
           },
         });
 
-        // Actualizar estadísticas del conductor y billetera si es tarjeta
+        // Actualizar estadísticas de viajes, sin registrar montos.
         await prisma.driver.update({
           where: { id: trip.driverId! },
           data: {
             totalTrips: { increment: 1 },
-            walletBalance: trip.paymentMethod === 'card' 
-              ? { increment: trip.estimatedPrice } 
-              : undefined
           }
         });
 
         io.to(`trip:${tripId}`).emit('trip:completed', {
           tripId,
-          finalPrice: trip.estimatedPrice,
-          paymentMethod: trip.paymentMethod,
         });
 
-        console.log(`[Socket] Viaje ${tripId} completado. Precio: $${trip.estimatedPrice}`);
+        console.log(`[Socket] Viaje ${tripId} completado.`);
       } catch (err) {
         console.error('[Socket] Error completando viaje:', err);
       }
@@ -471,10 +440,10 @@ async function findAndNotifyDriver(
 
   // Notificar al conductor con timer de 30 segundos
   io.to(nearest.socketId).emit('trip:request', {
-    trip: {
+    trip: withoutPaymentData({
       ...trip,
       driverDistance: nearest.distance,
-    },
+    }),
   });
 
   // Si el conductor no responde en 30 segundos, pasar al siguiente

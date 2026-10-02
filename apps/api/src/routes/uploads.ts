@@ -4,7 +4,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 
-const router = Router();
+const router: Router = Router();
 
 // Crear carpeta de uploads si no existe
 const uploadDir = path.join(__dirname, '../../uploads');

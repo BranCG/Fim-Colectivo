@@ -247,7 +247,7 @@ model ReservaAsiento {
   direccionSubida    String?
   estado             String         @default("reservado") // "reservado", "abordado", "completado", "cancelado"
   tarifa             Int            @default(800)
-  metodoPago         String         @default("efectivo") // "efectivo", "rutpay", "mercadopago"
+  metodoPago         String         @default("efectivo") // Aviso: "none", "efectivo" o "rutpay"; no procesa cobros.
   notas              String?
   fechaCreacion      DateTime       @default(now())
   fechaActualizacion DateTime       @updatedAt

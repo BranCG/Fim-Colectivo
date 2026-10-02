@@ -24,10 +24,11 @@ export function usePantallaEncendida(activo: boolean = true) {
 
     async function solicitarWakeLock() {
       try {
-        wakeLock = await (navigator as any).wakeLock.request('screen');
+        const lock: WakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+        wakeLock = lock;
         console.log('[WakeLock] Pantalla bloqueada — no se suspenderá.');
 
-        wakeLock.addEventListener('release', () => {
+        lock.addEventListener('release', () => {
           console.log('[WakeLock] Wake lock liberado.');
         });
       } catch (err) {

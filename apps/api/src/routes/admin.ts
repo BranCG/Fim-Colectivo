@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { requireAuth, requireRole } from '../middleware/auth';
 
-const router = Router();
+const router: Router = Router();
 
 // Todas las rutas requieren ser admin
 router.use(requireAuth, requireRole('admin'));
@@ -13,7 +13,6 @@ router.get('/stats', async (_req: Request, res: Response) => {
     const [
       totalDrivers, pendingDrivers, activeDrivers,
       totalPassengers, totalTrips, completedTrips,
-      membershipsPaid,
     ] = await Promise.all([
       prisma.driver.count(),
       prisma.driver.count({ where: { status: 'pending' } }),
@@ -21,10 +20,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
       prisma.user.count({ where: { role: 'passenger' } }),
       prisma.trip.count(),
       prisma.trip.count({ where: { status: 'completed' } }),
-      prisma.driver.count({ where: { membershipPaid: true } }),
     ]);
-
-    const membershipRevenue = membershipsPaid * 100000;
 
     const recentTrips = await prisma.trip.findMany({
       take: 10,
@@ -39,7 +35,6 @@ router.get('/stats', async (_req: Request, res: Response) => {
       stats: {
         totalDrivers, pendingDrivers, activeDrivers,
         totalPassengers, totalTrips, completedTrips,
-        membershipsPaid, membershipRevenue,
       },
       recentTrips,
     });
@@ -61,7 +56,7 @@ router.get('/drivers/pending', async (_req: Request, res: Response) => {
         licenseNumber: true, licenseUrl: true,
         vehicleBrand: true, vehicleModel: true, vehicleYear: true,
         vehiclePlate: true, vehiclePhotoUrl: true, tagNumber: true,
-        membershipPaid: true, createdAt: true,
+        createdAt: true,
       },
     });
     return res.json({ drivers });
@@ -79,7 +74,7 @@ router.get('/drivers', async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true, name: true, email: true, phone: true,
-        rut: true, status: true, membershipPaid: true,
+        rut: true, status: true,
         vehicleBrand: true, vehicleModel: true, vehiclePlate: true,
         totalRating: true, totalTrips: true, isOnline: true,
         createdAt: true,
@@ -115,7 +110,7 @@ router.post('/drivers/:id/approve', async (req: Request, res: Response) => {
   try {
     const driver = await prisma.driver.update({
       where: { id: String(req.params.id) },
-      data: { status: 'approved', adminNotes: null },
+       data: { status: 'active', adminNotes: null },
     });
     return res.json({ message: 'Conductor aprobado', driver });
   } catch (err) {
@@ -132,23 +127,6 @@ router.post('/drivers/:id/reject', async (req: Request, res: Response) => {
       data: { status: 'rejected', adminNotes: reason },
     });
     return res.json({ message: 'Conductor rechazado', driver });
-  } catch (err) {
-    return res.status(500).json({ error: 'Error interno' });
-  }
-});
-
-// ─── MARCAR MEMBRESÍA COMO PAGADA ─────────────────────────────────────────
-router.post('/drivers/:id/membership-paid', async (req: Request, res: Response) => {
-  try {
-    const driver = await prisma.driver.update({
-      where: { id: String(req.params.id) },
-      data: {
-        membershipPaid: true,
-        membershipDate: new Date(),
-        status: 'active',
-      },
-    });
-    return res.json({ message: 'Membresía confirmada. Conductor activado.', driver });
   } catch (err) {
     return res.status(500).json({ error: 'Error interno' });
   }
@@ -182,53 +160,6 @@ router.get('/passengers', async (_req: Request, res: Response) => {
     return res.json({ passengers });
   } catch (err) {
     return res.status(500).json({ error: 'Error interno' });
-  }
-});
-
-// ─── REPORTE DE INGRESOS (DIARIO) ─────────────────────────────────────────
-router.get('/revenue-report', async (req: Request, res: Response) => {
-  try {
-    const { date } = req.query; // YYYY-MM-DD
-    const targetDate = date ? new Date(String(date)) : new Date();
-    
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const trips = await prisma.trip.findMany({
-      where: {
-        status: 'completed',
-        completedAt: { gte: startOfDay, lte: endOfDay },
-      },
-      include: {
-        driver: { select: { name: true } },
-      },
-    });
-
-    // Agrupar por conductor y método de pago
-    const stats: Record<string, any> = {};
-
-    trips.forEach((t: any) => {
-      const key = `${t.driverId}_${t.paymentMethod}`;
-      const amount = t.finalPrice || t.estimatedPrice;
-      
-      if (!stats[key]) {
-        stats[key] = {
-          driverId: t.driverId,
-          driverName: t.driver?.name || 'Desconocido',
-          paymentMethod: t.paymentMethod,
-          totalAmount: 0,
-          tripCount: 0,
-        };
-      }
-      stats[key].totalAmount += amount;
-      stats[key].tripCount += 1;
-    });
-
-    return res.json({ report: Object.values(stats) });
-  } catch (err) {
-    return res.status(500).json({ error: 'Error al generar reporte' });
   }
 });
 
