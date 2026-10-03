@@ -98,11 +98,10 @@ export default function TermsPage() {
           <div>
             <h2 style={{ color: '#FACC15', fontSize: '1.25rem', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <IconoTarjeta size={20} color="#FACC15" />
-              4. Tarifas Oficiales y Medios de Pago Directos
+               4. Coordinación directa del viaje
             </h2>
             <p style={{ color: '#D4D4D4', fontSize: '0.95rem', margin: 0 }}>
-              La tarifa a pagar corresponde íntegramente a la tarifa oficial y regulada fijada por la línea de colectivos para el respectivo tramo (diurno, nocturno o festivo). FIM Colectivo <strong>no cobra comisiones por pasaje ni aplica tarifas dinámicas</strong> al valor de la carrera.
-              El pasajero puede pagar con dinero en efectivo físico exacto al momento de abordar o realizar un pago electrónico directo mediante transferencia a la CuentaRUT del conductor a través de <strong>RutPay BancoEstado</strong> o pasarelas habilitadas (MercadoPago), sin intermediarios ni retenciones semanales.
+               FIM Colectivo facilita avisos y reservas entre pasajero y conductor. El valor y la forma de pago del viaje se acuerdan directamente entre ellos. La aplicación no muestra tarifas, no procesa pagos y no recauda dinero del viaje.
             </p>
           </div>
 

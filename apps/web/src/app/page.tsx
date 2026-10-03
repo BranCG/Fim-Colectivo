@@ -13,7 +13,7 @@ import {
   IconoReloj,
   IconoMicrofono,
   IconoAuto,
-  IconoTarjeta,
+  IconoCampana,
   IconoCheck,
   IconoCruz,
 } from '@/components/icons/Iconos';
@@ -270,10 +270,10 @@ export default function Home() {
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#FFFFFF' }}>
-              <IconoTarjeta size={18} color="#FFFFFF" />
-              <span style={{ fontSize: '1.25rem', fontWeight: 900 }}>RutPay & Efectivo</span>
+               <IconoCampana size={18} color="#FFFFFF" />
+               <span style={{ fontSize: '1.25rem', fontWeight: 900 }}>Coordinación directa</span>
             </div>
-            <span style={{ fontSize: '0.8rem', color: '#A3A3A3' }}>Pago directo a tu CuentaRUT o billete</span>
+             <span style={{ fontSize: '0.8rem', color: '#A3A3A3' }}>Avisos entre pasajero y conductor</span>
           </div>
         </div>
       </section>
@@ -504,10 +504,10 @@ export default function Home() {
                 4
               </div>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
-                Paga en Efectivo o RutPay
+                 Coordina con el conductor
               </h3>
               <p style={{ fontSize: '0.9rem', color: '#A3A3A3', lineHeight: 1.6, margin: 0 }}>
-                Sube al colectivo y paga con tu tarifa oficial en efectivo o envía una transferencia directa por RutPay BancoEstado al número del chofer sin andar con monedas.
+                 Al subir, puedes avisar al conductor desde la app y acordar directamente los detalles del viaje. La app no cobra ni muestra valores.
               </p>
             </div>
           </div>
@@ -655,10 +655,10 @@ export default function Home() {
                 4
               </div>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
-                Control de 4 Asientos y Recaudación
+                 Control de 4 Asientos
               </h3>
               <p style={{ fontSize: '0.9rem', color: '#A3A3A3', lineHeight: 1.6, margin: 0 }}>
-                Visualiza los 4 asientos en disponible, reservado o a bordo. Recibe pagos en efectivo o por RutPay directo a tu cuenta sin comisiones.
+                 Visualiza los 4 asientos como disponibles, reservados o a bordo y recibe avisos de los pasajeros.
               </p>
             </div>
           </div>
@@ -860,11 +860,11 @@ export default function Home() {
           {[
             {
               q: '¿FIM Colectivo es una aplicación de viajes privados tipo Uber o DiDi?',
-              a: 'No. FIM Colectivo está 100% dedicada y adaptada al servicio de Taxis Colectivos de Chile. Opera respetando las líneas autorizadas, paradas habituales, sentidos de recorrido (Ida y Vuelta) y tarifas oficiales reguladas por el Ministerio de Transportes.',
+               a: 'No. FIM Colectivo está dedicada al servicio de taxis colectivos de Chile. Facilita la coordinación de líneas, paradas y recorridos.',
             },
             {
-              q: '¿El pasajero puede seguir pagando con monedas o billetes?',
-              a: 'Sí, absolutamente. El pasajero puede pagar con efectivo tradicional al subir o bien utilizar pagos directos por RutPay de BancoEstado o MercadoPago escaneando o enviando al número de teléfono del conductor sin recargos.',
+               q: '¿Cómo se coordina el pago del viaje?',
+               a: 'El pasajero y el conductor lo acuerdan directamente de forma verbal. La app solo envía un aviso para facilitar la conversación; no cobra ni muestra el valor del viaje.',
             },
             {
               q: '¿Cómo funciona la confirmación por voz para los conductores?',
@@ -875,8 +875,8 @@ export default function Home() {
               a: 'El conductor pulsa el botón "Fuera de Servicio", lo cual apaga inmediatamente la transmisión GPS y lo retira en tiempo real del mapa de todos los pasajeros. Los pasajeros no podrán solicitarle cupos mientras se encuentre fuera de turno.',
             },
             {
-              q: '¿Se cobra comisión por cada pasaje que toma el colectivo?',
-              a: 'El dinero del pasaje pagado por los pasajeros entra directamente al bolsillo del conductor. No existen descuentos ocultos ni retenciones semanales por cada pasaje recaudado.',
+               q: '¿La app recauda dinero del viaje?',
+               a: 'No. La app no procesa pagos, no recauda dinero y no calcula el valor de los viajes.',
             },
           ].map((item, idx) => (
             <div

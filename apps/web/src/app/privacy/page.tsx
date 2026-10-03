@@ -98,10 +98,10 @@ export default function PrivacyPage() {
           <div>
             <h2 style={{ color: '#FACC15', fontSize: '1.25rem', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <IconoTarjeta size={20} color="#FACC15" />
-              4. Datos de Cobro, RutPay y Canales de Pago
+               4. Avisos entre pasajero y conductor
             </h2>
             <p style={{ color: '#D4D4D4', fontSize: '0.95rem', margin: 0 }}>
-              Para facilitar el pago sin efectivo, el conductor puede registrar voluntariamente su número de teléfono asociado a <strong>RutPay BancoEstado</strong> o su enlace de MercadoPago. Esta información solo se exhibe de manera temporal al pasajero con reserva activa para que efectúe la transferencia directa del valor del pasaje al chofer. FIM Colectivo <strong>no almacena números de tarjeta de crédito, claves secretas ni coordenadas bancarias</strong>.
+               La aplicación transmite avisos relacionados con el viaje para facilitar la conversación entre pasajero y conductor. No solicita datos de tarjetas o cuentas para pagar el viaje, no procesa pagos y no muestra su valor.
             </p>
           </div>
 

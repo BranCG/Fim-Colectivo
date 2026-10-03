@@ -8,7 +8,8 @@
     "start": "next start -p 3010",
     "lint": "next lint",
     "mobile:sync": "cap sync android",
-    "mobile:open": "cap open android"
+    "mobile:open": "cap open android",
+    "test:voice": "node --test tests/voice-commands.test.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.1",

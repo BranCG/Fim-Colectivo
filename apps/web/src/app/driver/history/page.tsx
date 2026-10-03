@@ -4,16 +4,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api, { getSession } from '@/lib/api';
-import { IconoRuta, IconoEfectivo, IconoTarjeta } from '@/components/icons/Iconos';
+import { IconoRuta } from '@/components/icons/Iconos';
 
 interface Trip {
   id: string;
   createdAt: string;
   originAddress: string;
   destAddress: string;
-  estimatedPrice: number;
   status: string;
-  paymentMethod: string;
   passenger: { name: string };
   rating?: { score: number; comment?: string };
 }
@@ -44,7 +42,7 @@ export default function DriverHistoryPage() {
 
       <div style={{ marginBottom: '32px' }}>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 900, marginBottom: '8px' }}>Historial de Viajes</h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Tus ganancias y recorridos completados.</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Tus recorridos completados.</p>
       </div>
 
       {loading ? (
@@ -72,10 +70,6 @@ export default function DriverHistoryPage() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--accent)' }}>Viaje Colectivo</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                    {trip.paymentMethod === 'cash' ? <IconoEfectivo size={13} color="var(--gold)" /> : <IconoTarjeta size={13} color="var(--gold)" />}
-                    <span>{trip.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}</span>
-                  </div>
                 </div>
               </div>
 

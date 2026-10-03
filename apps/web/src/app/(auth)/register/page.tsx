@@ -8,7 +8,7 @@ import api, { saveSession, uploadFile } from '@/lib/api';
 import Logo from '@/components/Logo';
 
 type Role = 'passenger' | 'driver';
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3;
 
 interface FileUpload {
   file: File | null;
@@ -88,10 +88,7 @@ function RegisterForm() {
   const [tagNumber, setTagNumber] = useState('');
   const [vehiclePhoto, setVehiclePhoto] = useState<FileUpload>(emptyUpload());
 
-  // Step 4 - Membresía (solo conductores)
-  const [membershipPlan, setMembershipPlan] = useState<'PREPAID' | 'PROGRESSIVE'>('PREPAID');
-
-  const totalSteps = role === 'driver' ? 4 : 2;
+  const totalSteps = role === 'driver' ? 3 : 2;
 
   async function handleFileChange(
     e: React.ChangeEvent<HTMLInputElement>,
@@ -203,7 +200,7 @@ function RegisterForm() {
         saveSession(res.data.accessToken, { ...res.data.user, role: 'passenger' });
         router.replace('/passenger/');
       } else {
-        const res = await api.post('/auth/driver/register', { name, email, phone, password, rut, birthDate, address, idFrontUrl: idFront.url, idBackUrl: idBack.url, selfieUrl: selfie.url, licenseNumber, licenseUrl: licenseFile.url, vehicleBrand, vehicleModel, vehicleYear, vehiclePlate, tagNumber, vehiclePhotoUrl: vehiclePhoto.url, membershipPlan });
+        const res = await api.post('/auth/driver/register', { name, email, phone, password, rut, birthDate, address, idFrontUrl: idFront.url, idBackUrl: idBack.url, selfieUrl: selfie.url, licenseNumber, licenseUrl: licenseFile.url, vehicleBrand, vehicleModel, vehicleYear, vehiclePlate, tagNumber, vehiclePhotoUrl: vehiclePhoto.url });
         saveSession(res.data.accessToken, { ...res.data.driver, role: 'driver' });
         router.replace('/driver/');
       }
@@ -227,7 +224,7 @@ function RegisterForm() {
     setStep(prev => (prev + 1) as Step);
   }
 
-  const steps = role === 'driver' ? ['Datos', 'ID', 'Vehículo', 'Pagos'] : ['Datos', 'ID'];
+  const steps = role === 'driver' ? ['Datos', 'ID', 'Vehículo'] : ['Datos', 'ID'];
 
   return (
     <div className="app-container" style={{ background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '24px' }}>
@@ -346,20 +343,6 @@ function RegisterForm() {
               </div>
               {renderUploadArea('Licencia de Conducir', licenseFile, setLicenseFile, 'license-file')}
               {renderUploadArea('Foto del Vehículo', vehiclePhoto, setVehiclePhoto, 'vehicle-photo')}
-            </div>
-          )}
-
-          {step === 4 && role === 'driver' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '8px' }}>Elige cómo quieres pagar tu acceso a Fim.</p>
-              <div className="card" onClick={() => setMembershipPlan('PROGRESSIVE')} style={{ cursor: 'pointer', transition: 'var(--transition)', border: membershipPlan === 'PROGRESSIVE' ? '2px solid var(--accent)' : '1px solid var(--border)', background: membershipPlan === 'PROGRESSIVE' ? 'var(--accent-light)' : 'var(--bg-secondary)' }}>
-                <div style={{ fontWeight: 800, color: membershipPlan === 'PROGRESSIVE' ? 'var(--accent)' : 'inherit' }}>PLAN PROGRESIVO</div>
-                <p style={{ fontSize: '0.8rem' }}>Paga $20.000 por cada día que trabajes.</p>
-              </div>
-              <div className="card" onClick={() => setMembershipPlan('PREPAID')} style={{ cursor: 'pointer', transition: 'var(--transition)', border: membershipPlan === 'PREPAID' ? '2px solid var(--accent)' : '1px solid var(--border)', background: membershipPlan === 'PREPAID' ? 'var(--accent-light)' : 'var(--bg-secondary)' }}>
-                <div style={{ fontWeight: 800, color: membershipPlan === 'PREPAID' ? 'var(--accent)' : 'inherit' }}>PLAN PREPAGO FULL</div>
-                <p style={{ fontSize: '0.8rem' }}>$100.000 / mes. Acceso ilimitado.</p>
-              </div>
             </div>
           )}
 

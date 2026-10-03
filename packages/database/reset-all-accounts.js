@@ -57,7 +57,7 @@ async function resetAll() {
   // 3. Reseteo de conductores seeded
   const d1 = await prisma.driver.upsert({
     where: { email: 'conductor1@fim.cl' },
-    update: { passwordHash: commonHash, status: 'active', membershipPaid: true },
+    update: { passwordHash: commonHash, status: 'active' },
     create: {
       email: 'conductor1@fim.cl',
       phone: '+56933333333',
@@ -78,16 +78,13 @@ async function resetAll() {
       vehiclePhotoUrl: 'https://placehold.co/600x400?text=Car',
       tagNumber: 'TAG-111',
       status: 'active',
-      membershipPaid: true,
-      membershipPlan: 'PREPAID',
-      membershipGoal: 100000
     }
   });
   console.log(`✅ Conductor de prueba listo: ${d1.email} / Clave: 123456`);
 
   const d2 = await prisma.driver.upsert({
     where: { email: 'conductor2@fim.cl' },
-    update: { passwordHash: commonHash, status: 'active', membershipPaid: true },
+    update: { passwordHash: commonHash, status: 'active' },
     create: {
       email: 'conductor2@fim.cl',
       phone: '+56944444444',
@@ -108,9 +105,6 @@ async function resetAll() {
       vehiclePhotoUrl: 'https://placehold.co/600x400?text=Car',
       tagNumber: 'TAG-222',
       status: 'active',
-      membershipPaid: true,
-      membershipPlan: 'PROGRESSIVE',
-      membershipGoal: 120000
     }
   });
   console.log(`✅ Conductor de prueba listo: ${d2.email} / Clave: 123456`);

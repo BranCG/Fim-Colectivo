@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '../utils/prisma';
 import { generateTokens } from '../middleware/auth';
 
-const router = Router();
+const router: Router = Router();
 
 // ─── REGISTRO PASAJERO ────────────────────────────────────────────────────
 router.post('/passenger/register', async (req: Request, res: Response) => {
@@ -96,14 +96,11 @@ router.post('/driver/register', async (req: Request, res: Response) => {
       email, phone, name, password, rut, birthDate, address,
       licenseNumber, vehicleBrand, vehicleModel, vehicleYear, vehiclePlate, tagNumber,
       idFrontUrl, idBackUrl, selfieUrl, licenseUrl, vehiclePhotoUrl,
-      membershipPlan,
-      bankName, bankAccountType, bankAccountNumber, bankAccountName, bankAccountRut, bankAccountEmail,
     } = req.body;
 
     const required = [email, phone, name, password, rut, birthDate, address,
       licenseNumber, vehicleBrand, vehicleModel, vehicleYear, vehiclePlate, tagNumber,
-      idFrontUrl, idBackUrl, selfieUrl, licenseUrl, vehiclePhotoUrl, membershipPlan,
-      bankName, bankAccountType, bankAccountNumber, bankAccountName, bankAccountRut, bankAccountEmail];
+      idFrontUrl, idBackUrl, selfieUrl, licenseUrl, vehiclePhotoUrl];
 
     if (required.some(v => !v)) {
       return res.status(400).json({ error: 'Todos los campos son obligatorios' });
@@ -136,9 +133,6 @@ router.post('/driver/register', async (req: Request, res: Response) => {
         vehicleBrand, vehicleModel,
         vehicleYear: Number(vehicleYear),
         vehiclePlate, vehiclePhotoUrl, tagNumber,
-        membershipPlan,
-        membershipGoal: membershipPlan === 'PROGRESSIVE' ? 120000 : 100000,
-        bankName, bankAccountType, bankAccountNumber, bankAccountName, bankAccountRut, bankAccountEmail,
         status: 'pending',
       },
     });
@@ -211,8 +205,6 @@ router.post('/driver/login', async (req: Request, res: Response) => {
         name: driver.name,
         email: driver.email,
         status: driver.status,
-        membershipPaid: driver.membershipPaid,
-        walletBalance: driver.walletBalance,
       },
       ...tokens,
     });

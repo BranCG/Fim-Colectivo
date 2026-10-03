@@ -10,9 +10,7 @@ interface Trip {
   createdAt: string;
   originAddress: string;
   destAddress: string;
-  estimatedPrice: number;
   status: string;
-  paymentMethod: string;
   driver?: { name: string; vehicleBrand: string; vehicleModel: string; vehiclePlate: string };
   rating?: { score: number; comment?: string };
 }
@@ -78,14 +76,6 @@ export default function PassengerHistoryPage() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--accent)' }}>Viaje Colectivo</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {trip.paymentMethod === 'cash' ? (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
-                    ) : (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                    )}
-                    {trip.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}
-                  </div>
                 </div>
               </div>
 

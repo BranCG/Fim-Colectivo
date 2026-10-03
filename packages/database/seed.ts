@@ -27,8 +27,8 @@ async function main() {
       comunas: 'La Granja, La Pintana, La Florida',
       descripcion: 'La Granja - La Pintana - La Florida (Metro Bellavista)',
       color: '#FACC15',
-      tarifa: 800,
-      tarifaNoche: 1000,
+      tarifa: 0,
+      tarifaNoche: null,
       origen: 'Los Pensamientos (La Granja)',
       destino: 'Serafín Zamora / Metro Bellavista (La Florida)',
       puntosRuta: JSON.stringify(route233012Data.coordsIda),
@@ -48,8 +48,8 @@ async function main() {
       comunas: 'La Granja, La Pintana, La Florida',
       descripcion: 'La Granja - La Pintana - La Florida (Metro Bellavista)',
       color: '#FACC15',
-      tarifa: 800,
-      tarifaNoche: 1000,
+      tarifa: 0,
+      tarifaNoche: null,
       origen: 'Los Pensamientos (La Granja)',
       destino: 'Serafín Zamora / Metro Bellavista (La Florida)',
       puntosRuta: JSON.stringify(route233012Data.coordsIda),
@@ -400,7 +400,7 @@ async function main() {
   });
   console.log('✅ Pasajero 3 de prueba:', pasajero3.email);
 
-  // 4. Choferes Colectivo de prueba (4 asientos, RutPay y MercadoPago)
+  // 4. Choferes Colectivo de prueba (4 asientos)
   const hashClaveChofer = await bcrypt.hash('test123', 12);
   const chofer = await prisma.driver.upsert({
     where: { email: 'chofer@fimchile.cl' },
@@ -424,8 +424,6 @@ async function main() {
       vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Linea+10',
       tagNumber: 'COL-233-01',
       status: 'active',
-      membershipPaid: true,
-      membershipDate: new Date(),
       totalRating: 4.9,
       totalTrips: 120,
       lineaId: linea233012.id,
@@ -437,8 +435,6 @@ async function main() {
       isOnline: true,
       lastLat: -33.55137,
       lastLng: -70.61921,
-      telefonoRutPay: '+56922222222',
-      mercadoPagoLink: 'https://mpago.li/test-chofer',
     },
   });
   console.log('✅ Chofer colectivo activo:', chofer.email, `(${linea233012.nombre})`);
@@ -471,8 +467,6 @@ async function main() {
       vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Toyota',
       tagNumber: 'COL-233-02',
       status: 'active',
-      membershipPaid: true,
-      membershipDate: new Date(),
       totalRating: 5.0,
       totalTrips: 85,
       lineaId: linea233012.id,
@@ -484,8 +478,6 @@ async function main() {
       isOnline: true,
       lastLat: -33.55031,
       lastLng: -70.61908,
-      telefonoRutPay: '+56933333333',
-      mercadoPagoLink: 'https://mpago.li/test-conductor',
     },
   });
   console.log('✅ Conductor colectivo activo:', conductor.email, `(${linea233012.nombre})`);
@@ -518,8 +510,6 @@ async function main() {
       vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Sail',
       tagNumber: 'COL-233-03',
       status: 'active',
-      membershipPaid: true,
-      membershipDate: new Date(),
       totalRating: 4.8,
       totalTrips: 64,
       lineaId: linea233012.id,
@@ -531,8 +521,6 @@ async function main() {
       isOnline: true,
       lastLat: -33.54100,
       lastLng: -70.61150,
-      telefonoRutPay: '+56944444444',
-      mercadoPagoLink: 'https://mpago.li/test-mario',
     },
   });
   console.log('✅ Conductor 2 colectivo activo:', conductor2.email, `(${linea233012.nombre})`);
@@ -565,8 +553,6 @@ async function main() {
       vehiclePhotoUrl: 'https://via.placeholder.com/400x250?text=Colectivo+Chevrolet',
       tagNumber: 'COL-233-04',
       status: 'active',
-      membershipPaid: true,
-      membershipDate: new Date(),
       totalRating: 4.95,
       totalTrips: 110,
       lineaId: linea233012.id,
@@ -578,8 +564,6 @@ async function main() {
       isOnline: true,
       lastLat: -33.52300,
       lastLng: -70.60000,
-      telefonoRutPay: '+56955555555',
-      mercadoPagoLink: 'https://mpago.li/test-roberto',
     },
   });
   console.log('✅ Conductor 3 colectivo activo:', conductor3.email, `(${linea233012.nombre})`);

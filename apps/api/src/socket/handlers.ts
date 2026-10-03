@@ -1,6 +1,8 @@
 import { Server, Socket } from 'socket.io';
 import prisma from '../utils/prisma';
 import { calculateDistance } from '../utils/pricing';
+import { withoutPaymentData } from '../utils/withoutPaymentData';
+import { expireDriverLocations } from '../utils/driverTracking';
 
 // ─── Mapa de conductores online ───────────────────────────────────────────
 // driverId -> { socketId, lat, lng }
@@ -16,19 +18,33 @@ const activeSearches = new Map<string, {
 }>();
 
 export function setupSocketHandlers(io: Server) {
+  let expiring = false;
+  const timer = setInterval(async () => {
+    if (expiring) return;
+    expiring = true;
+    try {
+      for (const driver of await expireDriverLocations(prisma)) {
+        onlineDrivers.delete(driver.id);
+        if (driver.lineaId) io.to('linea:' + driver.lineaId).emit('colectivo:conductor-offline', { conductorId: driver.id });
+      }
+    } catch (error) { console.error('No se pudo comprobar la vigencia del GPS:', error); }
+    finally { expiring = false; }
+  }, 30_000);
+  timer.unref();
 
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] Conectado: ${socket.id}`);
 
     // ─── CONDUCTOR: se conecta y anuncia su posición ───────────────────────
     socket.on('driver:online', async ({ driverId, lat, lng }: { driverId: string; lat: number; lng: number }) => {
-      onlineDrivers.set(driverId, { socketId: socket.id, lat, lng });
       socket.data.driverId = driverId;
       socket.join(`driver:${driverId}`);
 
       const chofer = await prisma.driver.update({
-        where: { id: driverId },
-        data: { isOnline: true, lastLat: lat, lastLng: lng, lastSeen: new Date() },
+        // El turno se inicia por la ruta autenticada. Un callback GPS retrasado
+        // o una reconexión del WebView no puede reabrir un turno terminado.
+        where: { id: driverId, isOnline: true },
+        data: { lastLat: lat, lastLng: lng, lastSeen: new Date() },
         select: {
           id: true,
           lineaId: true,
@@ -39,8 +55,10 @@ export function setupSocketHandlers(io: Server) {
           vehiclePlate: true,
           name: true,
         },
-      }).catch(console.error);
+      }).catch(() => null);
 
+      if (!chofer) return;
+      onlineDrivers.set(driverId, { socketId: socket.id, lat, lng });
       if (chofer && chofer.lineaId) {
         socket.join(`linea:${chofer.lineaId}`);
         io.to(`linea:${chofer.lineaId}`).emit('colectivo:conductor-online', {
@@ -166,21 +184,7 @@ export function setupSocketHandlers(io: Server) {
       }
     });
 
-    // ─── COLECTIVOS: Solicitar parada al conductor ────────────────────────
-    socket.on('colectivo:solicitar-parada', (datos: {
-      conductorId: string;
-      lineaId?: string;
-      pasajeroNombre?: string;
-      reservaId?: string;
-    }) => {
-      console.log(`[Socket] Solicitud de parada para conductor ${datos.conductorId}:`, datos);
-      if (datos.conductorId) {
-        io.to(`driver:${datos.conductorId}`).emit('colectivo:solicitud-parada', datos);
-      }
-      if (datos.lineaId) {
-        io.to(`linea:${datos.lineaId}`).emit('colectivo:solicitud-parada', datos);
-      }
-    });
+    // Las paradas se guardan y notifican únicamente por la ruta autenticada.
 
     socket.on('driver:join', ({ driverId, conductorId }: { driverId?: string; conductorId?: string }) => {
       const id = driverId || conductorId;
@@ -245,7 +249,6 @@ export function setupSocketHandlers(io: Server) {
                 vehiclePlate: true, vehiclePhotoUrl: true,
                 totalRating: true, totalTrips: true,
                 lastLat: true, lastLng: true,
-                mercadoPagoLink: true,
               },
             },
             passenger: { select: { id: true, name: true, phone: true } },
@@ -255,9 +258,9 @@ export function setupSocketHandlers(io: Server) {
         socket.join(`trip:${tripId}`);
 
         // Notificar al pasajero que fue aceptado
-        io.to(`trip:${tripId}`).emit('trip:accepted', { trip });
+        io.to(`trip:${tripId}`).emit('trip:accepted', { trip: withoutPaymentData(trip) });
         // Notificar al conductor confirmación
-        socket.emit('trip:confirmed', { trip });
+        socket.emit('trip:confirmed', { trip: withoutPaymentData(trip) });
 
         console.log(`[Socket] Viaje ${tripId} aceptado por conductor ${driverId}`);
       } catch (err) {
@@ -294,7 +297,7 @@ export function setupSocketHandlers(io: Server) {
           data: { status: 'in_progress', startedAt: new Date() },
         });
 
-        io.to(`trip:${tripId}`).emit('trip:started', { trip: updated });
+        io.to(`trip:${tripId}`).emit('trip:started', { trip: withoutPaymentData(updated) });
         console.log(`[Socket] Viaje ${tripId} iniciado con éxito`);
       } catch (err) {
         console.error('[Socket] Error iniciando viaje:', err);
@@ -311,12 +314,6 @@ export function setupSocketHandlers(io: Server) {
       io.to(`trip:${tripId}`).emit('trip:driver-arrived', { tripId });
     });
 
-    // ─── CONDUCTOR: solicita pago al pasajero ───────────────────────────
-    socket.on('trip:request-payment', ({ tripId }: { tripId: string }) => {
-      console.log(`[Socket] Conductor solicita pago para viaje ${tripId}`);
-      io.to(`trip:${tripId}`).emit('trip:payment-requested');
-    });
-
     // ─── CHAT EN VIVO: Mensajes de texto ──────────────────────────────────
     socket.on('trip:message', (data: { tripId: string, senderId: string, senderName: string, text: string }) => {
       console.log(`[Socket] Mensaje de chat recibido para viaje ${data.tripId} de ${data.senderName}: ${data.text}`);
@@ -324,12 +321,6 @@ export function setupSocketHandlers(io: Server) {
         ...data,
         timestamp: new Date().toISOString()
       });
-    });
-
-    // ─── PASAJERO: confirma que envió el pago ─────────────────────────────
-    socket.on('trip:passenger-confirmed-payment', ({ tripId, receiptUrl }: { tripId: string, receiptUrl?: string }) => {
-      console.log(`[Socket] Pasajero confirma pago para viaje ${tripId}`);
-      io.to(`trip:${tripId}`).emit('trip:passenger-confirmed-payment', { receiptUrl });
     });
 
     // ─── REPORTE DE SEGURIDAD ─────────────────────────────────────────────
@@ -354,24 +345,19 @@ export function setupSocketHandlers(io: Server) {
           },
         });
 
-        // Actualizar estadísticas del conductor y billetera si es tarjeta
+        // Actualizar estadísticas de viajes, sin registrar montos.
         await prisma.driver.update({
           where: { id: trip.driverId! },
           data: {
             totalTrips: { increment: 1 },
-            walletBalance: trip.paymentMethod === 'card' 
-              ? { increment: trip.estimatedPrice } 
-              : undefined
           }
         });
 
         io.to(`trip:${tripId}`).emit('trip:completed', {
           tripId,
-          finalPrice: trip.estimatedPrice,
-          paymentMethod: trip.paymentMethod,
         });
 
-        console.log(`[Socket] Viaje ${tripId} completado. Precio: $${trip.estimatedPrice}`);
+        console.log(`[Socket] Viaje ${tripId} completado.`);
       } catch (err) {
         console.error('[Socket] Error completando viaje:', err);
       }
@@ -399,23 +385,12 @@ export function setupSocketHandlers(io: Server) {
     });
 
     // ─── DESCONEXIÓN ──────────────────────────────────────────────────────
-    socket.on('disconnect', async () => {
+    socket.on('disconnect', () => {
       const driverId = socket.data.driverId;
       if (driverId) {
-        onlineDrivers.delete(driverId);
-        const chofer = await prisma.driver.update({
-          where: { id: driverId },
-          data: { isOnline: false },
-          select: { id: true, lineaId: true },
-        }).catch(console.error);
-
-        if (chofer && chofer.lineaId) {
-          io.to(`linea:${chofer.lineaId}`).emit('colectivo:conductor-offline', {
-            conductorId: chofer.id,
-            lineaId: chofer.lineaId,
-          });
-        }
-        console.log(`[Socket] Conductor ${driverId} desconectado`);
+        if (onlineDrivers.get(driverId)?.socketId === socket.id) onlineDrivers.delete(driverId);
+        // El servicio nativo puede seguir enviando GPS con el WebView suspendido.
+        // Solo terminar turno explícitamente o vencer lastSeen lo pone fuera de servicio.
       }
     });
   });
@@ -471,10 +446,10 @@ async function findAndNotifyDriver(
 
   // Notificar al conductor con timer de 30 segundos
   io.to(nearest.socketId).emit('trip:request', {
-    trip: {
+    trip: withoutPaymentData({
       ...trip,
       driverDistance: nearest.distance,
-    },
+    }),
   });
 
   // Si el conductor no responde en 30 segundos, pasar al siguiente

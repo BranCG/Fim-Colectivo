@@ -35,3 +35,11 @@ jobs:
           NEXT_PUBLIC_API_URL: "https://colectivo.fimchile.cl"
           JWT_SECRET: "ci-secret-key"
           JWT_REFRESH_SECRET: "ci-refresh-secret"
+
+      - name: Verificar reservas y cupos
+        run: npm run test --workspace=apps/api
+
+      - name: Verificar tipos de la aplicación
+        run: |
+          npx tsc --noEmit --incremental false -p apps/web/tsconfig.json
+          npx tsc --noEmit --incremental false -p apps/admin/tsconfig.json

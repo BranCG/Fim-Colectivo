@@ -91,28 +91,3 @@ export async function uploadFile(file: File): Promise<string> {
 
   return res.data.url;
 }
-
-// ─── Pricing ──────────────────────────────────────────────────────────────
-export const FIM_PRICING = {
-  baseFare: 900,
-  perKm: 410,
-  perMinute: 80,
-  bookingFee: 0,
-  minimumFare: 2500,
-};
-
-export function calculatePrice(distanceKm: number, durationMin: number): number {
-  const raw =
-    FIM_PRICING.baseFare +
-    distanceKm * FIM_PRICING.perKm +
-    durationMin * FIM_PRICING.perMinute;
-  return Math.max(FIM_PRICING.minimumFare, Math.round(raw));
-}
-
-export function formatCLP(amount: number): string {
-  return new Intl.NumberFormat('es-CL', {
-    style: 'currency',
-    currency: 'CLP',
-    minimumFractionDigits: 0,
-  }).format(amount);
-}
